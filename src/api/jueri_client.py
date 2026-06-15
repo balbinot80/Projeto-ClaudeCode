@@ -1,18 +1,18 @@
 import os
+import time
 import requests
 import streamlit as st
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Streamlit Cloud usa st.secrets; localmente usa .env
 def _get_secret(key: str, default: str = "") -> str:
     try:
         return st.secrets[key]
     except Exception:
         return os.getenv(key, default)
 
-BASE_URL = _get_secret("JUERI_BASE_URL", "https://aureumjoias.jueri.com.br/sis/api/v1/aureumjoias")
+BASE_URL = _get_secret("JUERI_BASE_URL", "https://aureumjoias.jueri.com.br/sis/api/v1/4216")
 TOKEN = _get_secret("JUERI_TOKEN", "")
 
 
@@ -21,8 +21,6 @@ def _headers():
 
 
 def _get_all_pages(endpoint: str, params: dict = None) -> list:
-    """Busca todas as páginas de um endpoint paginado."""
-    import time
     params = params or {}
     params["per_page"] = 100
     params["page"] = 1
@@ -33,7 +31,7 @@ def _get_all_pages(endpoint: str, params: dict = None) -> list:
             resp = requests.get(f"{BASE_URL}/{endpoint}", headers=_headers(), params=params, timeout=30)
             if resp.status_code == 429:
                 if tentativa < 2:
-                    time.sleep(5 * (tentativa + 1))
+                    time.sleep(6 * (tentativa + 1))
                     continue
                 raise requests.exceptions.HTTPError(
                     "A API Jueri está com limite de requisições (429). Aguarde alguns minutos e atualize a página.",
@@ -43,10 +41,8 @@ def _get_all_pages(endpoint: str, params: dict = None) -> list:
             break
 
         data = resp.json()
-        items = data.get("data", [])
-        results.extend(items)
+        results.extend(data.get("data", []))
 
-        # Usa next_page_url pois alguns endpoints não retornam last_page
         if not data.get("next_page_url"):
             break
         params["page"] += 1
@@ -54,23 +50,32 @@ def _get_all_pages(endpoint: str, params: dict = None) -> list:
     return results
 
 
-@st.cache_data(ttl=7200)  # cache de 2 horas
+@st.cache_data(ttl=7200)
 def get_produtos(status: str = "1") -> list:
-    # status=1 traz apenas produtos ativos (evita carregar 10k+ inativos)
     params = {"status": status} if status else {}
     return _get_all_pages("produto", params)
 
 
-@st.cache_data(ttl=1800)
-def get_produto(produto_id: int) -> dict:
-    resp = requests.get(f"{BASE_URL}/produto/{produto_id}", headers=_headers(), timeout=30)
-    resp.raise_for_status()
-    return resp.json()
+@st.cache_data(ttl=86400)  # categorias raramente mudam — cache 24h
+def get_categorias() -> dict:
+    """Retorna dict {id: nome} das categorias. Fallback via keywords se API indisponível."""
+    try:
+        items = _get_all_pages("categoria_produto")
+        return {str(c.get("id")): c.get("descricao", f"Cat {c.get('id')}") for c in items}
+    except Exception:
+        return {}
 
 
-@st.cache_data(ttl=1800)
-def get_pedidos(data_inicial: str = None, data_final: str = None) -> list:
-    params = {}
+@st.cache_data(ttl=7200)
+def get_pedidos_abertos() -> list:
+    """Pedidos em aberto = peças na rua com revendedoras."""
+    return _get_all_pages("pedido", {"status": "Aberto"})
+
+
+@st.cache_data(ttl=7200)
+def get_pedidos_baixados(data_inicial: str = None, data_final: str = None) -> list:
+    """Pedidos baixados = vendidos via remessa."""
+    params = {"status": "Baixado"}
     if data_inicial:
         params["data_inicial"] = data_inicial
     if data_final:
@@ -78,7 +83,7 @@ def get_pedidos(data_inicial: str = None, data_final: str = None) -> list:
     return _get_all_pages("pedido", params)
 
 
-@st.cache_data(ttl=1800)
+@st.cache_data(ttl=7200)
 def get_vendas(data_inicial: str = None, data_final: str = None) -> list:
     params = {}
     if data_inicial:
@@ -88,7 +93,7 @@ def get_vendas(data_inicial: str = None, data_final: str = None) -> list:
     return _get_all_pages("venda", params)
 
 
-@st.cache_data(ttl=1800)
+@st.cache_data(ttl=7200)
 def get_revendedores(status: str = None) -> list:
     params = {}
     if status:

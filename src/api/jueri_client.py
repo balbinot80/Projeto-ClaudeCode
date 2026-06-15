@@ -53,7 +53,7 @@ def _get_all_pages(endpoint: str, params: dict = None) -> list:
     return results
 
 
-@st.cache_data(ttl=1800)  # cache de 30 minutos
+@st.cache_data(ttl=7200)  # cache de 2 horas
 def get_produtos(status: str = None) -> list:
     params = {}
     if status:

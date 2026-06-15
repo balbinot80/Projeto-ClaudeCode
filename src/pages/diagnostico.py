@@ -23,44 +23,52 @@ def render():
     st.caption("Testa endpoints da API Jueri para descobrir nomes e estrutura corretos.")
 
     # Endpoints candidatos para pedidos
-    candidatos = [
-        ("pedido", {}),
-        ("pedido", {"status": "Aberto"}),
-        ("pedido", {"status": "Baixado"}),
-        ("pedido", {"status": "Fechado"}),
-        ("pedidos", {}),
-        ("ordem", {}),
-        ("ordens", {}),
-        ("remessa", {}),
-        ("remessas", {}),
-        ("venda", {}),
-        ("vendas", {}),
+    # Primeiro: busca todos os pedidos sem filtro para ver a estrutura
+    st.subheader("Estrutura do endpoint `pedido` (sem filtro)")
+    code, dados = _testar_endpoint("pedido", {})
+    if code == 200 and isinstance(dados, dict) and dados.get("data"):
+        registros = dados["data"]
+        st.success(f"{len(registros)} registros retornados")
+        primeiro = registros[0]
+        st.write("**Campos do primeiro pedido:**")
+        st.code(json.dumps(list(primeiro.keys()), ensure_ascii=False, indent=2))
+        st.write("**Primeiro pedido completo:**")
+        st.json(primeiro)
+
+        # Mostra todos os valores únicos do campo que pareça ser status
+        for campo in ["status", "situacao", "fk_status_id", "status_pedido", "situacao_pedido"]:
+            valores = list({str(r.get(campo, "")) for r in registros if r.get(campo) is not None})
+            if valores:
+                st.write(f"**Valores únicos de `{campo}`:** {valores}")
+    else:
+        st.error(f"Falha: HTTP {code}")
+        st.code(str(dados)[:300])
+
+    st.divider()
+
+    # Segundo: testa variações de parâmetro de filtro
+    st.subheader("Testando parâmetros de filtro de status")
+    filtros_candidatos = [
+        {"situacao": "Aberto"},
+        {"situacao": "Baixado"},
+        {"fk_status_id": "1"},
+        {"fk_status_id": "2"},
+        {"fk_status_id": "3"},
+        {"fk_status_id": "4"},
+        {"status_pedido": "Aberto"},
+        {"status_pedido": "Baixado"},
     ]
 
-    st.subheader("Testando endpoints de pedidos")
-
-    for endpoint, params in candidatos:
-        label = f"`{endpoint}`" + (f" com `{params}`" if params else "")
-        code, dados = _testar_endpoint(endpoint, params)
-
-        if code == 200 and isinstance(dados, dict):
-            total = len(dados.get("data", []))
-            if total > 0:
-                st.success(f"✅ {label} → HTTP {code} · {total} registros")
-                with st.expander(f"Ver primeiro registro de `{endpoint}` {params}"):
-                    primeiro = dados["data"][0]
-                    st.write("**Chaves disponíveis:**", list(primeiro.keys()))
-                    st.json(primeiro)
-            else:
-                st.info(f"🟡 {label} → HTTP {code} · 0 registros (endpoint existe mas está vazio)")
-        elif code == 200:
-            st.info(f"🟡 {label} → HTTP {code} · resposta inesperada")
-            st.code(str(dados)[:300])
-        elif code == 404:
-            st.warning(f"❌ {label} → HTTP {code} · endpoint não existe")
-        elif code == 429:
-            st.error(f"⛔ {label} → HTTP 429 · limite de requisições atingido")
+    for params in filtros_candidatos:
+        code2, dados2 = _testar_endpoint("pedido", params)
+        if code2 == 429:
+            st.error(f"⛔ HTTP 429 — limite atingido, pare e aguarde")
             break
+        if code2 == 200 and isinstance(dados2, dict):
+            total2 = len(dados2.get("data", []))
+            if total2 > 0:
+                st.success(f"✅ `{params}` → {total2} registros encontrados!")
+            else:
+                st.info(f"🟡 `{params}` → 0 registros")
         else:
-            st.warning(f"⚠️ {label} → HTTP {code}")
-            st.code(str(dados)[:200])
+            st.warning(f"⚠️ `{params}` → HTTP {code2}")

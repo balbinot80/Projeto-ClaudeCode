@@ -46,7 +46,8 @@ def _get_all_pages(endpoint: str, params: dict = None) -> list:
         items = data.get("data", [])
         results.extend(items)
 
-        if data.get("current_page", 1) >= data.get("last_page", 1):
+        # Usa next_page_url pois alguns endpoints não retornam last_page
+        if not data.get("next_page_url"):
             break
         params["page"] += 1
 
@@ -54,10 +55,9 @@ def _get_all_pages(endpoint: str, params: dict = None) -> list:
 
 
 @st.cache_data(ttl=7200)  # cache de 2 horas
-def get_produtos(status: str = None) -> list:
-    params = {}
-    if status:
-        params["status"] = status
+def get_produtos(status: str = "1") -> list:
+    # status=1 traz apenas produtos ativos (evita carregar 10k+ inativos)
+    params = {"status": status} if status else {}
     return _get_all_pages("produto", params)
 
 

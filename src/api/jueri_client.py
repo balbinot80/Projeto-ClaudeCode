@@ -1,5 +1,6 @@
 import os
 import time
+from datetime import datetime, timedelta
 import requests
 import streamlit as st
 from dotenv import load_dotenv
@@ -23,7 +24,6 @@ def _headers():
 
 
 def _req(endpoint_ou_url: str, params: dict = None) -> dict:
-    """GET com retry automático em 429."""
     url = endpoint_ou_url if endpoint_ou_url.startswith("http") else f"{BASE_URL}/{endpoint_ou_url}"
     for tentativa in range(4):
         resp = requests.get(url, headers=_headers(), params=params or {}, timeout=30)
@@ -73,26 +73,24 @@ def get_categorias() -> dict:
 @st.cache_data(ttl=3600)
 def _get_lista_pedidos() -> list:
     """
-    Busca a lista completa de pedidos (resumo, SEM itens).
-    A API retorna 15 por página — ~168 páginas para 2509 pedidos.
-    Resultado fica em cache por 1 hora.
+    Busca todos os pedidos (resumo, SEM itens por produto).
+    A API retorna 15 por página — percorre todas as páginas.
+    Cache de 1 hora.
     """
     return _get_all_pages("pedido")
 
 
 def get_pedidos_abertos() -> list:
-    """Pedidos com status 'Aberto' (filtrado em Python após buscar lista completa)."""
     return [p for p in _get_lista_pedidos() if p.get("status") == "Aberto"]
 
 
 def get_pedidos_baixados() -> list:
-    """Pedidos com status 'Baixado' (filtrado em Python após buscar lista completa)."""
     return [p for p in _get_lista_pedidos() if p.get("status") == "Baixado"]
 
 
 @st.cache_data(ttl=3600)
 def get_pedido_detalhado(pedido_id: int) -> dict:
-    """Busca um pedido individual com seus itens. Resultado cacheado por pedido."""
+    """Busca um pedido individual com seus itens."""
     try:
         data = _req(f"pedido/{pedido_id}")
         registro = data.get("data", data)
@@ -126,14 +124,12 @@ def get_itens_pedidos_abertos() -> dict:
 @st.cache_data(ttl=3600)
 def get_itens_pedidos_baixados(dias: int = 180) -> list:
     """
-    Retorna lista de itens vendidos (de pedidos baixados) nos últimos `dias` dias.
-    Busca cada pedido baixado individualmente para obter itens.
-    Cada item: {pedido_id, produto_id, quantidade, data, fk_revendedor_id}
+    Retorna lista de itens vendidos (pedidos baixados) nos últimos dias.
+    Busca cada pedido individualmente para obter os itens.
     """
-    from datetime import datetime, timedelta
     corte = datetime.today() - timedelta(days=dias)
-
     baixados = get_pedidos_baixados()
+
     recentes = []
     for p in baixados:
         data_str = (p.get("data_baixa") or p.get("data_criacao") or "")[:10]
@@ -148,8 +144,8 @@ def get_itens_pedidos_baixados(dias: int = 180) -> list:
         pid = pedido.get("id")
         data_str = (pedido.get("data_baixa") or pedido.get("data_criacao") or "")[:10]
         try:
-            data_pedido = __import__("datetime").datetime.fromisoformat(data_str)
-        except Exception:
+            data_pedido = datetime.fromisoformat(data_str)
+        except (ValueError, TypeError):
             data_pedido = None
 
         detalhes = get_pedido_detalhado(pid)

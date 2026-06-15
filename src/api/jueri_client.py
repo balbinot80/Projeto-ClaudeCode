@@ -1,5 +1,6 @@
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 import requests
 import streamlit as st
@@ -51,6 +52,35 @@ def _get_all_pages(endpoint: str, params: dict = None) -> list:
     return results
 
 
+def _fetch_pedido_raw(pedido_id: int) -> dict:
+    """Busca pedido individual sem cache (seguro para uso em threads)."""
+    try:
+        data = _req(f"pedido/{pedido_id}")
+        registro = data.get("data", data)
+        if isinstance(registro, list):
+            return registro[0] if registro else {}
+        return registro if isinstance(registro, dict) else {}
+    except Exception:
+        return {}
+
+
+def _fetch_em_paralelo(pedido_ids: list, max_workers: int = 6) -> dict:
+    """
+    Busca detalhes de múltiplos pedidos em paralelo.
+    Retorna {pedido_id: detalhes_dict}.
+    """
+    resultados = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futuros = {executor.submit(_fetch_pedido_raw, pid): pid for pid in pedido_ids}
+        for futuro in as_completed(futuros):
+            pid = futuros[futuro]
+            try:
+                resultados[pid] = futuro.result()
+            except Exception:
+                resultados[pid] = {}
+    return resultados
+
+
 # ── Produtos e categorias ──────────────────────────────────────────────────
 
 @st.cache_data(ttl=7200)
@@ -74,8 +104,7 @@ def get_categorias() -> dict:
 def _get_lista_pedidos() -> list:
     """
     Busca todos os pedidos (resumo, SEM itens por produto).
-    A API retorna 15 por página — percorre todas as páginas.
-    Cache de 1 hora.
+    A API retorna 15 por página — percorre todas as páginas. Cache de 1 hora.
     """
     return _get_all_pages("pedido")
 
@@ -90,30 +119,26 @@ def get_pedidos_baixados() -> list:
 
 @st.cache_data(ttl=3600)
 def get_pedido_detalhado(pedido_id: int) -> dict:
-    """Busca um pedido individual com seus itens."""
-    try:
-        data = _req(f"pedido/{pedido_id}")
-        registro = data.get("data", data)
-        if isinstance(registro, list):
-            return registro[0] if registro else {}
-        return registro if isinstance(registro, dict) else {}
-    except Exception:
-        return {}
+    """Busca um pedido individual com seus itens (com cache por ID)."""
+    return _fetch_pedido_raw(pedido_id)
 
 
 @st.cache_data(ttl=3600)
 def get_itens_pedidos_abertos() -> dict:
     """
-    Retorna {produto_id: quantidade_na_rua} buscando cada pedido aberto
-    individualmente para obter os itens.
+    Retorna {produto_id: quantidade_na_rua}.
+    Busca os pedidos abertos em paralelo (6 threads simultâneas).
     """
     abertos = get_pedidos_abertos()
+    ids = [p["id"] for p in abertos if p.get("id")]
+    if not ids:
+        return {}
+
+    detalhes_map = _fetch_em_paralelo(ids, max_workers=6)
+
     na_rua: dict = {}
     for pedido in abertos:
-        pid = pedido.get("id")
-        if not pid:
-            continue
-        detalhes = get_pedido_detalhado(pid)
+        detalhes = detalhes_map.get(pedido.get("id"), {})
         for item in detalhes.get("itens", []):
             prod_id = (item.get("produto") or {}).get("id")
             if prod_id:
@@ -122,10 +147,10 @@ def get_itens_pedidos_abertos() -> dict:
 
 
 @st.cache_data(ttl=3600)
-def get_itens_pedidos_baixados(dias: int = 180, max_pedidos: int = 300) -> list:
+def get_itens_pedidos_baixados(dias: int = 90, max_pedidos: int = 120) -> list:
     """
-    Retorna lista de itens vendidos (pedidos baixados) nos últimos dias.
-    Limita a max_pedidos para evitar centenas de chamadas individuais à API.
+    Retorna lista de itens vendidos nos últimos dias.
+    Limita a max_pedidos mais recentes e busca em paralelo.
     """
     corte = datetime.today() - timedelta(days=dias)
     baixados = get_pedidos_baixados()
@@ -139,12 +164,17 @@ def get_itens_pedidos_baixados(dias: int = 180, max_pedidos: int = 300) -> list:
         except (ValueError, TypeError):
             pass
 
-    # Ordena pelos mais recentes e limita para não sobrecarregar a API
     recentes.sort(
         key=lambda p: (p.get("data_baixa") or p.get("data_criacao") or ""),
         reverse=True,
     )
     recentes = recentes[:max_pedidos]
+
+    ids = [p["id"] for p in recentes if p.get("id")]
+    if not ids:
+        return []
+
+    detalhes_map = _fetch_em_paralelo(ids, max_workers=6)
 
     rows = []
     for pedido in recentes:
@@ -155,7 +185,7 @@ def get_itens_pedidos_baixados(dias: int = 180, max_pedidos: int = 300) -> list:
         except (ValueError, TypeError):
             data_pedido = None
 
-        detalhes = get_pedido_detalhado(pid)
+        detalhes = detalhes_map.get(pid, {})
         for item in detalhes.get("itens", []):
             prod_id = (item.get("produto") or {}).get("id")
             if prod_id:

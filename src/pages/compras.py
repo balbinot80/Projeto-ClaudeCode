@@ -8,7 +8,7 @@ from src.logic.compras import (
     sugerir_compras_por_modelo, resumo_por_categoria, top_vendidos_por_categoria
 )
 
-_MAX_BAIXADOS = 300  # limite de pedidos individuais para não sobrecarregar a API
+_MAX_BAIXADOS = 120  # pedidos baixados mais recentes usados no cálculo de velocidade
 
 
 def _calcular_e_salvar(dias_cobertura, dias_historico, lead_time, chave):

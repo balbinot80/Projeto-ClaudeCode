@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
-from src.api.jueri_client import get_revendedores, get_pedidos_abertos, get_vendas
+from src.api.jueri_client import get_revendedores, get_pedidos_abertos, get_pedidos_baixados
 
 
 def render():
@@ -12,9 +12,7 @@ def render():
         try:
             todos = get_revendedores()
             pedidos_abertos = get_pedidos_abertos()
-            data_ini = (datetime.now() - timedelta(days=180)).strftime("%Y-%m-%d")
-            data_fim = datetime.now().strftime("%Y-%m-%d")
-            vendas = get_vendas(data_inicial=data_ini, data_final=data_fim)
+            baixados = get_pedidos_baixados()
         except Exception as e:
             st.error(f"Erro ao carregar dados: {e}")
             return
@@ -29,11 +27,19 @@ def render():
         for p in pedidos_abertos
     } - {""}
 
-    # IDs de revendedoras com venda nos últimos 6 meses
-    ids_com_venda = {
-        str(v.get("fk_revendedor_id") or v.get("revendedor_id", ""))
-        for v in vendas
-    } - {""}
+    # IDs de revendedoras com pedido baixado nos últimos 6 meses
+    corte_6m = datetime.now() - timedelta(days=180)
+    ids_com_venda = set()
+    for p in baixados:
+        data_str = p.get("data_baixa") or p.get("data_criacao") or ""
+        try:
+            data_p = datetime.fromisoformat(data_str[:10])
+        except (ValueError, TypeError):
+            continue
+        if data_p >= corte_6m:
+            rid = str(p.get("fk_revendedor_id") or p.get("revendedor_id", ""))
+            if rid:
+                ids_com_venda.add(rid)
 
     rows = []
     for r in todos:
@@ -128,10 +134,11 @@ def render():
     st.divider()
     st.subheader("Ranking de vendas — últimos 6 meses")
 
-    if vendas:
+    baixados_6m = [p for p in baixados if p.get("fk_revendedor_id") or p.get("revendedor_id")]
+    if baixados_6m:
         rev_map = {str(r.get("id")): r.get("nome", f"ID {r.get('id')}") for r in todos}
         ranking = {}
-        for v in vendas:
+        for v in baixados_6m:
             rid = str(v.get("fk_revendedor_id") or v.get("revendedor_id", ""))
             nome = rev_map.get(rid, f"Revendedora {rid}")
             total = sum(float(i.get("valor_total", 0)) for i in v.get("itens", []))
@@ -150,4 +157,4 @@ def render():
             fig3.update_layout(xaxis_tickangle=-45)
             st.plotly_chart(fig3, use_container_width=True)
     else:
-        st.info("Sem dados de vendas no período.")
+        st.info("Sem pedidos baixados no período.")

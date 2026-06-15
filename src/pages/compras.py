@@ -2,10 +2,9 @@ import streamlit as st
 import plotly.express as px
 from datetime import datetime, timedelta
 from src.api.jueri_client import (
-    get_produtos, get_vendas, get_pedidos_baixados,
-    get_pedidos_abertos, get_categorias
+    get_produtos, get_pedidos_baixados, get_pedidos_abertos, get_categorias
 )
-from src.logic.compras import sugerir_compras, extrair_itens_vendidos, top_vendidos_por_categoria
+from src.logic.compras import sugerir_compras, extrair_vendas, top_vendidos_por_categoria
 
 
 def render():
@@ -29,21 +28,28 @@ def render():
     with st.spinner("Carregando dados..."):
         try:
             produtos = get_produtos(status="1")
-            vendas = get_vendas(data_inicial=data_ini, data_final=data_fim)
-            baixados = get_pedidos_baixados(data_inicial=data_ini, data_final=data_fim)
+            baixados = get_pedidos_baixados()
             pedidos_abertos = get_pedidos_abertos()
             categorias_map = get_categorias()
         except Exception as e:
             st.error(f"Erro ao carregar dados: {e}")
             return
 
+    # Filtra pedidos baixados pelo período selecionado
+    from datetime import datetime as _dt
+    corte = _dt.today() - timedelta(days=dias_historico)
+    baixados_periodo = [
+        p for p in baixados
+        if _dt.fromisoformat(((p.get("data_baixa") or p.get("data_criacao") or "2000-01-01")[:10])) >= corte
+    ]
+
     st.info(
-        f"{len(produtos)} produtos ativos · {len(vendas)} vendas · "
-        f"{len(baixados)} pedidos baixados nos últimos {dias_historico} dias"
+        f"{len(produtos)} produtos ativos · "
+        f"{len(baixados_periodo)} pedidos baixados nos últimos {dias_historico} dias"
     )
 
     df = sugerir_compras(
-        produtos, vendas, baixados, pedidos_abertos, categorias_map,
+        produtos, baixados, pedidos_abertos, categorias_map,
         dias_cobertura=dias_cobertura, dias_historico=dias_historico
     )
 
@@ -117,7 +123,7 @@ def render():
     st.caption("Use este ranking para priorizar os modelos na hora de comprar.")
 
     produtos_map = {p["id"]: p for p in produtos}
-    itens_df = extrair_itens_vendidos(vendas, baixados, produtos_map)
+    itens_df = extrair_vendas(baixados_periodo, produtos_map, dias_historico=dias_historico)
     top_por_cat = top_vendidos_por_categoria(itens_df, categorias_map, top_n=10)
 
     if top_por_cat:

@@ -4,11 +4,10 @@ import plotly.express as px
 from datetime import datetime, timedelta
 
 from src.api.jueri_client import (
-    get_produtos, get_pedidos_abertos, get_categorias,
-    get_vendas, get_pedidos_baixados
+    get_produtos, get_pedidos_abertos, get_categorias, get_pedidos_baixados
 )
 from src.logic.estoque import montar_df_estoque
-from src.logic.compras import extrair_itens_vendidos, top_vendidos_por_categoria
+from src.logic.compras import extrair_vendas, top_vendidos_por_categoria
 
 
 def render():
@@ -19,11 +18,7 @@ def render():
             produtos = get_produtos(status="1")
             pedidos_abertos = get_pedidos_abertos()
             categorias_map = get_categorias()
-            hoje = datetime.today()
-            data_ini = (hoje - timedelta(days=180)).strftime("%Y-%m-%d")
-            data_fim = hoje.strftime("%Y-%m-%d")
-            vendas = get_vendas(data_ini, data_fim)
-            baixados = get_pedidos_baixados(data_ini, data_fim)
+            baixados = get_pedidos_baixados()
         except Exception as e:
             st.error(f"Erro ao carregar dados: {e}")
             return
@@ -85,7 +80,7 @@ def render():
     # Top 10 mais vendidos por categoria
     st.subheader("Top 10 mais vendidos por categoria — últimos 6 meses")
     produtos_map = {p["id"]: p for p in produtos}
-    itens_df = extrair_itens_vendidos(vendas, baixados, produtos_map)
+    itens_df = extrair_vendas(baixados, produtos_map, dias_historico=180)
     top_por_cat = top_vendidos_por_categoria(itens_df, categorias_map, top_n=10)
 
     if top_por_cat:

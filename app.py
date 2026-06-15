@@ -36,7 +36,7 @@ if not st.session_state.autenticado:
 
 
 def render_dashboard():
-    from src.api.jueri_client import get_produtos, get_revendedores, get_vendas
+    from src.api.jueri_client import get_produtos, get_revendedores, get_pedidos_baixados, get_pedidos_abertos
     from datetime import datetime, timedelta
     import pandas as pd
 
@@ -44,14 +44,21 @@ def render_dashboard():
 
     try:
         with st.spinner("Carregando dados..."):
-            produtos = get_produtos()
+            produtos = get_produtos(status="1")
             revendedores = get_revendedores()
-            data_ini = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-            vendas_30d = get_vendas(data_inicial=data_ini)
+            pedidos_abertos = get_pedidos_abertos()
+            baixados = get_pedidos_baixados()
     except Exception as e:
         st.error(f"Erro ao conectar com a API Jueri: {e}")
         st.info("Aguarde alguns instantes e clique em **🔄 Atualizar dados** no menu lateral.")
         return
+
+    # Pedidos baixados nos últimos 30 dias
+    corte_30d = datetime.now() - timedelta(days=30)
+    baixados_30d = [
+        p for p in baixados
+        if datetime.fromisoformat(((p.get("data_baixa") or p.get("data_criacao") or "2000-01-01")[:10])) >= corte_30d
+    ]
 
     col1, col2, col3, col4 = st.columns(4)
 
@@ -65,11 +72,11 @@ def render_dashboard():
     ).fillna(0)
     criticos = int((qtds < mins).sum())
 
-    col1.metric("Total de produtos", len(produtos))
+    col1.metric("Produtos ativos", len(produtos))
     col2.metric("🔴 Estoque crítico", criticos)
     col3.metric("👥 Revendedoras ativas",
                 sum(1 for r in revendedores if str(r.get("fk_status_id", "1")) == "1"))
-    col4.metric("📦 Vendas (30 dias)", len(vendas_30d))
+    col4.metric("📦 Pedidos baixados (30 dias)", len(baixados_30d))
 
     st.divider()
 

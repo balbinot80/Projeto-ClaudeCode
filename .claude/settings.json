@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "$env:PATH=$env:PATH+';C:\\Program Files\\GitHub CLI'; Set-Location 'C:\\Users\\aureu\\Downloads\\Projeto ClaudeCode'; $s=(git status --porcelain 2>$null); if($s){ $ts=Get-Date -Format 'yyyy-MM-dd HH:mm:ss'; git add -A; git commit -m \"Auto-update: $ts\"; git push }",
+            "statusMessage": "Sincronizando com GitHub...",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}

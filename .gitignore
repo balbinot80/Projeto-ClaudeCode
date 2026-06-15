@@ -42,3 +42,6 @@ venv/
 # Temp
 *.tmp
 *.bak
+
+# Claude Code local settings (personal overrides, não commitar)
+.claude/settings.local.json

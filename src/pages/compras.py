@@ -82,7 +82,7 @@ def render():
                 return ""
 
             st.dataframe(
-                df_cat.style.applymap(_cor, subset=["Status"]),
+                df_cat.style.map(_cor, subset=["Status"]),
                 use_container_width=True, hide_index=True,
             )
 

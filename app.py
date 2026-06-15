@@ -42,11 +42,16 @@ def render_dashboard():
 
     st.title("🏠 Dashboard — Visão Geral")
 
-    with st.spinner("Carregando dados..."):
-        produtos = get_produtos()
-        revendedores = get_revendedores()
-        data_ini = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-        vendas_30d = get_vendas(data_inicial=data_ini)
+    try:
+        with st.spinner("Carregando dados..."):
+            produtos = get_produtos()
+            revendedores = get_revendedores()
+            data_ini = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+            vendas_30d = get_vendas(data_inicial=data_ini)
+    except Exception as e:
+        st.error(f"Erro ao conectar com a API Jueri: {e}")
+        st.info("Aguarde alguns instantes e clique em **🔄 Atualizar dados** no menu lateral.")
+        return
 
     col1, col2, col3, col4 = st.columns(4)
 

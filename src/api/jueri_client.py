@@ -67,15 +67,19 @@ def get_categorias() -> dict:
 
 
 @st.cache_data(ttl=7200)
+def _get_todos_pedidos() -> list:
+    """Busca todos os pedidos sem filtro (API ignora parâmetros de status)."""
+    return _get_all_pages("pedido")
+
+
 def get_pedidos_abertos() -> list:
-    """Pedidos em aberto = peças na rua com revendedoras."""
-    return _get_all_pages("pedido", {"status": "Aberto"})
+    """Pedidos com status 'Aberto' = peças na rua com revendedoras."""
+    return [p for p in _get_todos_pedidos() if p.get("status") == "Aberto"]
 
 
-@st.cache_data(ttl=7200)
 def get_pedidos_baixados() -> list:
-    """Pedidos baixados = vendas realizadas."""
-    return _get_all_pages("pedido", {"status": "Baixado"})
+    """Pedidos com status 'Baixado' = vendas realizadas."""
+    return [p for p in _get_todos_pedidos() if p.get("status") == "Baixado"]
 
 
 @st.cache_data(ttl=7200)

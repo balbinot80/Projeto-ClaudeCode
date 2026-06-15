@@ -44,31 +44,32 @@ def render():
         st.error(f"Falha: HTTP {code}")
         st.code(str(dados)[:300])
 
+    # Distribuição de status
+    if code == 200 and isinstance(dados, dict) and dados.get("data"):
+        registros = dados["data"]
+        from collections import Counter
+        dist_status = Counter(r.get("status", "?") for r in registros)
+        st.write("**Distribuição de status nos pedidos:**", dict(dist_status))
+
     st.divider()
 
-    # Segundo: testa variações de parâmetro de filtro
-    st.subheader("Testando parâmetros de filtro de status")
-    filtros_candidatos = [
-        {"situacao": "Aberto"},
-        {"situacao": "Baixado"},
-        {"fk_status_id": "1"},
-        {"fk_status_id": "2"},
-        {"fk_status_id": "3"},
-        {"fk_status_id": "4"},
-        {"status_pedido": "Aberto"},
-        {"status_pedido": "Baixado"},
-    ]
-
-    for params in filtros_candidatos:
-        code2, dados2 = _testar_endpoint("pedido", params)
-        if code2 == 429:
-            st.error(f"⛔ HTTP 429 — limite atingido, pare e aguarde")
-            break
-        if code2 == 200 and isinstance(dados2, dict):
-            total2 = len(dados2.get("data", []))
-            if total2 > 0:
-                st.success(f"✅ `{params}` → {total2} registros encontrados!")
+    # Busca pedido individual por ID para ver se tem itens
+    st.subheader("Pedido individual: `/pedido/{id}`")
+    code0, dados0 = _testar_endpoint("pedido", {})
+    if code0 == 200 and isinstance(dados0, dict) and dados0.get("data"):
+        primeiro_id = dados0["data"][0].get("id")
+        if primeiro_id:
+            code_id, dados_id = _testar_endpoint(f"pedido/{primeiro_id}")
+            st.write(f"Buscando `/pedido/{primeiro_id}` → HTTP {code_id}")
+            if code_id == 200:
+                if isinstance(dados_id, dict):
+                    # Pode vir direto ou dentro de 'data'
+                    registro = dados_id.get("data", dados_id)
+                    if isinstance(registro, list) and registro:
+                        registro = registro[0]
+                    st.write("**Campos disponíveis:**", list(registro.keys()) if isinstance(registro, dict) else "formato inesperado")
+                    st.json(registro)
+                else:
+                    st.code(str(dados_id)[:500])
             else:
-                st.info(f"🟡 `{params}` → 0 registros")
-        else:
-            st.warning(f"⚠️ `{params}` → HTTP {code2}")
+                st.warning(f"HTTP {code_id}: {str(dados_id)[:200]}")

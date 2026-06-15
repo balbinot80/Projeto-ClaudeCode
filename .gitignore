@@ -10,7 +10,7 @@ out/
 .next/
 .nuxt/
 
-# Environment variables
+# Environment variables (NUNCA commitar o .env real)
 .env
 .env.local
 .env.*.local
@@ -45,3 +45,6 @@ venv/
 
 # Claude Code local settings (personal overrides, não commitar)
 .claude/settings.local.json
+
+# Streamlit secrets (credenciais, não commitar)
+.streamlit/secrets.toml

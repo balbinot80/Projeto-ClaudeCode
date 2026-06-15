@@ -122,10 +122,10 @@ def get_itens_pedidos_abertos() -> dict:
 
 
 @st.cache_data(ttl=3600)
-def get_itens_pedidos_baixados(dias: int = 180) -> list:
+def get_itens_pedidos_baixados(dias: int = 180, max_pedidos: int = 300) -> list:
     """
     Retorna lista de itens vendidos (pedidos baixados) nos últimos dias.
-    Busca cada pedido individualmente para obter os itens.
+    Limita a max_pedidos para evitar centenas de chamadas individuais à API.
     """
     corte = datetime.today() - timedelta(days=dias)
     baixados = get_pedidos_baixados()
@@ -138,6 +138,13 @@ def get_itens_pedidos_baixados(dias: int = 180) -> list:
                 recentes.append(p)
         except (ValueError, TypeError):
             pass
+
+    # Ordena pelos mais recentes e limita para não sobrecarregar a API
+    recentes.sort(
+        key=lambda p: (p.get("data_baixa") or p.get("data_criacao") or ""),
+        reverse=True,
+    )
+    recentes = recentes[:max_pedidos]
 
     rows = []
     for pedido in recentes:

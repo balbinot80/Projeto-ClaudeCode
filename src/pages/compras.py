@@ -2,9 +2,9 @@ import streamlit as st
 import plotly.express as px
 from datetime import datetime, timedelta
 from src.api.jueri_client import (
-    get_produtos, get_pedidos_baixados, get_pedidos_abertos, get_categorias
+    get_produtos, get_categorias, get_itens_pedidos_abertos, get_itens_pedidos_baixados
 )
-from src.logic.compras import sugerir_compras, extrair_vendas, top_vendidos_por_categoria
+from src.logic.compras import sugerir_compras, top_vendidos_por_categoria
 
 
 def render():
@@ -12,64 +12,46 @@ def render():
 
     col1, col2 = st.columns(2)
     with col1:
-        dias_cobertura = st.slider(
-            "Dias de cobertura desejados", 30, 180, 60,
-            help="Quantidade de dias de estoque que você quer ter após a compra"
-        )
+        dias_cobertura = st.slider("Dias de cobertura desejados", 30, 180, 60,
+                                   help="Quantos dias de estoque você quer ter após a compra")
     with col2:
-        dias_historico = st.slider(
-            "Histórico de vendas (dias)", 90, 365, 180,
-            help="Período para calcular a velocidade de vendas. Padrão: 6 meses"
-        )
+        dias_historico = st.slider("Histórico de vendas (dias)", 90, 365, 180,
+                                   help="Período para calcular a velocidade de vendas. Padrão: 6 meses")
 
-    data_ini = (datetime.now() - timedelta(days=dias_historico)).strftime("%Y-%m-%d")
-    data_fim = datetime.now().strftime("%Y-%m-%d")
-
-    with st.spinner("Carregando dados..."):
+    with st.spinner("Carregando dados (pode demorar na primeira vez)..."):
         try:
             produtos = get_produtos(status="1")
-            baixados = get_pedidos_baixados()
-            pedidos_abertos = get_pedidos_abertos()
             categorias_map = get_categorias()
+            na_rua_map = get_itens_pedidos_abertos()
+            itens_vendidos = get_itens_pedidos_baixados(dias=dias_historico)
         except Exception as e:
             st.error(f"Erro ao carregar dados: {e}")
             return
 
-    # Filtra pedidos baixados pelo período selecionado
-    from datetime import datetime as _dt
-    corte = _dt.today() - timedelta(days=dias_historico)
-    baixados_periodo = [
-        p for p in baixados
-        if _dt.fromisoformat(((p.get("data_baixa") or p.get("data_criacao") or "2000-01-01")[:10])) >= corte
-    ]
-
     st.info(
         f"{len(produtos)} produtos ativos · "
-        f"{len(baixados_periodo)} pedidos baixados nos últimos {dias_historico} dias"
+        f"{len(itens_vendidos)} itens vendidos nos últimos {dias_historico} dias · "
+        f"{sum(na_rua_map.values()):.0f} peças na rua"
     )
 
     df = sugerir_compras(
-        produtos, baixados, pedidos_abertos, categorias_map,
-        dias_cobertura=dias_cobertura, dias_historico=dias_historico
+        produtos, itens_vendidos, na_rua_map, categorias_map,
+        dias_cobertura=dias_cobertura, dias_historico=dias_historico,
     )
 
     if df.empty:
         st.warning("Nenhum produto com necessidade de compra identificado no período.")
         return
 
-    # Métricas gerais
     col1, col2, col3 = st.columns(3)
     col1.metric("Críticos", len(df[df["Status"] == "🔴 Crítico"]))
     col2.metric("Atenção (< 30 dias)", len(df[df["Status"] == "🟡 Atenção"]))
     col3.metric("Planejar", len(df[df["Status"] == "🟢 Planejar"]))
 
-    # Filtros
     st.divider()
+
     apenas_necessarios = st.checkbox("Mostrar apenas produtos que precisam de compra", value=True)
-    if apenas_necessarios:
-        df_exibir = df[df["Sugestão de compra"] > 0].copy()
-    else:
-        df_exibir = df.copy()
+    df_exibir = df[df["Sugestão de compra"] > 0].copy() if apenas_necessarios else df.copy()
 
     col_f1, col_f2 = st.columns(2)
     with col_f1:
@@ -82,17 +64,15 @@ def render():
         if busca:
             df_exibir = df_exibir[df_exibir["Produto"].str.contains(busca, case=False, na=False)]
 
-    # Tabela por categoria
     st.subheader(f"{len(df_exibir)} produtos na lista de compras")
 
     for cat in sorted(df_exibir["Categoria"].unique()):
         df_cat = df_exibir[df_exibir["Categoria"] == cat].drop(columns="Categoria").copy()
         criticos = (df_cat["Status"] == "🔴 Crítico").sum()
-
         badge = f" — {criticos} crítico(s) 🔴" if criticos else ""
+
         with st.expander(f"**{cat}** ({len(df_cat)} itens){badge}", expanded=(criticos > 0)):
-            total_sugerido = int(df_cat["Sugestão de compra"].sum())
-            st.caption(f"Total sugerido para compra nesta categoria: **{total_sugerido} unidades**")
+            st.caption(f"Total sugerido: **{int(df_cat['Sugestão de compra'].sum())} unidades**")
 
             def _cor(val):
                 if "Crítico" in str(val):
@@ -103,11 +83,9 @@ def render():
 
             st.dataframe(
                 df_cat.style.applymap(_cor, subset=["Status"]),
-                use_container_width=True,
-                hide_index=True,
+                use_container_width=True, hide_index=True,
             )
 
-    # Exportação
     if not df_exibir.empty:
         csv = df_exibir.to_csv(index=False).encode("utf-8")
         st.download_button(
@@ -123,25 +101,18 @@ def render():
     st.caption("Use este ranking para priorizar os modelos na hora de comprar.")
 
     produtos_map = {p["id"]: p for p in produtos}
-    itens_df = extrair_vendas(baixados_periodo, produtos_map, dias_historico=dias_historico)
-    top_por_cat = top_vendidos_por_categoria(itens_df, categorias_map, top_n=10)
+    top_por_cat = top_vendidos_por_categoria(itens_vendidos, produtos_map, categorias_map, top_n=10)
 
     if top_por_cat:
-        cats_com_vendas = sorted(top_por_cat.keys())
-        tabs = st.tabs(cats_com_vendas[:12])
-        for tab, cat in zip(tabs, cats_com_vendas[:12]):
+        tabs = st.tabs(sorted(top_por_cat.keys())[:12])
+        for tab, cat in zip(tabs, sorted(top_por_cat.keys())[:12]):
             with tab:
                 top_df = top_por_cat[cat][["descricao", "total_vendido"]].copy()
                 top_df.columns = ["Modelo", "Unidades vendidas"]
-                fig = px.bar(
-                    top_df,
-                    x="Unidades vendidas",
-                    y="Modelo",
-                    orientation="h",
-                    color_discrete_sequence=["#AB6776"],
-                    title=f"Top 10 modelos — {cat}",
-                )
+                fig = px.bar(top_df, x="Unidades vendidas", y="Modelo", orientation="h",
+                             color_discrete_sequence=["#AB6776"],
+                             title=f"Top 10 — {cat}")
                 fig.update_layout(yaxis={"categoryorder": "total ascending"}, margin={"l": 200})
                 st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Sem histórico de vendas no período para exibir ranking.")
+        st.info("Sem histórico de vendas no período.")

@@ -1,24 +1,20 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime, timedelta
 
-from src.api.jueri_client import (
-    get_produtos, get_pedidos_abertos, get_categorias, get_pedidos_baixados
-)
-from src.logic.estoque import montar_df_estoque
-from src.logic.compras import extrair_vendas, top_vendidos_por_categoria
+from src.api.jueri_client import get_produtos, get_categorias, get_itens_pedidos_abertos, get_itens_pedidos_baixados
+from src.logic.estoque import montar_df_estoque, nome_categoria
+from src.logic.compras import top_vendidos_por_categoria
 
 
 def render():
     st.header("Estoque")
 
-    with st.spinner("Carregando dados de estoque..."):
+    with st.spinner("Carregando lista de pedidos (pode demorar na primeira vez)..."):
         try:
             produtos = get_produtos(status="1")
-            pedidos_abertos = get_pedidos_abertos()
             categorias_map = get_categorias()
-            baixados = get_pedidos_baixados()
+            na_rua_map = get_itens_pedidos_abertos()
         except Exception as e:
             st.error(f"Erro ao carregar dados: {e}")
             return
@@ -27,7 +23,7 @@ def render():
         st.warning("Nenhum produto ativo encontrado.")
         return
 
-    df = montar_df_estoque(produtos, pedidos_abertos, categorias_map)
+    df = montar_df_estoque(produtos, na_rua_map, categorias_map)
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Produtos ativos", len(df))
@@ -38,13 +34,11 @@ def render():
     st.divider()
 
     # Filtros
-    categorias = sorted(df["Categoria"].unique())
     col_f1, col_f2 = st.columns(2)
     with col_f1:
-        cat_sel = st.multiselect("Filtrar por categoria", categorias)
+        cat_sel = st.multiselect("Filtrar por categoria", sorted(df["Categoria"].unique()))
     with col_f2:
-        situacoes = sorted(df["Situação"].unique())
-        sit_sel = st.multiselect("Filtrar por situação", situacoes)
+        sit_sel = st.multiselect("Filtrar por situação", sorted(df["Situação"].unique()))
 
     df_filtrado = df.copy()
     if cat_sel:
@@ -64,9 +58,7 @@ def render():
     ).sort_values("Em_estoque", ascending=False)
 
     fig = px.bar(
-        resumo_cat,
-        x="Categoria",
-        y=["Em_estoque", "Na_rua"],
+        resumo_cat, x="Categoria", y=["Em_estoque", "Na_rua"],
         barmode="stack",
         labels={"value": "Quantidade", "variable": ""},
         color_discrete_map={"Em_estoque": "#AB6776", "Na_rua": "#D4A0AA"},
@@ -79,25 +71,25 @@ def render():
 
     # Top 10 mais vendidos por categoria
     st.subheader("Top 10 mais vendidos por categoria — últimos 6 meses")
+    with st.spinner("Carregando histórico de vendas..."):
+        try:
+            itens_vendidos = get_itens_pedidos_baixados(dias=180)
+        except Exception as e:
+            st.warning(f"Não foi possível carregar histórico de vendas: {e}")
+            itens_vendidos = []
+
     produtos_map = {p["id"]: p for p in produtos}
-    itens_df = extrair_vendas(baixados, produtos_map, dias_historico=180)
-    top_por_cat = top_vendidos_por_categoria(itens_df, categorias_map, top_n=10)
+    top_por_cat = top_vendidos_por_categoria(itens_vendidos, produtos_map, categorias_map, top_n=10)
 
     if top_por_cat:
         cats_com_vendas = sorted(top_por_cat.keys())
-        exibir_cats = cats_com_vendas[:12]
-        tabs = st.tabs(exibir_cats)
-        for tab, cat in zip(tabs, exibir_cats):
+        tabs = st.tabs(cats_com_vendas[:12])
+        for tab, cat in zip(tabs, cats_com_vendas[:12]):
             with tab:
                 top_df = top_por_cat[cat][["descricao", "total_vendido"]].copy()
                 top_df.columns = ["Produto", "Total vendido"]
-                fig2 = px.bar(
-                    top_df,
-                    x="Total vendido",
-                    y="Produto",
-                    orientation="h",
-                    color_discrete_sequence=["#AB6776"],
-                )
+                fig2 = px.bar(top_df, x="Total vendido", y="Produto", orientation="h",
+                              color_discrete_sequence=["#AB6776"])
                 fig2.update_layout(yaxis={"categoryorder": "total ascending"}, margin={"l": 180})
                 st.plotly_chart(fig2, use_container_width=True)
     else:
@@ -112,11 +104,7 @@ def render():
         criticos = (df_cat["Situação"] == "🔴 Crítico").sum()
         zerados = (df_cat["Situação"] == "⚫ Zerado").sum()
 
-        badge = ""
-        if criticos:
-            badge = f" — {criticos} crítico(s) 🔴"
-        elif zerados:
-            badge = f" — {zerados} zerado(s) ⚫"
+        badge = f" — {criticos} crítico(s) 🔴" if criticos else (f" — {zerados} zerado(s) ⚫" if zerados else "")
 
         with st.expander(f"**{cat}** ({len(df_cat)} produtos){badge}", expanded=(criticos > 0)):
             c1, c2, c3 = st.columns(3)
@@ -124,7 +112,7 @@ def render():
             c2.metric("Na rua", int(df_cat["Na rua"].sum()))
             c3.metric("Total", int(df_cat["Total"].sum()))
 
-            def _cor_cel(val):
+            def _cor(val):
                 if "Crítico" in str(val):
                     return "background-color: #ffd6d6; color: #c00"
                 if "Zerado" in str(val):
@@ -134,7 +122,6 @@ def render():
                 return ""
 
             st.dataframe(
-                df_cat.style.applymap(_cor_cel, subset=["Situação"]),
-                use_container_width=True,
-                hide_index=True,
+                df_cat.style.applymap(_cor, subset=["Situação"]),
+                use_container_width=True, hide_index=True,
             )

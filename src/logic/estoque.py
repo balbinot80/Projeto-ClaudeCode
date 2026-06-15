@@ -1,18 +1,16 @@
 import pandas as pd
-import re
 
-# Palavras-chave para inferir categoria quando API não retorna nome
 _KEYWORDS = [
-    ("Brinco", ["brinco", "ear"]),
-    ("Colar", ["colar", "gargantilha", "corrente"]),
-    ("Choker", ["choker"]),
-    ("Pulseira", ["pulseira", "bracelete"]),
+    ("Brinco",       ["brinco"]),
+    ("Colar",        ["colar", "gargantilha", "corrente"]),
+    ("Choker",       ["choker"]),
+    ("Pulseira",     ["pulseira", "bracelete"]),
     ("Tornozeleira", ["tornozeleira"]),
-    ("Anel", ["anel", "aliança"]),
-    ("Pingente", ["pingente"]),
-    ("Conjunto", ["conjunto", "kit"]),
+    ("Anel",         ["anel", "aliança"]),
+    ("Pingente",     ["pingente"]),
+    ("Conjunto",     ["conjunto", "kit"]),
     ("Ponto de Luz", ["ponto de luz"]),
-    ("Berloques", ["berloque"]),
+    ("Berloque",     ["berloque"]),
 ]
 
 
@@ -25,7 +23,6 @@ def inferir_categoria(descricao: str) -> str:
 
 
 def nome_categoria(cat_id, categorias_map: dict, descricao: str = "") -> str:
-    """Resolve nome da categoria: usa mapa da API ou infere por keyword."""
     nome = categorias_map.get(str(cat_id), "")
     if nome:
         return nome
@@ -34,21 +31,10 @@ def nome_categoria(cat_id, categorias_map: dict, descricao: str = "") -> str:
     return f"Categoria {cat_id}" if cat_id else "Sem categoria"
 
 
-def calcular_na_rua(pedidos_abertos: list) -> dict:
-    """Retorna {produto_id: quantidade_na_rua} com base nos pedidos em aberto."""
-    na_rua = {}
-    for pedido in pedidos_abertos:
-        for item in pedido.get("itens", []):
-            pid = item.get("produto", {}).get("id") if isinstance(item.get("produto"), dict) else item.get("fk_produto_id")
-            if pid:
-                qtd = float(item.get("quantidade") or 0)
-                na_rua[pid] = na_rua.get(pid, 0) + qtd
-    return na_rua
-
-
-def montar_df_estoque(produtos: list, pedidos_abertos: list, categorias_map: dict) -> pd.DataFrame:
-    na_rua_map = calcular_na_rua(pedidos_abertos)
-
+def montar_df_estoque(produtos: list, na_rua_map: dict, categorias_map: dict) -> pd.DataFrame:
+    """
+    na_rua_map: {produto_id: qtd_na_rua} obtido via get_itens_pedidos_abertos()
+    """
     rows = []
     for p in produtos:
         pid = p.get("id")

@@ -8,7 +8,7 @@ from src.api.jueri_client import get_revendedores, get_pedidos_abertos, get_pedi
 def render():
     st.header("Revendedoras")
 
-    with st.spinner("Carregando dados..."):
+    with st.spinner("Carregando dados (pode demorar na primeira vez)..."):
         try:
             todos = get_revendedores()
             pedidos_abertos = get_pedidos_abertos()
@@ -21,25 +21,21 @@ def render():
         st.warning("Nenhuma revendedora encontrada.")
         return
 
-    # IDs de revendedoras com pedido aberto
-    ids_com_pedido = {
-        str(p.get("fk_revendedor_id") or p.get("revendedor_id", ""))
-        for p in pedidos_abertos
-    } - {""}
+    # IDs com pedido aberto
+    ids_com_pedido = {str(p.get("fk_revendedor_id") or "") for p in pedidos_abertos} - {""}
 
-    # IDs de revendedoras com pedido baixado nos últimos 6 meses
+    # IDs com baixado nos últimos 6 meses
     corte_6m = datetime.now() - timedelta(days=180)
     ids_com_venda = set()
     for p in baixados:
-        data_str = p.get("data_baixa") or p.get("data_criacao") or ""
+        data_str = (p.get("data_baixa") or p.get("data_criacao") or "")[:10]
         try:
-            data_p = datetime.fromisoformat(data_str[:10])
+            if datetime.fromisoformat(data_str) >= corte_6m:
+                rid = str(p.get("fk_revendedor_id") or "")
+                if rid:
+                    ids_com_venda.add(rid)
         except (ValueError, TypeError):
-            continue
-        if data_p >= corte_6m:
-            rid = str(p.get("fk_revendedor_id") or p.get("revendedor_id", ""))
-            if rid:
-                ids_com_venda.add(rid)
+            pass
 
     rows = []
     for r in todos:
@@ -75,43 +71,36 @@ def render():
     inativas = df[df["Situação"] == "Inativa"]
 
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Com pedido aberto", len(com_pedido), help="Estão ativamente com peças na rua")
-    col2.metric("Ativas com histórico", len(ativa_sem_hist), help="Sem pedido aberto, mas compraram nos últimos 6 meses")
+    col1.metric("Com pedido aberto", len(com_pedido), help="Com peças na rua agora")
+    col2.metric("Ativas com histórico", len(ativa_sem_hist), help="Compraram nos últimos 6 meses")
     col3.metric("Ativas sem atividade", len(ativa_sem), help="Sem pedido e sem venda nos últimos 6 meses")
     col4.metric("Inativas", len(inativas))
 
     st.divider()
-
-    # Seção: com pedido aberto
     st.subheader("Com pedido aberto")
     st.caption("Revendedoras que possuem peças na rua agora.")
-
-    busca_ativas = st.text_input("Buscar", placeholder="Nome, cidade...", key="busca_ativas")
+    busca = st.text_input("Buscar", placeholder="Nome, cidade...", key="busca_ativas")
     df_com = com_pedido.copy()
-    if busca_ativas:
-        mask = df_com["Nome"].str.contains(busca_ativas, case=False, na=False) | \
-               df_com["Cidade"].str.contains(busca_ativas, case=False, na=False)
-        df_com = df_com[mask]
+    if busca:
+        df_com = df_com[df_com["Nome"].str.contains(busca, case=False, na=False) |
+                        df_com["Cidade"].str.contains(busca, case=False, na=False)]
     st.dataframe(df_com.drop(columns="Situação"), use_container_width=True, hide_index=True)
 
-    # Seção: ativas sem pedido
     st.divider()
-    with st.expander(f"**Ativas com histórico de vendas, sem pedido aberto** ({len(ativa_sem_hist)})",
-                     expanded=False):
+    with st.expander(f"**Ativas com histórico, sem pedido aberto** ({len(ativa_sem_hist)})", expanded=False):
         st.caption("Compraram nos últimos 6 meses mas não têm pedido aberto no momento.")
         st.dataframe(ativa_sem_hist.drop(columns="Situação"), use_container_width=True, hide_index=True)
 
     with st.expander(f"**Ativas sem atividade recente** ({len(ativa_sem)})", expanded=False):
-        st.caption("Cadastro ativo mas sem pedido e sem venda nos últimos 6 meses. Requer atenção.")
+        st.caption("Sem pedido e sem venda nos últimos 6 meses. Requer atenção.")
         st.dataframe(ativa_sem.drop(columns="Situação"), use_container_width=True, hide_index=True)
 
     with st.expander(f"**Inativas** ({len(inativas)})", expanded=False):
         st.dataframe(inativas.drop(columns="Situação"), use_container_width=True, hide_index=True)
 
-    # Gráfico de crescimento
+    # Crescimento
     st.divider()
     st.subheader("Crescimento da equipe ao longo do tempo")
-
     df_tempo = df[df["Cadastro"] != ""].copy()
     if not df_tempo.empty:
         df_tempo["Cadastro"] = pd.to_datetime(df_tempo["Cadastro"], errors="coerce")
@@ -130,30 +119,26 @@ def render():
                        color_discrete_sequence=["#AB6776"])
         st.plotly_chart(fig2, use_container_width=True)
 
-    # Ranking de vendas
+    # Ranking por valor
     st.divider()
     st.subheader("Ranking de vendas — últimos 6 meses")
-
-    baixados_6m = [p for p in baixados if p.get("fk_revendedor_id") or p.get("revendedor_id")]
+    baixados_6m = [p for p in baixados if str(p.get("fk_revendedor_id") or "")]
     if baixados_6m:
         rev_map = {str(r.get("id")): r.get("nome", f"ID {r.get('id')}") for r in todos}
-        ranking = {}
-        for v in baixados_6m:
-            rid = str(v.get("fk_revendedor_id") or v.get("revendedor_id", ""))
+        ranking: dict = {}
+        for p in baixados_6m:
+            rid = str(p.get("fk_revendedor_id") or "")
             nome = rev_map.get(rid, f"Revendedora {rid}")
-            total = sum(float(i.get("valor_total", 0)) for i in v.get("itens", []))
-            ranking[nome] = ranking.get(nome, 0) + total
+            ranking[nome] = ranking.get(nome, 0) + float(p.get("valor_total") or 0)
 
         if ranking:
             df_rank = pd.DataFrame(
                 [{"Revendedora": k, "Total vendido (R$)": round(v, 2)} for k, v in ranking.items()]
             ).sort_values("Total vendido (R$)", ascending=False).head(20)
 
-            fig3 = px.bar(
-                df_rank, x="Revendedora", y="Total vendido (R$)",
-                title="Top 20 por volume de vendas",
-                color_discrete_sequence=["#AB6776"],
-            )
+            fig3 = px.bar(df_rank, x="Revendedora", y="Total vendido (R$)",
+                          title="Top 20 por volume de vendas",
+                          color_discrete_sequence=["#AB6776"])
             fig3.update_layout(xaxis_tickangle=-45)
             st.plotly_chart(fig3, use_container_width=True)
     else:

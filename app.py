@@ -53,12 +53,15 @@ def render_dashboard():
         st.info("Aguarde alguns instantes e clique em **🔄 Atualizar dados** no menu lateral.")
         return
 
-    # Pedidos baixados nos últimos 30 dias
     corte_30d = datetime.now() - timedelta(days=30)
-    baixados_30d = [
-        p for p in baixados
-        if datetime.fromisoformat(((p.get("data_baixa") or p.get("data_criacao") or "2000-01-01")[:10])) >= corte_30d
-    ]
+    baixados_30d = []
+    for p in baixados:
+        try:
+            data_str = (p.get("data_baixa") or p.get("data_criacao") or "2000-01-01")[:10]
+            if datetime.fromisoformat(data_str) >= corte_30d:
+                baixados_30d.append(p)
+        except (ValueError, TypeError):
+            pass
 
     col1, col2, col3, col4 = st.columns(4)
 

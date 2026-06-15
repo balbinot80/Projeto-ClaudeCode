@@ -1,63 +1,34 @@
 from datetime import datetime, timedelta
 import pandas as pd
-from src.logic.estoque import nome_categoria, calcular_na_rua
+from src.logic.estoque import nome_categoria
 
 
-def extrair_vendas(pedidos_baixados: list, produtos_map: dict,
-                   dias_historico: int = 180) -> pd.DataFrame:
+def top_vendidos_por_categoria(itens: list, produtos_map: dict,
+                                categorias_map: dict, top_n: int = 10) -> dict:
     """
-    Extrai itens vendidos a partir dos pedidos baixados.
-    Filtra pelos últimos dias_historico dias usando data_baixa ou data_criacao.
+    itens: lista de dicts {produto_id, quantidade, ...} vindos de get_itens_pedidos_baixados()
+    Retorna {categoria: DataFrame com top N mais vendidos}.
     """
-    corte = datetime.today() - timedelta(days=dias_historico)
-    rows = []
-
-    for pedido in pedidos_baixados:
-        data_str = pedido.get("data_baixa") or pedido.get("data_criacao") or ""
-        try:
-            data = datetime.fromisoformat(data_str[:10])
-        except (ValueError, TypeError):
-            data = None
-
-        if data and data < corte:
-            continue
-
-        for item in pedido.get("itens", []):
-            pid = (
-                item.get("produto", {}).get("id")
-                if isinstance(item.get("produto"), dict)
-                else item.get("fk_produto_id")
-            )
-            if not pid:
-                continue
-            produto_info = produtos_map.get(pid, {})
-            rows.append({
-                "produto_id": pid,
-                "descricao": produto_info.get("descricao", f"Produto {pid}"),
-                "categoria_id": produto_info.get("fk_categoria_id"),
-                "quantidade": float(item.get("quantidade") or 0),
-                "data": data,
-            })
-
-    if not rows:
-        return pd.DataFrame(columns=["produto_id", "descricao", "categoria_id", "quantidade", "data"])
-
-    return pd.DataFrame(rows)
-
-
-def top_vendidos_por_categoria(itens_df: pd.DataFrame, categorias_map: dict,
-                                top_n: int = 10) -> dict:
-    """Retorna {categoria: DataFrame com top N produtos mais vendidos}."""
-    if itens_df.empty:
+    if not itens:
         return {}
 
-    itens_df = itens_df.copy()
-    itens_df["categoria"] = itens_df.apply(
-        lambda r: nome_categoria(r["categoria_id"], categorias_map, r["descricao"]), axis=1
-    )
+    rows = []
+    for item in itens:
+        pid = item.get("produto_id")
+        produto_info = produtos_map.get(pid, {})
+        descricao = produto_info.get("descricao", f"Produto {pid}")
+        cat_id = produto_info.get("fk_categoria_id")
+        categoria = nome_categoria(cat_id, categorias_map, descricao)
+        rows.append({
+            "produto_id": pid,
+            "descricao": descricao,
+            "categoria": categoria,
+            "quantidade": float(item.get("quantidade") or 0),
+        })
 
+    df = pd.DataFrame(rows)
     resultado = {}
-    for cat, grupo in itens_df.groupby("categoria"):
+    for cat, grupo in df.groupby("categoria"):
         ranking = (
             grupo.groupby(["produto_id", "descricao"], as_index=False)
             .agg(total_vendido=("quantidade", "sum"))
@@ -69,22 +40,23 @@ def top_vendidos_por_categoria(itens_df: pd.DataFrame, categorias_map: dict,
     return resultado
 
 
-def sugerir_compras(produtos: list, pedidos_baixados: list,
-                    pedidos_abertos: list, categorias_map: dict,
+def sugerir_compras(produtos: list, itens_vendidos: list,
+                    na_rua_map: dict, categorias_map: dict,
                     dias_cobertura: int = 60, dias_historico: int = 180) -> pd.DataFrame:
     """
-    Gera sugestão de compras por categoria com base nos pedidos baixados dos
-    últimos dias_historico dias.
+    itens_vendidos: lista de dicts vindos de get_itens_pedidos_baixados()
+    na_rua_map: {produto_id: qtd} vindo de get_itens_pedidos_abertos()
     """
     produtos_map = {p["id"]: p for p in produtos}
-    itens_df = extrair_vendas(pedidos_baixados, produtos_map, dias_historico)
-    na_rua_map = calcular_na_rua(pedidos_abertos)
 
-    vel_map = {}
-    if not itens_df.empty:
-        agg = itens_df.groupby("produto_id")["quantidade"].sum()
-        for pid, total in agg.items():
-            vel_map[pid] = total / dias_historico
+    # Velocidade de vendas por produto
+    vel_map: dict = {}
+    for item in itens_vendidos:
+        pid = item.get("produto_id")
+        if pid:
+            vel_map[pid] = vel_map.get(pid, 0) + float(item.get("quantidade") or 0)
+    for pid in vel_map:
+        vel_map[pid] = vel_map[pid] / dias_historico
 
     rows = []
     for p in produtos:

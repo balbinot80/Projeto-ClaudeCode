@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 st.set_page_config(
-    page_title="Aurum Joias - Gestão",
+    page_title="Aureum Joias - Gestão",
     page_icon="💍",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -17,13 +17,13 @@ def _get_secret(key: str, default: str = "") -> str:
     except Exception:
         return os.getenv(key, default)
 
-APP_PASSWORD = _get_secret("APP_PASSWORD", "aurum2024")
+APP_PASSWORD = _get_secret("APP_PASSWORD", "aureum2024")
 
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
 
 if not st.session_state.autenticado:
-    st.title("💍 Aurum Joias - Sistema de Gestão")
+    st.title("💍 Aureum Joias - Sistema de Gestão")
     st.subheader("Acesso restrito")
     senha = st.text_input("Senha", type="password")
     if st.button("Entrar"):
@@ -79,7 +79,7 @@ def render_dashboard():
 
 # Sidebar de navegação
 with st.sidebar:
-    st.title("💍 Aurum Joias")
+    st.title("💍 Aureum Joias")
     st.caption("Sistema de Gestão")
     st.divider()
 

@@ -97,7 +97,7 @@ with st.sidebar:
 
     pagina = st.radio(
         "Navegação",
-        ["🏠 Dashboard", "📦 Estoque", "🛒 Programação de Compras", "👥 Revendedoras"],
+        ["🏠 Dashboard", "📦 Estoque", "🛒 Programação de Compras", "👥 Revendedoras", "🔍 Diagnóstico"],
     )
 
     st.divider()
@@ -122,4 +122,7 @@ elif pagina == "🛒 Programação de Compras":
     render()
 elif pagina == "👥 Revendedoras":
     from src.pages.revendedoras import render
+    render()
+elif pagina == "🔍 Diagnóstico":
+    from src.pages.diagnostico import render
     render()

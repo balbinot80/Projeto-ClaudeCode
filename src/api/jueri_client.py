@@ -73,14 +73,9 @@ def get_pedidos_abertos() -> list:
 
 
 @st.cache_data(ttl=7200)
-def get_pedidos_baixados(data_inicial: str = None, data_final: str = None) -> list:
-    """Pedidos baixados = vendidos via remessa."""
-    params = {"status": "Baixado"}
-    if data_inicial:
-        params["data_inicial"] = data_inicial
-    if data_final:
-        params["data_final"] = data_final
-    return _get_all_pages("pedido", params)
+def get_pedidos_baixados() -> list:
+    """Pedidos baixados = vendas realizadas."""
+    return _get_all_pages("pedido", {"status": "Baixado"})
 
 
 @st.cache_data(ttl=7200)

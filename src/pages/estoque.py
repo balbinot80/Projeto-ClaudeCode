@@ -86,9 +86,9 @@ def render():
         tabs = st.tabs(cats_com_vendas[:12])
         for tab, cat in zip(tabs, cats_com_vendas[:12]):
             with tab:
-                top_df = top_por_cat[cat][["descricao", "total_vendido"]].copy()
-                top_df.columns = ["Produto", "Total vendido"]
-                fig2 = px.bar(top_df, x="Total vendido", y="Produto", orientation="h",
+                top_df = top_por_cat[cat][["modelo", "total_vendido"]].copy()
+                top_df.columns = ["Estilo", "Total vendido"]
+                fig2 = px.bar(top_df, x="Total vendido", y="Estilo", orientation="h",
                               color_discrete_sequence=["#AB6776"])
                 fig2.update_layout(yaxis={"categoryorder": "total ascending"}, margin={"l": 180})
                 st.plotly_chart(fig2, use_container_width=True)

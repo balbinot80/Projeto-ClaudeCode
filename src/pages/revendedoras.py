@@ -19,7 +19,8 @@ _CORES_RISCO = {
     "🔴 Sem vendas":         "#e74c3c",
 }
 
-_R = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+_R    = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+_Rmd  = lambda v: f"R\\$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 # ── Helpers de estilo ─────────────────────────────────────────────────────────
@@ -83,7 +84,7 @@ def _tab_competencia(df_res: pd.DataFrame, mes_label: str):
         ticket_sup_val = total_sup / len(df_sup) if len(df_sup) > 0 else 0
         badge = f" — ⚠️ {n_risco} em risco" if n_risco else ""
         with st.expander(
-            f"**{sup}** — {len(df_sup)} revendedoras · total {_R(total_sup)} · ticket médio {_R(ticket_sup_val)}{badge}",
+            f"**{sup}** — {len(df_sup)} revendedoras · total {_Rmd(total_sup)} · ticket médio {_Rmd(ticket_sup_val)}{badge}",
             expanded=(n_risco > 0),
         ):
             exib = df_sup[["Nome", "Pedidos", "Baixado", "Pré-baixa", "Total", "Risco"]].copy()
@@ -95,7 +96,7 @@ def _tab_competencia(df_res: pd.DataFrame, mes_label: str):
                     .format({"Baixado (R$)": _R, "Pré-baixa (R$)": _R, "Total (R$)": _R}),
                 use_container_width=True, hide_index=True,
             )
-            st.caption(f"Subtotal {sup}: **{_R(total_sup)}**")
+            st.caption(f"Subtotal {sup}: **{_Rmd(total_sup)}**")
 
     st.divider()
     st.markdown(f"**Total geral do mês: {_R(total_geral)}**")

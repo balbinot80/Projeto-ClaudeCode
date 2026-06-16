@@ -74,9 +74,9 @@ def render():
     else:
         st.error(f"HTTP {code_p}: {str(r_p)[:200]}")
 
-    # ── Pedido individual ──────────────────────────────────────────────────
+    # ── Pedido individual (qualquer) ───────────────────────────────────────
     st.divider()
-    st.subheader("3. Pedido individual `/pedido/{id}` — tem itens?")
+    st.subheader("3. Pedido individual `/pedido/{id}` — campos completos")
 
     if dados_p1:
         pid = dados_p1[0].get("id")
@@ -87,7 +87,7 @@ def render():
             if isinstance(registro, list) and registro:
                 registro = registro[0]
             if isinstance(registro, dict):
-                st.write("**Campos disponíveis:**", list(registro.keys()))
+                st.write("**Todos os campos:**", list(registro.keys()))
                 st.json(registro)
             else:
                 st.code(str(r_id)[:500])
@@ -95,3 +95,51 @@ def render():
             st.error("⛔ HTTP 429 — limite atingido.")
         else:
             st.warning(f"HTTP {code_id}: {str(r_id)[:200]}")
+
+    # ── Pedido ABERTO individual — procura campos de pré-baixa ────────────
+    st.divider()
+    st.subheader("4. Pedido ABERTO individual — campos de pré-baixa")
+    st.caption("Busca o primeiro pedido com status 'Aberto' e exibe todos os seus campos.")
+
+    # Varre páginas até achar um pedido Aberto
+    pedido_aberto = None
+    for pagina in range(1, 6):
+        code_pg, r_pg = _get("pedido", {"page": pagina})
+        if code_pg != 200 or not isinstance(r_pg, dict):
+            break
+        for p in r_pg.get("data", []):
+            if p.get("status") == "Aberto":
+                pedido_aberto = p
+                break
+        if pedido_aberto:
+            break
+
+    if not pedido_aberto:
+        st.warning("Nenhum pedido com status 'Aberto' encontrado nas primeiras 5 páginas.")
+    else:
+        pid_aberto = pedido_aberto.get("id")
+        st.write(f"Pedido aberto encontrado: **ID {pid_aberto}**")
+        st.write("**Campos do resumo (lista):**", list(pedido_aberto.keys()))
+
+        code_ab, r_ab = _get(f"pedido/{pid_aberto}")
+        if code_ab == 200 and isinstance(r_ab, dict):
+            reg = r_ab.get("data", r_ab)
+            if isinstance(reg, list) and reg:
+                reg = reg[0]
+            if isinstance(reg, dict):
+                st.write("**Campos completos do pedido aberto:**", list(reg.keys()))
+
+                # Destaca campos relacionados a valores / pré-baixa
+                campos_valor = {k: v for k, v in reg.items()
+                                if any(x in k.lower() for x in
+                                       ["valor", "pre", "baixa", "vend", "pago", "descont", "total"])}
+                if campos_valor:
+                    st.write("**Campos relacionados a valores / pré-baixa:**")
+                    st.json(campos_valor)
+
+                st.write("**Registro completo:**")
+                st.json(reg)
+        elif code_ab == 429:
+            st.error("⛔ HTTP 429 — limite atingido.")
+        else:
+            st.warning(f"HTTP {code_ab}: {str(r_ab)[:200]}")

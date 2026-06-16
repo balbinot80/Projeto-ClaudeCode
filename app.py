@@ -11,31 +11,108 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+
 def _get_secret(key: str, default: str = "") -> str:
     try:
         return st.secrets[key]
     except Exception:
         return os.getenv(key, default)
 
-APP_PASSWORD = _get_secret("APP_PASSWORD", "aureum2024")
+
+def _autenticar(login: str, senha: str) -> dict | None:
+    """
+    Verifica login e senha contra a tabela [usuarios] em secrets.
+    Retorna o dict do usuário se válido, None caso contrário.
+    """
+    try:
+        usuarios = st.secrets.get("usuarios", {})
+    except Exception:
+        usuarios = {}
+
+    login = login.strip().lower()
+    if login in usuarios:
+        u = dict(usuarios[login])
+        if u.get("senha") == senha:
+            return {"login": login, **u}
+
+    return None
+
+
+# ── Tela de login ──────────────────────────────────────────────────────────────
 
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
+    st.session_state.usuario = {}
 
 if not st.session_state.autenticado:
-    st.title("💍 Aureum Joias - Sistema de Gestão")
-    st.subheader("Acesso restrito")
-    senha = st.text_input("Senha", type="password")
-    if st.button("Entrar"):
-        if senha == APP_PASSWORD:
-            st.session_state.autenticado = True
-            st.rerun()
-        else:
-            st.error("Senha incorreta.")
+    col_c, col_f, col_c2 = st.columns([2, 3, 2])
+    with col_f:
+        st.title("💍 Aureum Joias")
+        st.subheader("Sistema de Gestão")
+        st.divider()
+
+        login_input = st.text_input("Usuário", placeholder="Ex: admin")
+        senha_input = st.text_input("Senha", type="password")
+
+        if st.button("Entrar", type="primary", use_container_width=True):
+            usuario = _autenticar(login_input, senha_input)
+            if usuario:
+                st.session_state.autenticado = True
+                st.session_state.usuario = usuario
+                st.rerun()
+            else:
+                st.error("Usuário ou senha incorretos.")
+
     st.stop()
 
 
-def render_dashboard():
+# ── Usuário logado ─────────────────────────────────────────────────────────────
+
+usuario = st.session_state.usuario
+role = usuario.get("role", "admin")
+nome_usuario = usuario.get("nome", "Usuário")
+sup_filtro = usuario.get("supervisor_nome", "") if role == "supervisora" else ""
+
+
+# ── Sidebar ────────────────────────────────────────────────────────────────────
+
+with st.sidebar:
+    st.title("💍 Aureum Joias")
+    st.caption(f"Olá, **{nome_usuario}**")
+    st.divider()
+
+    if role == "admin":
+        paginas_disponiveis = [
+            "🏠 Dashboard",
+            "📦 Estoque",
+            "🛒 Programação de Compras",
+            "👥 Revendedoras",
+            "🔍 Diagnóstico",
+        ]
+    else:
+        # Supervisoras: apenas a tela de revendedoras
+        paginas_disponiveis = ["👥 Revendedoras"]
+
+    pagina = st.radio("Navegação", paginas_disponiveis)
+
+    st.divider()
+
+    if role == "admin":
+        if st.button("🔄 Atualizar dados"):
+            from src.api.jueri_client import limpar_cache
+            limpar_cache()
+            st.success("Cache limpo! Dados serão recarregados.")
+            st.rerun()
+
+    if st.button("🚪 Sair"):
+        st.session_state.autenticado = False
+        st.session_state.usuario = {}
+        st.rerun()
+
+
+# ── Roteamento ─────────────────────────────────────────────────────────────────
+
+if pagina == "🏠 Dashboard":
     from src.api.jueri_client import get_produtos, get_revendedores, get_pedidos_baixados, get_pedidos_abertos
     from datetime import datetime, timedelta
     import pandas as pd
@@ -51,7 +128,7 @@ def render_dashboard():
     except Exception as e:
         st.error(f"Erro ao conectar com a API Jueri: {e}")
         st.info("Aguarde alguns instantes e clique em **🔄 Atualizar dados** no menu lateral.")
-        return
+        st.stop()
 
     corte_30d = datetime.now() - timedelta(days=30)
     baixados_30d = []
@@ -91,41 +168,18 @@ def render_dashboard():
 
     st.info("Use o menu lateral para navegar entre os módulos do sistema.")
 
-
-# Sidebar de navegação
-with st.sidebar:
-    st.title("💍 Aureum Joias")
-    st.caption("Sistema de Gestão")
-    st.divider()
-
-    pagina = st.radio(
-        "Navegação",
-        ["🏠 Dashboard", "📦 Estoque", "🛒 Programação de Compras", "👥 Revendedoras", "🔍 Diagnóstico"],
-    )
-
-    st.divider()
-    if st.button("🔄 Atualizar dados"):
-        from src.api.jueri_client import limpar_cache
-        limpar_cache()
-        st.success("Cache limpo! Dados serão recarregados.")
-        st.rerun()
-
-    if st.button("🚪 Sair"):
-        st.session_state.autenticado = False
-        st.rerun()
-
-# Roteamento de páginas
-if pagina == "🏠 Dashboard":
-    render_dashboard()
 elif pagina == "📦 Estoque":
     from src.pages.estoque import render
     render()
+
 elif pagina == "🛒 Programação de Compras":
     from src.pages.compras import render
     render()
+
 elif pagina == "👥 Revendedoras":
     from src.pages.revendedoras import render
-    render()
+    render(filtro_supervisor=sup_filtro)
+
 elif pagina == "🔍 Diagnóstico":
     from src.pages.diagnostico import render
     render()

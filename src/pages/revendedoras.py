@@ -483,19 +483,39 @@ def _tab_gerencial(df_res: pd.DataFrame, todos_pedidos: list, hoje: date):
 
 # ── Render principal ──────────────────────────────────────────────────────────
 
-def render():
-    st.header("👥 Acompanhamento de Revendedoras")
+def render(filtro_supervisor: str = ""):
+    """
+    filtro_supervisor: se preenchido, restringe todos os dados à equipe desta supervisora.
+    Passado automaticamente pelo app.py quando o usuário logado tem role='supervisora'.
+    """
+    if filtro_supervisor:
+        st.header(f"👥 Minha Equipe — {filtro_supervisor}")
+        st.info(f"Exibindo apenas revendedoras da equipe de **{filtro_supervisor}**.")
+    else:
+        st.header("👥 Acompanhamento de Revendedoras")
 
     with st.spinner("Carregando pedidos..."):
         try:
-            todos_pedidos = _get_lista_pedidos()
+            todos_pedidos_bruto = _get_lista_pedidos()
         except Exception as e:
             st.error(f"Erro ao carregar dados: {e}")
             return
 
-    if not todos_pedidos:
+    if not todos_pedidos_bruto:
         st.warning("Nenhum pedido encontrado.")
         return
+
+    # Aplica filtro de supervisora: se definido, mantém apenas pedidos da sua equipe
+    if filtro_supervisor:
+        todos_pedidos = [
+            p for p in todos_pedidos_bruto
+            if (p.get("supervisor_nome") or "") == filtro_supervisor
+        ]
+        if not todos_pedidos:
+            st.warning("Nenhum pedido encontrado para sua equipe.")
+            return
+    else:
+        todos_pedidos = todos_pedidos_bruto
 
     hoje = date.today()
 

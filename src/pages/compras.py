@@ -8,7 +8,6 @@ from src.logic.compras import (
     sugerir_compras_por_modelo, resumo_por_categoria, top_vendidos_por_categoria
 )
 
-_MAX_BAIXADOS = 120  # pedidos baixados mais recentes usados no cálculo de velocidade
 
 
 def _calcular_e_salvar(dias_cobertura, dias_historico, lead_time, novas_revendedoras, chave):
@@ -28,10 +27,10 @@ def _calcular_e_salvar(dias_cobertura, dias_historico, lead_time, novas_revended
 
     with placeholder.container():
         st.info(
-            f"Passo 3/4 — Buscando histórico de vendas ({dias_historico} dias, "
-            f"máx. {_MAX_BAIXADOS} pedidos)..."
+            f"Passo 3/4 — Buscando todos os pedidos baixados dos últimos {dias_historico} dias "
+            "(pode demorar na primeira vez)..."
         )
-    itens_vendidos = get_itens_pedidos_baixados(dias=dias_historico, max_pedidos=_MAX_BAIXADOS)
+    itens_vendidos = get_itens_pedidos_baixados(dias=dias_historico)
 
     # Detecta novas revendedoras automaticamente (informativo — não soma ao slider)
     pedidos_abertos = get_pedidos_abertos()
@@ -77,7 +76,7 @@ def render():
     st.caption(
         f"Cobertura: A={dias_cobertura}d · B={int(dias_cobertura*0.75)}d · C={int(dias_cobertura*0.5)}d. "
         f"Mínimo = média_diária × {lead_time} dias × 1,5. "
-        f"Usa os {_MAX_BAIXADOS} pedidos mais recentes."
+        "Calcula com todos os pedidos baixados do período selecionado."
     )
 
     chave = f"compras_{dias_cobertura}_{dias_historico}_{lead_time}_{novas_revendedoras}"

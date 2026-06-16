@@ -147,10 +147,11 @@ def get_itens_pedidos_abertos() -> dict:
 
 
 @st.cache_data(ttl=3600)
-def get_itens_pedidos_baixados(dias: int = 90, max_pedidos: int = 120) -> list:
+def get_itens_pedidos_baixados(dias: int = 180) -> list:
     """
-    Retorna lista de itens vendidos nos últimos dias.
-    Limita a max_pedidos mais recentes e busca em paralelo.
+    Retorna lista de itens vendidos (pedidos baixados) nos últimos dias.
+    Busca TODOS os baixados do período em paralelo — sem limite de quantidade.
+    Cache de 1 hora.
     """
     corte = datetime.today() - timedelta(days=dias)
     baixados = get_pedidos_baixados()
@@ -168,7 +169,6 @@ def get_itens_pedidos_baixados(dias: int = 90, max_pedidos: int = 120) -> list:
         key=lambda p: (p.get("data_baixa") or p.get("data_criacao") or ""),
         reverse=True,
     )
-    recentes = recentes[:max_pedidos]
 
     ids = [p["id"] for p in recentes if p.get("id")]
     if not ids:

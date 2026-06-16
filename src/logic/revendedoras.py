@@ -73,7 +73,7 @@ def calcular_competencia(pedidos: list, mes: int, ano: int):
                 "Baixado": baixado,
                 "Pré-baixa": pre_baixa,
                 "Total": baixado + pre_baixa,
-                "Data ref.": data_ref.strftime("%d/%m/%Y"),
+                "Data ref.": data_ref.strftime("%d/%m/%y"),
                 "Valor pedido": float(p.get("valor_total") or 0),
             })
 
@@ -124,7 +124,7 @@ def pedidos_abertos_sem_prebaixa(pedidos: list, mes: int, ano: int) -> pd.DataFr
             "Supervisor": p.get("supervisor_nome") or "Sem supervisora",
             "Pedido": p.get("codigo_pedido"),
             "Valor pedido": float(p.get("valor_total") or 0),
-            "Acerto": (p.get("data_acerto") or "")[:10],
+            "Acerto": parse_date(p.get("data_acerto")).strftime("%d/%m/%y") if parse_date(p.get("data_acerto")) else "-",
         })
     return pd.DataFrame(rows) if rows else pd.DataFrame()
 
@@ -182,8 +182,8 @@ def analise_periodo(pedidos: list, dias: int, hoje: date = None) -> pd.DataFrame
         rows.append({
             "Nome": nome,
             "Supervisor": supervisor,
-            "Criado": d_criacao.strftime("%d/%m"),
-            "Acerto": d_acerto.strftime("%d/%m/%Y") if d_acerto else "-",
+            "Criado": d_criacao.strftime("%d/%m/%y"),
+            "Acerto": d_acerto.strftime("%d/%m/%y") if d_acerto else "-",
             "Dias do pedido": dias_decorridos,
             "Pré-baixa": round(pre_baixa, 2),
             "Ritmo esperado": round(ritmo_esperado, 2),

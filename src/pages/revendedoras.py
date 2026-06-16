@@ -58,21 +58,6 @@ def _tab_competencia(df_res: pd.DataFrame, mes_label: str):
         return
 
     supervisoras = sorted(df_res["Supervisor"].unique())
-    total_geral = df_res["Total"].sum()
-    pb_geral = df_res["Pré-baixa"].sum()
-    bx_geral = df_res["Baixado"].sum()
-
-    # Cards de totais
-    ticket_geral = total_geral / len(df_res) if len(df_res) > 0 else 0
-
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Revendedoras no mês", len(df_res))
-    c2.metric("Total geral", _R(total_geral))
-    c3.metric("  ↳ Pedidos baixados", _R(bx_geral))
-    c4.metric("  ↳ Pré-baixa (abertos)", _R(pb_geral))
-    c5.metric("🎯 Ticket médio", _R(ticket_geral))
-
-    st.divider()
 
     # Tabela por supervisora
     for sup in supervisoras:
@@ -99,7 +84,7 @@ def _tab_competencia(df_res: pd.DataFrame, mes_label: str):
             st.caption(f"Subtotal {sup}: **{_Rmd(total_sup)}**")
 
     st.divider()
-    st.markdown(f"**Total geral do mês: {_R(total_geral)}**")
+    st.markdown(f"**Total geral do mês: {_Rmd(df_res['Total'].sum())}**")
 
     # Gráfico barras empilhadas (baixado + pré-baixa)
     df_graf = df_res.sort_values("Total", ascending=False).head(30)
@@ -555,12 +540,16 @@ def render(filtro_supervisor: str = ""):
 
     ticket_medio = total_mes / n_rev if n_rev > 0 else 0
 
-    c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
-    c1.metric("Revendedoras no mês", n_rev)
+    # Linha 1 — valores financeiros (colunas largas para não truncar)
+    c1, c2, c3, c4, c5 = st.columns([1, 2, 2, 2, 2])
+    c1.metric("Revendedoras", n_rev)
     c2.metric("Total vendido", _R(total_mes))
-    c3.metric("  ↳ Baixados", _R(total_bx))
-    c4.metric("  ↳ Pré-baixa", _R(total_pb))
+    c3.metric("↳ Baixados", _R(total_bx))
+    c4.metric("↳ Pré-baixa", _R(total_pb))
     c5.metric("🎯 Ticket médio", _R(ticket_medio))
+
+    # Linha 2 — alertas de risco
+    c6, c7, _esp = st.columns([2, 2, 5])
     c6.metric("🟡 Abaixo do mínimo", n_abaixo)
     c7.metric("🔴 Sem vendas", n_zero + n_sem_res,
               help="Pedidos abertos com R$0 + revendedoras com total = R$0")

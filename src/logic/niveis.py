@@ -4,16 +4,16 @@ from src.logic.revendedoras import parse_date, calcular_competencia
 
 # ── Definição dos níveis ──────────────────────────────────────────────────────
 
-NIVEIS_PECAS = [           # (nome, min_pecas, max_pecas) — ordem decrescente
+NIVEIS_PECAS = [
     ("Diamante", 76,  500),
     ("Ouro",     55,  75),
     ("Pérola",   40,  54),
 ]
 
-MINIMO_VENDAS = {          # venda mínima mensal para MANTER o nível
+MINIMO_VENDAS = {
     "Diamante": 2500.0,
     "Ouro":     1000.0,
-    "Pérola":   0.01,      # qualquer venda simbólica mantém Pérola
+    "Pérola":   0.01,
 }
 
 NIVEL_ANTERIOR = {
@@ -28,7 +28,7 @@ NIVEL_SUPERIOR = {
     "Diamante": None,
 }
 
-LIMIAR_SUBIDA = {          # vendas mínimas para SUBIR para o próximo nível
+LIMIAR_SUBIDA = {
     "Pérola":   1000.0,
     "Ouro":     2500.0,
 }
@@ -41,7 +41,7 @@ ICONE_NIVEL = {
 }
 
 
-# ── Helpers internos ──────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def nivel_por_pecas(qtd) -> str:
     try:
@@ -63,173 +63,150 @@ def _mes_n_atras(mes: int, ano: int, n: int):
     return mes, ano
 
 
-def _nivel_atual_por_revendedora(pedidos: list) -> dict:
-    """
-    Retorna dict {fk_revendedor_id: info} com nível pelo pedido ABERTO mais
-    recente. Campo `quantidade` = total de peças consignadas no pedido.
-    """
-    mais_recente: dict = {}
-    for p in pedidos:
-        if p.get("status") != "Aberto":
-            continue
-        rid = p.get("fk_revendedor_id")
-        if not rid:
-            continue
-        d = parse_date(p.get("data_criacao"))
-        if not d:
-            continue
-        if rid not in mais_recente or d > mais_recente[rid]["data"]:
-            comprador = p.get("comprador") or {}
-            nome = comprador.get("nome") or f"Rev {rid}"
-            qtd = int(float(p.get("quantidade") or 0))
-            mais_recente[rid] = {
-                "data":       d,
-                "nivel":      nivel_por_pecas(qtd),
-                "pecas":      qtd,
-                "nome":       nome,
-                "supervisor": p.get("supervisor_nome") or "Sem supervisora",
-            }
-    return mais_recente
+def _mes_a_frente(mes: int, ano: int, n: int = 1):
+    for _ in range(n):
+        mes += 1
+        if mes == 13:
+            mes = 1
+            ano += 1
+    return mes, ano
 
 
-# ── Funções públicas ──────────────────────────────────────────────────────────
+def _status_nivel(nivel: str, vendas: float) -> str:
+    if nivel == "Sem nível":
+        return "—"
+    minimo = MINIMO_VENDAS.get(nivel, 0)
+    if vendas == 0:
+        return "🔴 Sem vendas"
+    if vendas < minimo:
+        return "⚠️ Abaixo do mínimo"
+    return "✅ Atingiu o mínimo"
+
+
+# ── Classificação mensal ──────────────────────────────────────────────────────
 
 def classificar_revendedoras(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
     """
-    Classifica cada revendedora com pedido aberto:
-    - Nível pelas peças do pedido ativo (campo `quantidade`)
-    - Vendas pelo padrão de competência:
-        mês corrente  → baixados (data_baixa no mês) + pré-baixa (data_acerto no mês)
-        meses anteriores → apenas baixados (data_baixa no mês)
-      Isso é delegado inteiramente a `calcular_competencia`.
-    - Status: mantendo / abaixo do mínimo / sem vendas
+    Retorna uma linha por pedido relevante no mês, com coluna 'Tipo':
+    - '🔒 Baixado (fechado)': pedido encerrado com data_baixa no mês → usa valor_total
+    - '🔓 Em aberto':         pedido aberto com data_acerto no mês   → usa valor_pre_baixa
+
+    Cada tipo fica separado para não misturar resultados definitivos com parciais.
     """
-    niveis_map = _nivel_atual_por_revendedora(pedidos)
-
-    # Vendas do mês pelo padrão correto (baixados + pré-baixa para o mês atual)
-    df_comp, _ = calcular_competencia(pedidos, mes, ano)
-    vendas_map: dict = {}
-    if not df_comp.empty:
-        for _, row in df_comp.iterrows():
-            vendas_map[row["fk_revendedor_id"]] = float(row["Total"])
-
     rows = []
-    for rid, info in niveis_map.items():
-        vendas = vendas_map.get(rid, 0)
-        nivel  = info["nivel"]
-        minimo = MINIMO_VENDAS.get(nivel, 0)
 
-        if nivel == "Sem nível":
-            status = "—"
-        elif vendas == 0:
-            status = "🔴 Sem vendas"
-        elif vendas < minimo:
-            status = "⚠️ Abaixo do mínimo"
-        else:
-            status = "✅ Mantendo nível"
+    for p in pedidos:
+        rid    = p.get("fk_revendedor_id")
+        status = p.get("status", "")
+        if not rid or status not in ("Baixado", "Aberto"):
+            continue
+
+        comprador  = p.get("comprador") or {}
+        nome       = comprador.get("nome") or f"Rev {rid}"
+        supervisor = p.get("supervisor_nome") or "Sem supervisora"
+        qtd        = int(float(p.get("quantidade") or 0))
+        nivel      = nivel_por_pecas(qtd)
+
+        if status == "Baixado":
+            d = parse_date(p.get("data_baixa"))
+            if not (d and d.month == mes and d.year == ano):
+                continue
+            vendas = float(p.get("valor_total") or 0)
+            tipo   = "🔒 Baixado (fechado)"
+
+        else:  # Aberto
+            d = parse_date(p.get("data_acerto"))
+            if not (d and d.month == mes and d.year == ano):
+                continue
+            vendas = float(p.get("valor_pre_baixa") or 0)
+            tipo   = "🔓 Em aberto"
 
         rows.append({
             "fk_revendedor_id": rid,
-            "Nome":             info["nome"],
-            "Supervisor":       info["supervisor"],
+            "Nome":             nome,
+            "Supervisor":       supervisor,
+            "Tipo":             tipo,
             "Nível":            nivel,
-            "Peças pedido":     info["pecas"],
+            "Peças pedido":     qtd,
             "Vendas mês":       round(vendas, 2),
-            "Mínimo nível":     minimo,
-            "Status":           status,
+            "Mínimo nível":     MINIMO_VENDAS.get(nivel, 0),
+            "Status":           _status_nivel(nivel, vendas),
         })
 
     if not rows:
         return pd.DataFrame()
 
-    _ord = {"Diamante": 0, "Ouro": 1, "Pérola": 2, "Sem nível": 3}
+    _ord_tipo  = {"🔒 Baixado (fechado)": 0, "🔓 Em aberto": 1}
+    _ord_nivel = {"Diamante": 0, "Ouro": 1, "Pérola": 2, "Sem nível": 3}
+
     df = pd.DataFrame(rows)
-    df["_ord"] = df["Nível"].map(_ord).fillna(4)
+    df["_ot"] = df["Tipo"].map(_ord_tipo).fillna(2)
+    df["_on"] = df["Nível"].map(_ord_nivel).fillna(4)
     return (
-        df.sort_values(["_ord", "Vendas mês"], ascending=[True, False])
-        .drop(columns="_ord")
+        df.sort_values(["_ot", "_on", "Vendas mês"], ascending=[True, True, False])
+        .drop(columns=["_ot", "_on"])
         .reset_index(drop=True)
     )
 
 
-def alertas_rebaixamento(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
-    """
-    Revendedoras abaixo do mínimo do seu nível nos 2 meses anteriores consecutivos.
-    Só alerta se a revendedora apareceu na competência dos 2 meses (tinha pedido ativo).
-    Usa calcular_competencia → regra: apenas baixados para meses já encerrados.
-    """
-    m1, y1 = _mes_n_atras(mes, ano, 1)
-    m2, y2 = _mes_n_atras(mes, ano, 2)
-
-    df1, _ = calcular_competencia(pedidos, m1, y1)
-    df2, _ = calcular_competencia(pedidos, m2, y2)
-
-    niveis_map = _nivel_atual_por_revendedora(pedidos)
-    if not niveis_map:
-        return pd.DataFrame()
-
-    rows = []
-    for rid, info in niveis_map.items():
-        nivel  = info["nivel"]
-        if nivel == "Sem nível":
-            continue
-        minimo = MINIMO_VENDAS.get(nivel, 0)
-
-        r1 = df1[df1["fk_revendedor_id"] == rid] if not df1.empty else pd.DataFrame()
-        r2 = df2[df2["fk_revendedor_id"] == rid] if not df2.empty else pd.DataFrame()
-
-        if r1.empty or r2.empty:
-            continue
-
-        v1 = float(r1["Total"].sum())
-        v2 = float(r2["Total"].sum())
-
-        if v1 < minimo and v2 < minimo:
-            anterior = NIVEL_ANTERIOR.get(nivel)
-            rows.append({
-                "Nome":                   info["nome"],
-                "Supervisor":             info["supervisor"],
-                "Nível atual":            nivel,
-                f"Vendas {m2:02d}/{y2}":  round(v2, 2),
-                f"Vendas {m1:02d}/{y1}":  round(v1, 2),
-                "Mínimo do nível":        minimo,
-                "Rebaixa para":           anterior or "—",
-            })
-
-    return pd.DataFrame(rows) if rows else pd.DataFrame()
-
+# ── Alerta: potencial de subida ───────────────────────────────────────────────
 
 def alertas_subida(pedidos: list, mes: int, ano: int, pct: float = 0.75) -> pd.DataFrame:
     """
-    Revendedoras que já atingiram >= pct * limiar do próximo nível.
-    Inclui as que já ULTRAPASSARAM o limiar (já performam no nível superior).
-    Coluna 'Situação':
-      ✅ Já atingiu a meta  → vendas >= limiar  (pronta para subir)
-      🔜 Próxima de subir   → pct*limiar <= vendas < limiar
+    Revendedoras com vendas >= pct × limiar do próximo nível.
+    Inclui quem já ultrapassou o limiar (coluna Situação distingue).
+    Vendas calculadas pelo padrão de competência via calcular_competencia.
     """
-    df = classificar_revendedoras(pedidos, mes, ano)
-    if df.empty:
+    df_comp, _ = calcular_competencia(pedidos, mes, ano)
+    if df_comp.empty:
         return pd.DataFrame()
 
-    rows = []
-    for _, rev in df.iterrows():
-        nivel   = rev["Nível"]
-        proximo = NIVEL_SUPERIOR.get(nivel)
-        if not proximo:
+    # Monta lookup nível por revendedora (open ou baixado do mês)
+    nivel_map: dict = {}
+    for p in pedidos:
+        rid    = p.get("fk_revendedor_id")
+        status = p.get("status", "")
+        if not rid or status not in ("Aberto", "Baixado"):
             continue
-        limiar = LIMIAR_SUBIDA.get(nivel)
-        if not limiar:
-            continue
-        vendas = rev["Vendas mês"]
 
+        campo_data = "data_acerto" if status == "Aberto" else "data_baixa"
+        d = parse_date(p.get(campo_data))
+        if not (d and d.month == mes and d.year == ano):
+            continue
+
+        if rid not in nivel_map:
+            comprador  = p.get("comprador") or {}
+            nome       = comprador.get("nome") or f"Rev {rid}"
+            supervisor = p.get("supervisor_nome") or "Sem supervisora"
+            qtd        = int(float(p.get("quantidade") or 0))
+            nivel_map[rid] = {
+                "nivel":      nivel_por_pecas(qtd),
+                "nome":       nome,
+                "supervisor": supervisor,
+            }
+
+    rows = []
+    for _, row in df_comp.iterrows():
+        rid    = row["fk_revendedor_id"]
+        info   = nivel_map.get(rid)
+        if not info:
+            continue
+
+        nivel   = info["nivel"]
+        proximo = NIVEL_SUPERIOR.get(nivel)
+        limiar  = LIMIAR_SUBIDA.get(nivel)
+        if not proximo or not limiar:
+            continue
+
+        vendas = float(row["Total"])
         if vendas >= limiar * pct:
             situacao = "✅ Já atingiu a meta" if vendas >= limiar else "🔜 Próxima de subir"
             rows.append({
-                "Nome":        rev["Nome"],
-                "Supervisor":  rev["Supervisor"],
+                "Nome":        info["nome"],
+                "Supervisor":  info["supervisor"],
                 "Nível atual": nivel,
                 "Próx. nível": proximo,
-                "Vendas mês":  vendas,
+                "Vendas mês":  round(vendas, 2),
                 "Meta subida": limiar,
                 "Falta":       round(max(limiar - vendas, 0), 2),
                 "Situação":    situacao,
@@ -238,11 +215,131 @@ def alertas_subida(pedidos: list, mes: int, ano: int, pct: float = 0.75) -> pd.D
     if not rows:
         return pd.DataFrame()
 
-    # Ordena: já atingiu primeiro, depois por vendas desc
     df_out = pd.DataFrame(rows)
     df_out["_ord"] = df_out["Situação"].map({"✅ Já atingiu a meta": 0, "🔜 Próxima de subir": 1})
     return (
         df_out.sort_values(["_ord", "Vendas mês"], ascending=[True, False])
+        .drop(columns="_ord")
+        .reset_index(drop=True)
+    )
+
+
+# ── Alerta: risco de rebaixamento ─────────────────────────────────────────────
+
+def alertas_rebaixamento(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
+    """
+    Analisa os 3 meses: M-2, M-1 e M0 (mês atual).
+    - M-2 e M-1: apenas baixados (meses encerrados) via calcular_competencia
+    - M0: baixados + pré-baixa (mês corrente) via calcular_competencia
+
+    Projeção para M+1:
+      🔴 Risco de rebaixamento  — M-1 E M0 abaixo do mínimo (2 consecutivos recentes)
+      🟠 Atenção                — M-2 E M-1 abaixo (mas M0 ainda em curso)
+      🟡 Monitorar              — apenas M0 abaixo
+    Só exibe revendedoras com ao menos 1 mês abaixo do mínimo.
+    """
+    m1, y1 = _mes_n_atras(mes, ano, 1)
+    m2, y2 = _mes_n_atras(mes, ano, 2)
+    mP, yP = _mes_a_frente(mes, ano, 1)
+
+    df0, _ = calcular_competencia(pedidos, mes, ano)
+    df1, _ = calcular_competencia(pedidos, m1, y1)
+    df2, _ = calcular_competencia(pedidos, m2, y2)
+
+    # Nível atual: usa pedidos abertos (mais recentes) ou baixados do mês como fallback
+    nivel_map: dict = {}
+    for p in pedidos:
+        rid = p.get("fk_revendedor_id")
+        if not rid:
+            continue
+        status = p.get("status", "")
+        if status == "Aberto":
+            if rid not in nivel_map:
+                comprador = p.get("comprador") or {}
+                qtd = int(float(p.get("quantidade") or 0))
+                nivel_map[rid] = {
+                    "nivel":      nivel_por_pecas(qtd),
+                    "nome":       comprador.get("nome") or f"Rev {rid}",
+                    "supervisor": p.get("supervisor_nome") or "Sem supervisora",
+                }
+
+    # Fallback: baixados do mês atual
+    for p in pedidos:
+        rid = p.get("fk_revendedor_id")
+        if not rid or rid in nivel_map or p.get("status") != "Baixado":
+            continue
+        d = parse_date(p.get("data_baixa"))
+        if d and d.month == mes and d.year == ano:
+            comprador = p.get("comprador") or {}
+            qtd = int(float(p.get("quantidade") or 0))
+            nivel_map[rid] = {
+                "nivel":      nivel_por_pecas(qtd),
+                "nome":       comprador.get("nome") or f"Rev {rid}",
+                "supervisor": p.get("supervisor_nome") or "Sem supervisora",
+            }
+
+    def _total(df, rid):
+        if df.empty:
+            return None
+        r = df[df["fk_revendedor_id"] == rid]
+        return float(r["Total"].sum()) if not r.empty else None
+
+    rows = []
+    for rid, info in nivel_map.items():
+        nivel  = info["nivel"]
+        if nivel == "Sem nível":
+            continue
+        minimo = MINIMO_VENDAS.get(nivel, 0)
+
+        v0 = _total(df0, rid)
+        v1 = _total(df1, rid)
+        v2 = _total(df2, rid)
+
+        # Só exibe se houve algum mês abaixo do mínimo
+        abaixo = [v for v in (v0, v1, v2) if v is not None and v < minimo]
+        if not abaixo:
+            continue
+
+        # Projeção para o próximo mês
+        m1_abaixo = (v1 is not None and v1 < minimo)
+        m0_abaixo = (v0 is not None and v0 < minimo)
+        m2_abaixo = (v2 is not None and v2 < minimo)
+
+        if m1_abaixo and m0_abaixo:
+            projecao = "🔴 Risco de rebaixamento"
+        elif m2_abaixo and m1_abaixo:
+            projecao = "🟠 Atenção — tendência negativa"
+        else:
+            projecao = "🟡 Monitorar"
+
+        def _fmt_v(v):
+            return round(v, 2) if v is not None else "—"
+
+        rows.append({
+            "Nome":                    info["nome"],
+            "Supervisor":              info["supervisor"],
+            "Nível atual":             nivel,
+            f"Vendas {m2:02d}/{y2}":   _fmt_v(v2),
+            f"Vendas {m1:02d}/{y1}":   _fmt_v(v1),
+            f"Vendas {mes:02d}/{ano}":  _fmt_v(v0),
+            "Mínimo do nível":         minimo,
+            f"Projeção {mP:02d}/{yP}":  projecao,
+            "Rebaixa para":            NIVEL_ANTERIOR.get(nivel) or "—",
+        })
+
+    if not rows:
+        return pd.DataFrame()
+
+    _ord_proj = {
+        "🔴 Risco de rebaixamento":    0,
+        "🟠 Atenção — tendência negativa": 1,
+        "🟡 Monitorar":                2,
+    }
+    df_out = pd.DataFrame(rows)
+    proj_col = [c for c in df_out.columns if c.startswith("Projeção")][0]
+    df_out["_ord"] = df_out[proj_col].map(_ord_proj).fillna(3)
+    return (
+        df_out.sort_values("_ord")
         .drop(columns="_ord")
         .reset_index(drop=True)
     )

@@ -432,15 +432,15 @@ def _tab_gerencial(df_res: pd.DataFrame, todos_pedidos: list, hoje: date):
 # ── Tab 5: Níveis ─────────────────────────────────────────────────────────────
 
 def _tab_niveis(todos_pedidos: list, mes: int, ano: int):
-    st.subheader("Classificação por nível — " + f"{mes:02d}/{ano}")
+    st.subheader(f"Classificação por nível — {mes:02d}/{ano}")
     st.caption(
-        "Nível determinado pela quantidade de peças do pedido de consignação ativo. "
-        "**Pérola**: 40–54 peças · **Ouro**: 55–75 peças · **Diamante**: 76–500 peças."
+        "**Pérola**: 40–54 peças · **Ouro**: 55–75 peças · **Diamante**: 76–500 peças. "
+        "Pedidos **fechados** têm resultado definitivo; pedidos **em aberto** mostram o parcial (pré-baixa)."
     )
 
     df_cls = classificar_revendedoras(todos_pedidos, mes, ano)
 
-    # ── Resumo por nível ──────────────────────────────────────────────────────
+    # ── Cards de resumo ───────────────────────────────────────────────────────
     niveis_ordem = ["Diamante", "Ouro", "Pérola", "Sem nível"]
     cols_nv = st.columns(4)
     for col, nv in zip(cols_nv, niveis_ordem):
@@ -450,65 +450,107 @@ def _tab_niveis(todos_pedidos: list, mes: int, ano: int):
     st.divider()
 
     if df_cls.empty:
-        st.info("Nenhuma revendedora com pedido aberto no mês selecionado.")
+        st.info("Nenhuma revendedora com pedido no mês selecionado.")
         return
 
-    # ── Tabela por nível ──────────────────────────────────────────────────────
     def _estilo_status(val):
         cores = {
-            "✅ Mantendo nível":    "color: #27ae60; font-weight: bold",
+            "✅ Atingiu o mínimo":  "color: #27ae60; font-weight: bold",
             "⚠️ Abaixo do mínimo": "color: #e67e22; font-weight: bold",
             "🔴 Sem vendas":        "color: #e74c3c; font-weight: bold",
         }
         return cores.get(str(val), "")
 
-    for nv in ["Diamante", "Ouro", "Pérola", "Sem nível"]:
-        df_nv = df_cls[df_cls["Nível"] == nv].copy()
-        if df_nv.empty:
-            continue
-        with st.expander(
-            f"{ICONE_NIVEL.get(nv, '')} **{nv}** — {len(df_nv)} revendedora(s)",
-            expanded=True,
-        ):
-            exib = df_nv[["Nome", "Supervisor", "Peças pedido", "Vendas mês", "Mínimo nível", "Status"]].copy()
-            exib.columns = ["Nome", "Supervisor", "Peças", "Vendas mês (R$)", "Mínimo (R$)", "Status"]
-            st.dataframe(
-                exib.style
-                    .map(_estilo_status, subset=["Status"])
-                    .format({"Vendas mês (R$)": _R, "Mínimo (R$)": _R}),
-                use_container_width=True, hide_index=True,
-            )
+    # ── Seção 1: Pedidos baixados (resultado definitivo) ──────────────────────
+    df_bx = df_cls[df_cls["Tipo"] == "🔒 Baixado (fechado)"].copy()
+    if not df_bx.empty:
+        st.markdown("#### 🔒 Pedidos fechados no mês — resultado definitivo")
+        st.caption("Pedidos já encerrados. O valor de vendas é o **valor_total** do pedido baixado.")
+        for nv in ["Diamante", "Ouro", "Pérola", "Sem nível"]:
+            df_nv = df_bx[df_bx["Nível"] == nv]
+            if df_nv.empty:
+                continue
+            with st.expander(
+                f"{ICONE_NIVEL.get(nv, '')} **{nv}** — {len(df_nv)} pedido(s) fechado(s)",
+                expanded=True,
+            ):
+                exib = df_nv[["Nome", "Supervisor", "Peças pedido", "Vendas mês", "Mínimo nível", "Status"]].copy()
+                exib.columns = ["Nome", "Supervisor", "Peças", "Vendas (R$)", "Mínimo (R$)", "Status"]
+                st.dataframe(
+                    exib.style
+                        .map(_estilo_status, subset=["Status"])
+                        .format({"Vendas (R$)": _R, "Mínimo (R$)": _R}),
+                    use_container_width=True, hide_index=True,
+                )
+
+    # ── Seção 2: Pedidos em aberto (parcial — pré-baixa) ─────────────────────
+    df_ab = df_cls[df_cls["Tipo"] == "🔓 Em aberto"].copy()
+    if not df_ab.empty:
+        st.markdown("#### 🔓 Pedidos em aberto — parcial (pré-baixa)")
+        st.caption("Pedidos ainda não encerrados. O valor mostrado é o **parcial vendido** até agora (pré-baixa). Ainda podem melhorar.")
+        for nv in ["Diamante", "Ouro", "Pérola", "Sem nível"]:
+            df_nv = df_ab[df_ab["Nível"] == nv]
+            if df_nv.empty:
+                continue
+            with st.expander(
+                f"{ICONE_NIVEL.get(nv, '')} **{nv}** — {len(df_nv)} pedido(s) em aberto",
+                expanded=True,
+            ):
+                exib = df_nv[["Nome", "Supervisor", "Peças pedido", "Vendas mês", "Mínimo nível", "Status"]].copy()
+                exib.columns = ["Nome", "Supervisor", "Peças", "Pré-baixa (R$)", "Mínimo (R$)", "Status"]
+                st.dataframe(
+                    exib.style
+                        .map(_estilo_status, subset=["Status"])
+                        .format({"Pré-baixa (R$)": _R, "Mínimo (R$)": _R}),
+                    use_container_width=True, hide_index=True,
+                )
 
     st.divider()
 
     # ── Alerta: risco de rebaixamento ─────────────────────────────────────────
     st.markdown("#### ⬇️ Risco de rebaixamento")
     st.caption(
-        "Revendedoras que ficaram abaixo do mínimo do seu nível nos **2 meses anteriores consecutivos**. "
-        "Se mantiverem esse desempenho, devem retornar ao nível anterior no próximo mês."
+        "Análise dos **3 meses** (M-2, M-1 e mês atual). "
+        "Projeção para o próximo mês com base no desempenho recente. "
+        "Regra: 2 meses consecutivos abaixo do mínimo → rebaixamento."
     )
     df_reb = alertas_rebaixamento(todos_pedidos, mes, ano)
+
+    def _estilo_proj(val):
+        if "🔴" in str(val): return "color: #e74c3c; font-weight: bold"
+        if "🟠" in str(val): return "color: #e67e22; font-weight: bold"
+        if "🟡" in str(val): return "color: #f1c40f; font-weight: bold"
+        return ""
+
     if df_reb.empty:
-        st.success("Nenhuma revendedora em risco de rebaixamento nos últimos 2 meses.")
+        st.success("Nenhuma revendedora com sinal de risco nos últimos 3 meses.")
     else:
-        # identifica colunas de vendas dinamicamente
+        n_alto   = df_reb.apply(lambda r: any("🔴" in str(v) for v in r), axis=1).sum()
+        n_atencao = df_reb.apply(lambda r: any("🟠" in str(v) for v in r), axis=1).sum()
+        if n_alto:
+            st.error(f"🔴 {n_alto} revendedora(s) com risco confirmado de rebaixamento no próximo mês!")
+        if n_atencao:
+            st.warning(f"🟠 {n_atencao} revendedora(s) com tendência negativa — monitorar.")
+
         cols_vendas = [c for c in df_reb.columns if c.startswith("Vendas ")]
-        fmt_cols = {"Mínimo do nível": _R}
+        proj_col    = [c for c in df_reb.columns if c.startswith("Projeção")]
+        fmt_cols    = {"Mínimo do nível": _R}
         for c in cols_vendas:
-            fmt_cols[c] = _R
-        st.error(f"⚠️ {len(df_reb)} revendedora(s) em risco de rebaixamento!")
-        st.dataframe(
-            df_reb.style.format(fmt_cols),
-            use_container_width=True, hide_index=True,
-        )
+            fmt_cols[c] = lambda v: _R(v) if isinstance(v, (int, float)) else str(v)
+
+        styled = df_reb.style.format(fmt_cols)
+        if proj_col:
+            styled = styled.map(_estilo_proj, subset=proj_col)
+
+        st.dataframe(styled, use_container_width=True, hide_index=True)
 
     st.divider()
 
     # ── Alerta: potencial de subida ───────────────────────────────────────────
     st.markdown("#### ⬆️ Potencial de subida de nível")
     st.caption(
-        "Revendedoras que já atingiram **75% ou mais** da meta de vendas do próximo nível. "
-        "Priorize o acompanhamento para que cheguem à meta e subam de nível no próximo mês."
+        "Revendedoras com vendas ≥ 75% da meta do próximo nível. "
+        "Inclui as que **já atingiram** a meta — priorize o contato para oferecer o pedido maior."
     )
     df_sub = alertas_subida(todos_pedidos, mes, ano)
     if df_sub.empty:
@@ -517,25 +559,19 @@ def _tab_niveis(todos_pedidos: list, mes: int, ano: int):
         ja_atingiu = (df_sub["Situação"] == "✅ Já atingiu a meta").sum()
         proxima    = (df_sub["Situação"] == "🔜 Próxima de subir").sum()
         st.success(
-            f"🚀 {len(df_sub)} revendedora(s) com potencial de subida — "
+            f"🚀 {len(df_sub)} revendedora(s) com potencial — "
             f"{ja_atingiu} já atingiram a meta · {proxima} próximas"
         )
 
         def _estilo_sit(val):
-            if "Já atingiu" in str(val):
-                return "color: #27ae60; font-weight: bold"
-            if "Próxima" in str(val):
-                return "color: #e67e22; font-weight: bold"
+            if "Já atingiu" in str(val): return "color: #27ae60; font-weight: bold"
+            if "Próxima"    in str(val): return "color: #e67e22; font-weight: bold"
             return ""
 
         st.dataframe(
             df_sub.style
                 .map(_estilo_sit, subset=["Situação"])
-                .format({
-                    "Vendas mês":  _R,
-                    "Meta subida": _R,
-                    "Falta":       _R,
-                }),
+                .format({"Vendas mês": _R, "Meta subida": _R, "Falta": _R}),
             use_container_width=True, hide_index=True,
         )
 

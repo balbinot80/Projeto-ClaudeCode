@@ -19,21 +19,33 @@ def _get_secret(key: str, default: str = "") -> str:
         return os.getenv(key, default)
 
 
-def _autenticar(login: str, senha: str) -> dict | None:
+def _autenticar(login: str, senha: str):
     """
-    Verifica login e senha contra a tabela [usuarios] em secrets.
-    Retorna o dict do usuário se válido, None caso contrário.
+    Verifica login e senha.
+    Tenta primeiro a tabela [usuarios] em secrets.
+    Fallback: login 'admin' com APP_PASSWORD (compatibilidade).
     """
-    try:
-        usuarios = st.secrets.get("usuarios", {})
-    except Exception:
-        usuarios = {}
-
     login = login.strip().lower()
-    if login in usuarios:
-        u = dict(usuarios[login])
-        if u.get("senha") == senha:
-            return {"login": login, **u}
+
+    # 1. Tenta a tabela [usuarios] (configuração nova)
+    try:
+        usuarios = st.secrets["usuarios"]
+        if login in usuarios:
+            u = usuarios[login]
+            if u.get("senha") == senha:
+                return {
+                    "login": login,
+                    "nome": u.get("nome", login),
+                    "role": u.get("role", "admin"),
+                    "supervisor_nome": u.get("supervisor_nome", ""),
+                }
+    except Exception:
+        pass
+
+    # 2. Fallback: admin com APP_PASSWORD
+    app_pw = _get_secret("APP_PASSWORD", "")
+    if login == "admin" and app_pw and senha == app_pw:
+        return {"login": "admin", "nome": "Administrador", "role": "admin", "supervisor_nome": ""}
 
     return None
 

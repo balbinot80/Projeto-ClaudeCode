@@ -54,6 +54,36 @@ def nivel_por_pecas(qtd) -> str:
     return "Sem nível"
 
 
+def _qtd_original(p: dict) -> int:
+    """
+    Quantidade ORIGINAL de peças do pedido (total consignado, não o vendido).
+
+    Para pedidos ABERTOS: `quantidade` já é o total consignado.
+    Para pedidos BAIXADOS: `quantidade` pode refletir só o que foi vendido.
+      → tenta campos alternativos; se nenhum, soma quantidade + quantidade_pre_baixa
+        como estimativa do total original.
+    """
+    # Campos candidatos ao total original (em ordem de preferência)
+    for campo in ("quantidade_total", "qtd_total", "quantidade_original", "qtd_original"):
+        v = p.get(campo)
+        if v is not None:
+            try:
+                iv = int(float(v))
+                if iv > 0:
+                    return iv
+            except (ValueError, TypeError):
+                pass
+
+    qtd     = _qtd_original(p)
+    qtd_pb  = int(float(p.get("quantidade_pre_baixa") or 0))
+
+    # Para pedidos baixados, a soma pode recuperar o total original
+    if p.get("status") == "Baixado" and qtd_pb > 0:
+        return qtd + qtd_pb
+
+    return qtd
+
+
 def _mes_n_atras(mes: int, ano: int, n: int):
     for _ in range(n):
         mes -= 1
@@ -104,7 +134,7 @@ def classificar_revendedoras(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
         comprador  = p.get("comprador") or {}
         nome       = comprador.get("nome") or f"Rev {rid}"
         supervisor = p.get("supervisor_nome") or "Sem supervisora"
-        qtd        = int(float(p.get("quantidade") or 0))
+        qtd        = _qtd_original(p)
         nivel      = nivel_por_pecas(qtd)
 
         if status == "Baixado":
@@ -178,7 +208,7 @@ def alertas_subida(pedidos: list, mes: int, ano: int, pct: float = 0.75) -> pd.D
             comprador  = p.get("comprador") or {}
             nome       = comprador.get("nome") or f"Rev {rid}"
             supervisor = p.get("supervisor_nome") or "Sem supervisora"
-            qtd        = int(float(p.get("quantidade") or 0))
+            qtd        = _qtd_original(p)
             nivel_map[rid] = {
                 "nivel":      nivel_por_pecas(qtd),
                 "nome":       nome,
@@ -256,7 +286,7 @@ def alertas_rebaixamento(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
         if status == "Aberto":
             if rid not in nivel_map:
                 comprador = p.get("comprador") or {}
-                qtd = int(float(p.get("quantidade") or 0))
+                qtd = _qtd_original(p)
                 nivel_map[rid] = {
                     "nivel":      nivel_por_pecas(qtd),
                     "nome":       comprador.get("nome") or f"Rev {rid}",
@@ -271,7 +301,7 @@ def alertas_rebaixamento(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
         d = parse_date(p.get("data_baixa"))
         if d and d.month == mes and d.year == ano:
             comprador = p.get("comprador") or {}
-            qtd = int(float(p.get("quantidade") or 0))
+            qtd = _qtd_original(p)
             nivel_map[rid] = {
                 "nivel":      nivel_por_pecas(qtd),
                 "nome":       comprador.get("nome") or f"Rev {rid}",

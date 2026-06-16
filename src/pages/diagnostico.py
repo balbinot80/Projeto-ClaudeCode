@@ -96,9 +96,54 @@ def render():
         else:
             st.warning(f"HTTP {code_id}: {str(r_id)[:200]}")
 
+    # ── Pedido BAIXADO individual — campos de quantidade original ─────────
+    st.divider()
+    st.subheader("4. Pedido BAIXADO — campos de quantidade (diagnóstico de nível)")
+    st.caption("Busca o primeiro pedido com status 'Baixado' para identificar o campo da quantidade original do pedido.")
+
+    pedido_baixado = None
+    for pagina in range(1, 6):
+        code_pg, r_pg = _get("pedido", {"page": pagina})
+        if code_pg != 200 or not isinstance(r_pg, dict):
+            break
+        for p in r_pg.get("data", []):
+            if p.get("status") == "Baixado":
+                pedido_baixado = p
+                break
+        if pedido_baixado:
+            break
+
+    if not pedido_baixado:
+        st.warning("Nenhum pedido com status 'Baixado' encontrado nas primeiras 5 páginas.")
+    else:
+        pid_bx = pedido_baixado.get("id")
+        st.write(f"Pedido baixado encontrado: **ID {pid_bx}**")
+
+        # Campos de quantidade no resumo (lista)
+        campos_qtd_lista = {k: v for k, v in pedido_baixado.items()
+                            if any(x in k.lower() for x in ["qtd", "quant", "pec", "item"])}
+        st.write("**Campos de quantidade no resumo (endpoint lista):**")
+        st.json(campos_qtd_lista if campos_qtd_lista else {"(nenhum encontrado)": None})
+
+        # Campos completos no endpoint individual
+        code_bx, r_bx = _get(f"pedido/{pid_bx}")
+        if code_bx == 200 and isinstance(r_bx, dict):
+            reg = r_bx.get("data", r_bx)
+            if isinstance(reg, list) and reg:
+                reg = reg[0]
+            if isinstance(reg, dict):
+                campos_qtd_ind = {k: v for k, v in reg.items()
+                                  if any(x in k.lower() for x in ["qtd", "quant", "pec", "item", "total"])}
+                st.write("**Campos de quantidade/total no endpoint individual:**")
+                st.json(campos_qtd_ind)
+                st.write("**Registro completo do pedido baixado:**")
+                st.json(reg)
+        elif code_bx == 429:
+            st.error("⛔ HTTP 429 — limite atingido.")
+
     # ── Pedido ABERTO individual — procura campos de pré-baixa ────────────
     st.divider()
-    st.subheader("4. Pedido ABERTO individual — campos de pré-baixa")
+    st.subheader("5. Pedido ABERTO individual — campos de pré-baixa")
     st.caption("Busca o primeiro pedido com status 'Aberto' e exibe todos os seus campos.")
 
     # Varre páginas até achar um pedido Aberto

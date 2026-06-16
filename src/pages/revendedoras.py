@@ -1,145 +1,544 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime, timedelta
-from src.api.jueri_client import get_revendedores, get_pedidos_abertos, get_pedidos_baixados
+import plotly.graph_objects as go
+from datetime import date
+from src.api.jueri_client import _get_lista_pedidos
+from src.logic.revendedoras import (
+    MINIMO_REV, parse_date,
+    meses_disponiveis, calcular_competencia,
+    pedidos_abertos_sem_prebaixa, analise_periodo,
+)
 
+_CORES_RISCO = {
+    "🟢 No ritmo":           "#2ecc71",
+    "🟢 OK":                 "#2ecc71",
+    "🟡 Abaixo do ritmo":   "#f1c40f",
+    "🟡 Abaixo do mínimo":  "#f39c12",
+    "🟠 Abaixo do mínimo":  "#e67e22",
+    "🔴 Sem vendas":         "#e74c3c",
+}
+
+_R = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+# ── Helpers de estilo ─────────────────────────────────────────────────────────
+
+def _estilo_risco(val):
+    cor = _CORES_RISCO.get(str(val), "")
+    if not cor:
+        return ""
+    return f"color: {cor}; font-weight: bold"
+
+
+def _estilo_total(val):
+    try:
+        v = float(val)
+        if v == 0:
+            return "color: #e74c3c; font-weight: bold"
+        if v < MINIMO_REV:
+            return "color: #e67e22; font-weight: bold"
+        return "color: #27ae60; font-weight: bold"
+    except Exception:
+        return ""
+
+
+# ── Tab 1: Competência ────────────────────────────────────────────────────────
+
+def _tab_competencia(df_res: pd.DataFrame, mes_label: str):
+    st.subheader(f"Vendas por revendedora — {mes_label}")
+    st.caption(
+        "**Baixados no mês** = valor_total dos pedidos com data de baixa no mês. "
+        "**Pré-baixa** = soma dos pedidos abertos com data de acerto no mês."
+    )
+
+    if df_res.empty:
+        st.info("Nenhum dado para o mês selecionado.")
+        return
+
+    supervisoras = sorted(df_res["Supervisor"].unique())
+    total_geral = df_res["Total"].sum()
+    pb_geral = df_res["Pré-baixa"].sum()
+    bx_geral = df_res["Baixado"].sum()
+
+    # Cards de totais
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Revendedoras no mês", len(df_res))
+    c2.metric("Total geral", _R(total_geral))
+    c3.metric("  ↳ Pedidos baixados", _R(bx_geral))
+    c4.metric("  ↳ Pré-baixa (abertos)", _R(pb_geral))
+
+    st.divider()
+
+    # Tabela por supervisora
+    for sup in supervisoras:
+        df_sup = df_res[df_res["Supervisor"] == sup].copy()
+        total_sup = df_sup["Total"].sum()
+        n_ok = (df_sup["Total"] >= MINIMO_REV).sum()
+        n_risco = len(df_sup) - n_ok
+
+        badge = f" — ⚠️ {n_risco} em risco" if n_risco else ""
+        with st.expander(
+            f"**{sup}** — {len(df_sup)} revendedoras · {_R(total_sup)}{badge}",
+            expanded=(n_risco > 0),
+        ):
+            exib = df_sup[["Nome", "Pedidos", "Baixado", "Pré-baixa", "Total", "Risco"]].copy()
+            exib.columns = ["Nome", "Pedidos", "Baixado (R$)", "Pré-baixa (R$)", "Total (R$)", "Risco"]
+            st.dataframe(
+                exib.style
+                    .map(_estilo_risco, subset=["Risco"])
+                    .map(_estilo_total, subset=["Total (R$)"]),
+                use_container_width=True, hide_index=True,
+            )
+            st.caption(f"Subtotal {sup}: **{_R(total_sup)}**")
+
+    st.divider()
+    st.markdown(f"**Total geral do mês: {_R(total_geral)}**")
+
+    # Gráfico barras empilhadas (baixado + pré-baixa)
+    df_graf = df_res.sort_values("Total", ascending=False).head(30)
+    fig = go.Figure()
+    fig.add_bar(
+        x=df_graf["Nome"], y=df_graf["Baixado"],
+        name="Baixado", marker_color="#6B2737",
+    )
+    fig.add_bar(
+        x=df_graf["Nome"], y=df_graf["Pré-baixa"],
+        name="Pré-baixa", marker_color="#AB6776",
+    )
+    fig.add_hline(y=MINIMO_REV, line_dash="dash", line_color="#e74c3c",
+                  annotation_text=f"Mínimo R${MINIMO_REV:.0f}", annotation_position="top right")
+    fig.update_layout(
+        barmode="stack", title="Vendas por revendedora (Top 30)",
+        xaxis_tickangle=-45, legend=dict(orientation="h"),
+        height=420, margin=dict(b=120),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Export
+    csv = df_res.drop(columns=["fk_revendedor_id"]).to_csv(index=False).encode("utf-8")
+    st.download_button("Exportar CSV", csv, f"competencia_{mes_label.replace('/', '-')}.csv", "text/csv")
+
+
+# ── Tab 2: Alertas ────────────────────────────────────────────────────────────
+
+def _tab_alertas(df_zero: pd.DataFrame, df_res: pd.DataFrame):
+    st.subheader("⚠️ Alertas do mês")
+
+    # Alerta 1: Pré-baixa R$0
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.markdown(f"#### 🔴 Sem pré-baixa — {len(df_zero)} pedido(s)")
+        st.caption("Pedidos abertos com acerto neste mês e pré-baixa = R$0,00")
+        if df_zero.empty:
+            st.success("Nenhum pedido sem pré-baixa neste mês.")
+        else:
+            for sup in sorted(df_zero["Supervisor"].unique()):
+                df_s = df_zero[df_zero["Supervisor"] == sup]
+                st.markdown(f"**{sup}** — {len(df_s)} pedido(s)")
+                st.dataframe(
+                    df_s[["Nome", "Pedido", "Valor pedido", "Acerto"]],
+                    use_container_width=True, hide_index=True,
+                )
+
+    # Alerta 2: Abaixo do mínimo
+    with col_b:
+        df_abaixo = df_res[(df_res["Total"] > 0) & (df_res["Total"] < MINIMO_REV)].copy() if not df_res.empty else pd.DataFrame()
+        st.markdown(f"#### 🟡 Abaixo do mínimo (< {_R(MINIMO_REV)}) — {len(df_abaixo)}")
+        st.caption("Têm alguma venda, mas abaixo do mínimo de permanência na equipe.")
+        if df_abaixo.empty:
+            st.success("Nenhuma revendedora abaixo do mínimo neste mês.")
+        else:
+            exib = df_abaixo[["Nome", "Supervisor", "Total", "Pré-baixa", "Baixado"]].copy()
+            exib.columns = ["Nome", "Supervisor", "Total (R$)", "Pré-baixa", "Baixado"]
+            exib = exib.sort_values("Total (R$)")
+            st.dataframe(
+                exib.style.map(_estilo_total, subset=["Total (R$)"]),
+                use_container_width=True, hide_index=True,
+            )
+
+    # Tabela consolidada com semáforo
+    if not df_res.empty:
+        st.divider()
+        st.markdown("#### Semáforo geral do mês")
+        n_ok = (df_res["Total"] >= MINIMO_REV).sum()
+        n_abx = ((df_res["Total"] > 0) & (df_res["Total"] < MINIMO_REV)).sum()
+        n_zero_res = (df_res["Total"] == 0).sum()
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("🟢 Acima do mínimo", n_ok)
+        c2.metric("🟡 Abaixo do mínimo", n_abx)
+        c3.metric("🔴 Sem vendas (baixados)", n_zero_res)
+
+        fig = px.pie(
+            values=[n_ok, n_abx, n_zero_res],
+            names=["🟢 OK (≥ R$300)", "🟡 Abaixo do mínimo", "🔴 Sem vendas"],
+            color_discrete_sequence=["#2ecc71", "#f39c12", "#e74c3c"],
+            title="Distribuição de risco das revendedoras",
+            hole=0.4,
+        )
+        fig.update_traces(textinfo="percent+value")
+        st.plotly_chart(fig, use_container_width=True)
+
+
+# ── Tab 3: Análise por período ────────────────────────────────────────────────
+
+def _tab_periodo(todos_pedidos: list, hoje: date):
+    st.subheader("Pré-baixa por idade do pedido")
+    st.caption(
+        "Para cada janela de tempo, mostra os pedidos **abertos** criados naquele período "
+        "e o valor já vendido (pré-baixa). O ritmo esperado é calculado proporcionalmente "
+        "ao tempo decorrido desde a criação até a data de acerto."
+    )
+
+    periodos = [7, 15, 20, 30]
+    subtabs = st.tabs([f"⏱ {d} dias" for d in periodos])
+
+    for subtab, dias in zip(subtabs, periodos):
+        with subtab:
+            df = analise_periodo(todos_pedidos, dias, hoje)
+
+            if df.empty:
+                st.info(f"Nenhum pedido aberto criado nos últimos {dias} dias.")
+                continue
+
+            # Métricas do período
+            n_total = len(df)
+            n_ok    = (df["Risco"] == "🟢 No ritmo").sum()
+            n_risco = (df["Risco"].isin(["🔴 Sem vendas", "🟠 Abaixo do mínimo"])).sum()
+            total_pb = df["Pré-baixa"].sum()
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Pedidos no período", n_total)
+            c2.metric("🟢 No ritmo", n_ok)
+            c3.metric("🔴🟠 Em risco", n_risco)
+            c4.metric("Total pré-baixa", _R(total_pb))
+
+            # Gráfico barras coloridas por risco
+            df_graf = df.sort_values("Pré-baixa", ascending=False).head(40).copy()
+            df_graf["Cor"] = df_graf["Risco"].map(_CORES_RISCO)
+
+            fig = go.Figure()
+            for risco, cor in [
+                ("🟢 No ritmo",          "#2ecc71"),
+                ("🟡 Abaixo do ritmo",   "#f1c40f"),
+                ("🟠 Abaixo do mínimo",  "#e67e22"),
+                ("🔴 Sem vendas",         "#e74c3c"),
+            ]:
+                df_r = df_graf[df_graf["Risco"] == risco]
+                if df_r.empty:
+                    continue
+                fig.add_bar(
+                    x=df_r["Nome"], y=df_r["Pré-baixa"],
+                    name=risco, marker_color=cor,
+                    customdata=df_r[["Ritmo esperado", "% do ritmo", "Dias do pedido"]].values,
+                    hovertemplate=(
+                        "<b>%{x}</b><br>"
+                        "Pré-baixa: R$ %{y:,.2f}<br>"
+                        "Ritmo esperado: R$ %{customdata[0]:,.2f}<br>"
+                        "% do ritmo: %{customdata[1]:.1f}%<br>"
+                        "Dias do pedido: %{customdata[2]}<br>"
+                        "<extra></extra>"
+                    ),
+                )
+
+            fig.add_hline(y=MINIMO_REV, line_dash="dash", line_color="#e74c3c",
+                          annotation_text=f"Mínimo R${MINIMO_REV:.0f}")
+            fig.update_layout(
+                barmode="group",
+                title=f"Pré-baixa — pedidos abertos (últimos {dias} dias)",
+                xaxis_tickangle=-45,
+                height=400,
+                margin=dict(b=120),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Tabela detalhada
+            cols_exib = ["Risco", "Nome", "Supervisor", "Criado", "Acerto",
+                         "Dias do pedido", "Pré-baixa", "Ritmo esperado", "% do ritmo", "Valor pedido"]
+            st.dataframe(
+                df[cols_exib].style.map(_estilo_risco, subset=["Risco"]),
+                use_container_width=True, hide_index=True,
+            )
+
+            # Por supervisora
+            if "Supervisor" in df.columns:
+                st.markdown("**Pré-baixa por supervisora**")
+                df_sup = (
+                    df.groupby("Supervisor", as_index=False)
+                    .agg(
+                        Pedidos=("Nome", "count"),
+                        Pre_baixa=("Pré-baixa", "sum"),
+                        No_ritmo=("Risco", lambda x: (x == "🟢 No ritmo").sum()),
+                        Em_risco=("Risco", lambda x: x.isin(["🔴 Sem vendas", "🟠 Abaixo do mínimo"]).sum()),
+                    )
+                    .rename(columns={"Pre_baixa": "Pré-baixa (R$)", "No_ritmo": "No ritmo", "Em_risco": "Em risco"})
+                    .sort_values("Pré-baixa (R$)", ascending=False)
+                )
+                st.dataframe(df_sup, use_container_width=True, hide_index=True)
+
+
+# ── Tab 4: Visão gerencial ────────────────────────────────────────────────────
+
+def _tab_gerencial(df_res: pd.DataFrame, todos_pedidos: list, hoje: date):
+    """
+    Visualizações gerenciais baseadas em boas práticas de gestão de equipes de vendas:
+    - Leaderboard com ranking e metas (identifica top e bottom performers)
+    - Distribuição por faixa de receita (entende a saúde da equipe)
+    - Comparativo por supervisora (benchmarking de times)
+    - Funil de atividade (pedido → pré-baixa → acima do mínimo)
+    """
+    df_res = df_res.copy()  # evita mutação do DataFrame original
+    if df_res.empty:
+        st.info("Sem dados disponíveis para o mês selecionado.")
+        return
+
+    st.subheader("Visão gerencial")
+    st.caption(
+        "Painéis de controle baseados em metodologias de gestão de equipes de vendas "
+        "por consignação (Sales Performance Management — KPI tracking, risk segmentation, "
+        "team benchmarking)."
+    )
+
+    # ── Leaderboard ─────────────────────────────────────────────────────────
+    st.markdown("#### 🏆 Leaderboard — ranking de revendedoras")
+    st.caption(
+        "As barras mostram o total vendido (baixado + pré-baixa). "
+        "A linha vermelha é o mínimo de permanência (R$300). "
+        "Use este gráfico para identificar as top performers e aquelas que precisam de atenção."
+    )
+
+    df_rank = df_res.sort_values("Total", ascending=True).copy()
+    df_rank["Cor"] = df_rank["Risco"].map(_CORES_RISCO).fillna("#95a5a6")
+
+    fig_rank = go.Figure()
+    fig_rank.add_bar(
+        x=df_rank["Total"],
+        y=df_rank["Nome"],
+        orientation="h",
+        marker_color=df_rank["Cor"],
+        text=df_rank["Total"].apply(lambda v: _R(v)),
+        textposition="outside",
+        customdata=df_rank[["Supervisor", "Risco"]].values,
+        hovertemplate=(
+            "<b>%{y}</b><br>"
+            "Total: %{text}<br>"
+            "Supervisora: %{customdata[0]}<br>"
+            "Situação: %{customdata[1]}<br>"
+            "<extra></extra>"
+        ),
+    )
+    fig_rank.add_vline(x=MINIMO_REV, line_dash="dash", line_color="#e74c3c",
+                       annotation_text=f"Mínimo R${MINIMO_REV:.0f}", annotation_position="top right")
+    fig_rank.update_layout(
+        height=max(400, len(df_rank) * 22),
+        xaxis_title="Total vendido (R$)",
+        yaxis_title="",
+        showlegend=False,
+        margin=dict(l=220, r=100),
+    )
+    st.plotly_chart(fig_rank, use_container_width=True)
+
+    st.divider()
+
+    # ── Distribuição por faixa de receita ────────────────────────────────────
+    col_l, col_r = st.columns(2)
+
+    with col_l:
+        st.markdown("#### 📊 Distribuição por faixa de receita")
+        st.caption(
+            "Histograma que mostra quantas revendedoras estão em cada faixa de receita. "
+            "Uma equipe saudável tem a maior concentração acima do mínimo."
+        )
+        faixas = [0, 300, 600, 1000, 2000, 5000, float("inf")]
+        rotulos = ["R$0", "R$1–300", "R$301–600", "R$601–1K", "R$1K–2K", "R$2K–5K", "> R$5K"]
+        cores_faixa = ["#e74c3c", "#e67e22", "#f1c40f", "#2ecc71", "#27ae60", "#1a7a4a", "#0d4a2a"]
+
+        df_res["Faixa"] = pd.cut(
+            df_res["Total"],
+            bins=faixas,
+            labels=rotulos,
+            right=True,
+            include_lowest=True,
+        )
+        dist = df_res.groupby("Faixa", observed=True).size().reset_index(name="Qtd")
+
+        fig_dist = px.bar(
+            dist, x="Faixa", y="Qtd",
+            color="Faixa",
+            color_discrete_sequence=cores_faixa,
+            text="Qtd",
+            title="Revendedoras por faixa de receita",
+        )
+        fig_dist.update_traces(textposition="outside")
+        fig_dist.update_layout(showlegend=False, height=350)
+        st.plotly_chart(fig_dist, use_container_width=True)
+
+    # ── Comparativo por supervisora ───────────────────────────────────────────
+    with col_r:
+        st.markdown("#### 👥 Desempenho por supervisora")
+        st.caption(
+            "Compara a soma e a média de vendas por equipe. "
+            "Permite identificar supervisoras com equipes acima ou abaixo da média geral."
+        )
+        df_sup_agg = (
+            df_res.groupby("Supervisor", as_index=False)
+            .agg(
+                Total=("Total", "sum"),
+                Media=("Total", "mean"),
+                Revendedoras=("Nome", "count"),
+                OK=("Risco", lambda x: (x == "🟢 OK").sum()),
+            )
+            .sort_values("Total", ascending=False)
+        )
+        df_sup_agg["Média por rev."] = df_sup_agg["Media"].round(2)
+
+        fig_sup = go.Figure()
+        fig_sup.add_bar(
+            x=df_sup_agg["Supervisor"], y=df_sup_agg["Total"],
+            name="Total equipe", marker_color="#6B2737",
+        )
+        fig_sup.add_scatter(
+            x=df_sup_agg["Supervisor"], y=df_sup_agg["Media"],
+            mode="markers+text", name="Média por rev.",
+            marker=dict(size=12, color="#AB6776", symbol="diamond"),
+            text=df_sup_agg["Media"].apply(lambda v: _R(v)),
+            textposition="top center",
+        )
+        fig_sup.add_hline(y=MINIMO_REV, line_dash="dot", line_color="#e74c3c",
+                          annotation_text="Mínimo/rev", annotation_position="top right")
+        fig_sup.update_layout(
+            title="Total e média por supervisora",
+            xaxis_tickangle=-20, height=350,
+            legend=dict(orientation="h"),
+        )
+        st.plotly_chart(fig_sup, use_container_width=True)
+
+    st.divider()
+
+    # ── Funil de atividade ────────────────────────────────────────────────────
+    st.markdown("#### 🔽 Funil de atividade — pedidos abertos (últimos 30 dias)")
+    st.caption(
+        "Mostra a conversão dos pedidos abertos recentes: do total de pedidos, "
+        "quantos já têm alguma venda, e quantos estão acima do mínimo de R$300. "
+        "Referência: modelo de funil de vendas por consignação (Sales Funnel Analysis)."
+    )
+    df30 = analise_periodo(todos_pedidos, 30, hoje)
+    if not df30.empty:
+        n_total30 = len(df30)
+        n_com_venda = (df30["Pré-baixa"] > 0).sum()
+        n_acima_min = (df30["Pré-baixa"] >= MINIMO_REV).sum()
+        n_no_ritmo  = (df30["Risco"] == "🟢 No ritmo").sum()
+
+        fig_funil = go.Figure(go.Funnel(
+            y=["Pedidos abertos (30 dias)", "Com alguma venda", f"Acima do mínimo (≥ R${MINIMO_REV:.0f})", "No ritmo de vendas"],
+            x=[n_total30, n_com_venda, n_acima_min, n_no_ritmo],
+            textinfo="value+percent initial",
+            marker_color=["#6B2737", "#AB6776", "#f39c12", "#2ecc71"],
+        ))
+        fig_funil.update_layout(title="Funil de atividade das revendedoras", height=320)
+        st.plotly_chart(fig_funil, use_container_width=True)
+    else:
+        st.info("Sem pedidos abertos nos últimos 30 dias para o funil.")
+
+    # ── Heatmap supervisora × risco ───────────────────────────────────────────
+    st.divider()
+    st.markdown("#### 🗺️ Mapa de risco — supervisora × situação")
+    st.caption(
+        "Heatmap mostrando a distribuição de situações por equipe. "
+        "Supervisoras com muitas revendedoras 🔴 vermelhas necessitam atenção imediata."
+    )
+    if not df_res.empty:
+        heat_data = (
+            df_res.groupby(["Supervisor", "Risco"], as_index=False)
+            .size()
+            .rename(columns={"size": "Qtd"})
+        )
+        pivot = heat_data.pivot(index="Supervisor", columns="Risco", values="Qtd").fillna(0)
+        fig_heat = px.imshow(
+            pivot,
+            color_continuous_scale=["#2ecc71", "#f39c12", "#e74c3c"],
+            text_auto=True,
+            aspect="auto",
+            title="Número de revendedoras por supervisora e situação",
+        )
+        fig_heat.update_layout(height=max(250, len(pivot) * 60))
+        st.plotly_chart(fig_heat, use_container_width=True)
+
+
+# ── Render principal ──────────────────────────────────────────────────────────
 
 def render():
-    st.header("Revendedoras")
+    st.header("👥 Acompanhamento de Revendedoras")
 
-    with st.spinner("Carregando dados (pode demorar na primeira vez)..."):
+    with st.spinner("Carregando pedidos..."):
         try:
-            todos = get_revendedores()
-            pedidos_abertos = get_pedidos_abertos()
-            baixados = get_pedidos_baixados()
+            todos_pedidos = _get_lista_pedidos()
         except Exception as e:
             st.error(f"Erro ao carregar dados: {e}")
             return
 
-    if not todos:
-        st.warning("Nenhuma revendedora encontrada.")
+    if not todos_pedidos:
+        st.warning("Nenhum pedido encontrado.")
         return
 
-    # IDs com pedido aberto
-    ids_com_pedido = {str(p.get("fk_revendedor_id") or "") for p in pedidos_abertos} - {""}
+    hoje = date.today()
 
-    # IDs com baixado nos últimos 6 meses
-    corte_6m = datetime.now() - timedelta(days=180)
-    ids_com_venda = set()
-    for p in baixados:
-        data_str = (p.get("data_baixa") or p.get("data_criacao") or "")[:10]
-        try:
-            if datetime.fromisoformat(data_str) >= corte_6m:
-                rid = str(p.get("fk_revendedor_id") or "")
-                if rid:
-                    ids_com_venda.add(rid)
-        except (ValueError, TypeError):
-            pass
+    # ── Filtro de mês ─────────────────────────────────────────────────────────
+    meses = meses_disponiveis(7)
+    opcoes = [f"{m:02d}/{y}" for y, m in meses]
 
-    rows = []
-    for r in todos:
-        rid = str(r.get("id", ""))
-        ativo_api = str(r.get("fk_status_id", "1")) == "1"
-        tem_pedido = rid in ids_com_pedido
-        tem_venda = rid in ids_com_venda
+    col_f, col_info = st.columns([2, 5])
+    with col_f:
+        mes_sel = st.selectbox("Mês de competência", opcoes, index=0)
+    mes_num = int(mes_sel[:2])
+    ano_num = int(mes_sel[3:])
 
-        if not ativo_api:
-            grupo = "Inativa"
-        elif tem_pedido:
-            grupo = "Com pedido aberto"
-        elif tem_venda:
-            grupo = "Ativa sem pedido (com histórico)"
-        else:
-            grupo = "Ativa sem pedido"
+    with col_info:
+        st.caption(
+            f"**Regra:** pedidos **Baixados** com data_baixa em {mes_sel} + "
+            f"pedidos **Abertos** com previsão de acerto em {mes_sel} (soma da pré-baixa)."
+        )
 
-        rows.append({
-            "ID": rid,
-            "Nome": r.get("nome", ""),
-            "Telefone": r.get("telefone", ""),
-            "Cidade": r.get("cidade", ""),
-            "Estado": r.get("estado", ""),
-            "Cadastro": (r.get("data_criacao") or "")[:10],
-            "Situação": grupo,
-        })
+    # ── Calcular dados ────────────────────────────────────────────────────────
+    df_res, df_det = calcular_competencia(todos_pedidos, mes_num, ano_num)
+    df_zero = pedidos_abertos_sem_prebaixa(todos_pedidos, mes_num, ano_num)
 
-    df = pd.DataFrame(rows)
+    # ── Métricas globais ──────────────────────────────────────────────────────
+    total_mes   = df_res["Total"].sum()    if not df_res.empty else 0
+    total_pb    = df_res["Pré-baixa"].sum() if not df_res.empty else 0
+    total_bx    = df_res["Baixado"].sum()   if not df_res.empty else 0
+    n_rev       = len(df_res)
+    n_zero      = len(df_zero)
+    n_abaixo    = int(((df_res["Total"] > 0) & (df_res["Total"] < MINIMO_REV)).sum()) if not df_res.empty else 0
+    n_sem_res   = int((df_res["Total"] == 0).sum()) if not df_res.empty else 0
 
-    com_pedido = df[df["Situação"] == "Com pedido aberto"]
-    ativa_sem_hist = df[df["Situação"] == "Ativa sem pedido (com histórico)"]
-    ativa_sem = df[df["Situação"] == "Ativa sem pedido"]
-    inativas = df[df["Situação"] == "Inativa"]
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    c1.metric("Revendedoras no mês", n_rev)
+    c2.metric("Total vendido", _R(total_mes))
+    c3.metric("  ↳ Baixados", _R(total_bx))
+    c4.metric("  ↳ Pré-baixa", _R(total_pb))
+    c5.metric("🟡 Abaixo do mínimo", n_abaixo)
+    c6.metric("🔴 Sem vendas", n_zero + n_sem_res,
+              help="Pedidos abertos com R$0 + revendedoras com total = R$0")
 
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Com pedido aberto", len(com_pedido), help="Com peças na rua agora")
-    col2.metric("Ativas com histórico", len(ativa_sem_hist), help="Compraram nos últimos 6 meses")
-    col3.metric("Ativas sem atividade", len(ativa_sem), help="Sem pedido e sem venda nos últimos 6 meses")
-    col4.metric("Inativas", len(inativas))
+    # ── Tabs ──────────────────────────────────────────────────────────────────
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📅 Competência",
+        "⚠️ Alertas",
+        "⏱️ Análise por período",
+        "📈 Visão gerencial",
+    ])
 
-    st.divider()
-    st.subheader("Com pedido aberto")
-    st.caption("Revendedoras que possuem peças na rua agora.")
-    busca = st.text_input("Buscar", placeholder="Nome, cidade...", key="busca_ativas")
-    df_com = com_pedido.copy()
-    if busca:
-        df_com = df_com[df_com["Nome"].str.contains(busca, case=False, na=False) |
-                        df_com["Cidade"].str.contains(busca, case=False, na=False)]
-    st.dataframe(df_com.drop(columns="Situação"), use_container_width=True, hide_index=True)
+    with tab1:
+        _tab_competencia(df_res, mes_sel)
 
-    st.divider()
-    with st.expander(f"**Ativas com histórico, sem pedido aberto** ({len(ativa_sem_hist)})", expanded=False):
-        st.caption("Compraram nos últimos 6 meses mas não têm pedido aberto no momento.")
-        st.dataframe(ativa_sem_hist.drop(columns="Situação"), use_container_width=True, hide_index=True)
+    with tab2:
+        _tab_alertas(df_zero, df_res)
 
-    with st.expander(f"**Ativas sem atividade recente** ({len(ativa_sem)})", expanded=False):
-        st.caption("Sem pedido e sem venda nos últimos 6 meses. Requer atenção.")
-        st.dataframe(ativa_sem.drop(columns="Situação"), use_container_width=True, hide_index=True)
+    with tab3:
+        _tab_periodo(todos_pedidos, hoje)
 
-    with st.expander(f"**Inativas** ({len(inativas)})", expanded=False):
-        st.dataframe(inativas.drop(columns="Situação"), use_container_width=True, hide_index=True)
-
-    # Crescimento
-    st.divider()
-    st.subheader("Crescimento da equipe ao longo do tempo")
-    df_tempo = df[df["Cadastro"] != ""].copy()
-    if not df_tempo.empty:
-        df_tempo["Cadastro"] = pd.to_datetime(df_tempo["Cadastro"], errors="coerce")
-        df_tempo = df_tempo.dropna(subset=["Cadastro"])
-        df_tempo["Mês"] = df_tempo["Cadastro"].dt.to_period("M").astype(str)
-        crescimento = df_tempo.groupby("Mês").size().reset_index(name="Novas")
-        crescimento["Acumulado"] = crescimento["Novas"].cumsum()
-
-        fig = px.bar(crescimento, x="Mês", y="Novas",
-                     title="Novas revendedoras por mês",
-                     color_discrete_sequence=["#AB6776"])
-        st.plotly_chart(fig, use_container_width=True)
-
-        fig2 = px.line(crescimento, x="Mês", y="Acumulado",
-                       title="Crescimento acumulado da equipe", markers=True,
-                       color_discrete_sequence=["#AB6776"])
-        st.plotly_chart(fig2, use_container_width=True)
-
-    # Ranking por valor
-    st.divider()
-    st.subheader("Ranking de vendas — últimos 6 meses")
-    baixados_6m = [p for p in baixados if str(p.get("fk_revendedor_id") or "")]
-    if baixados_6m:
-        rev_map = {str(r.get("id")): r.get("nome", f"ID {r.get('id')}") for r in todos}
-        ranking: dict = {}
-        for p in baixados_6m:
-            rid = str(p.get("fk_revendedor_id") or "")
-            nome = rev_map.get(rid, f"Revendedora {rid}")
-            ranking[nome] = ranking.get(nome, 0) + float(p.get("valor_total") or 0)
-
-        if ranking:
-            df_rank = pd.DataFrame(
-                [{"Revendedora": k, "Total vendido (R$)": round(v, 2)} for k, v in ranking.items()]
-            ).sort_values("Total vendido (R$)", ascending=False).head(20)
-
-            fig3 = px.bar(df_rank, x="Revendedora", y="Total vendido (R$)",
-                          title="Top 20 por volume de vendas",
-                          color_discrete_sequence=["#AB6776"])
-            fig3.update_layout(xaxis_tickangle=-45)
-            st.plotly_chart(fig3, use_container_width=True)
-    else:
-        st.info("Sem pedidos baixados no período.")
+    with tab4:
+        _tab_gerencial(df_res, todos_pedidos, hoje)

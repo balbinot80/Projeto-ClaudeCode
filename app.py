@@ -191,6 +191,58 @@ if pagina == "🏠 Dashboard":
             "Acesse **Programação de Compras** para ver as sugestões."
         )
 
+    # ── Ticket médio por supervisora ──────────────────────────────────────────
+    st.subheader("🎯 Ticket médio por supervisora — últimos 30 dias")
+    st.caption("Valor médio por pedido baixado nos últimos 30 dias, agrupado por supervisora.")
+
+    if baixados_30d:
+        ticket_sup: dict = {}
+        contagem_sup: dict = {}
+        for p in baixados_30d:
+            sup = p.get("supervisor_nome") or "Sem supervisora"
+            val = float(p.get("valor_total") or 0)
+            ticket_sup[sup] = ticket_sup.get(sup, 0) + val
+            contagem_sup[sup] = contagem_sup.get(sup, 0) + 1
+
+        # Cards por supervisora
+        supervisoras = sorted(ticket_sup.keys())
+        cols = st.columns(max(len(supervisoras), 1))
+        for col, sup in zip(cols, supervisoras):
+            total = ticket_sup[sup]
+            qtd   = contagem_sup[sup]
+            media = total / qtd if qtd else 0
+            _fmt  = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            col.metric(
+                label=sup,
+                value=_fmt(media),
+                delta=f"{qtd} pedido(s) · total {_fmt(total)}",
+                delta_color="off",
+            )
+
+        # Tabela resumo
+        st.divider()
+        df_ticket = pd.DataFrame([
+            {
+                "Supervisora": sup,
+                "Pedidos baixados": contagem_sup[sup],
+                "Total vendido": ticket_sup[sup],
+                "Ticket médio": ticket_sup[sup] / contagem_sup[sup],
+            }
+            for sup in supervisoras
+        ]).sort_values("Ticket médio", ascending=False)
+
+        _fmt_br = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        st.dataframe(
+            df_ticket.style.format({
+                "Total vendido": _fmt_br,
+                "Ticket médio":  _fmt_br,
+            }),
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("Sem pedidos baixados nos últimos 30 dias.")
+
     st.info("Use o menu lateral para navegar entre os módulos do sistema.")
 
 elif pagina == "📦 Estoque":

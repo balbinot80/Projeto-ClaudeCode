@@ -10,10 +10,12 @@ NIVEIS_PECAS = [
     ("Pérola",   40,  54),
 ]
 
+MINIMO_UNIVERSAL = 300.0   # mínimo de permanência válido para todos os níveis
+
 MINIMO_VENDAS = {
     "Diamante": 2500.0,
     "Ouro":     1000.0,
-    "Pérola":   0.01,
+    "Pérola":   MINIMO_UNIVERSAL,
 }
 
 NIVEL_ANTERIOR = {

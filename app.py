@@ -19,34 +19,47 @@ def _get_secret(key: str, default: str = "") -> str:
         return os.getenv(key, default)
 
 
+# Informações dos usuários — senhas ficam apenas no Streamlit Cloud Secrets
+_USUARIOS = {
+    "admin": {
+        "nome": "Administrador",
+        "role": "admin",
+        "supervisor_nome": "",
+        "secret_key": "ADMIN_SENHA",
+    },
+    "yasmim": {
+        "nome": "Yasmim Evellyn Ferreira",
+        "role": "supervisora",
+        "supervisor_nome": "Yasmim Evellyn Ferreira",
+        "secret_key": "YASMIM_SENHA",
+    },
+    "julia": {
+        "nome": "Julia Andreza de Souza",
+        "role": "supervisora",
+        "supervisor_nome": "Julia Andreza de Souza",
+        "secret_key": "JULIA_SENHA",
+    },
+}
+
+
 def _autenticar(login: str, senha: str):
-    """
-    Verifica login e senha.
-    Tenta primeiro a tabela [usuarios] em secrets.
-    Fallback: login 'admin' com APP_PASSWORD (compatibilidade).
-    """
     login = login.strip().lower()
+    if login not in _USUARIOS:
+        return None
 
-    # 1. Tenta a tabela [usuarios] (configuração nova)
-    try:
-        usuarios = st.secrets["usuarios"]
-        if login in usuarios:
-            u = usuarios[login]
-            if u.get("senha") == senha:
-                return {
-                    "login": login,
-                    "nome": u.get("nome", login),
-                    "role": u.get("role", "admin"),
-                    "supervisor_nome": u.get("supervisor_nome", ""),
-                }
-    except Exception:
-        pass
+    info = _USUARIOS[login]
+    # Tenta a chave específica do usuário; fallback para APP_PASSWORD no admin
+    senha_correta = _get_secret(info["secret_key"], "")
+    if not senha_correta and login == "admin":
+        senha_correta = _get_secret("APP_PASSWORD", "")
 
-    # 2. Fallback: admin com APP_PASSWORD
-    app_pw = _get_secret("APP_PASSWORD", "")
-    if login == "admin" and app_pw and senha == app_pw:
-        return {"login": "admin", "nome": "Administrador", "role": "admin", "supervisor_nome": ""}
-
+    if senha_correta and senha == senha_correta:
+        return {
+            "login": login,
+            "nome": info["nome"],
+            "role": info["role"],
+            "supervisor_nome": info["supervisor_nome"],
+        }
     return None
 
 

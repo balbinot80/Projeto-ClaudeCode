@@ -87,7 +87,8 @@ def _tab_competencia(df_res: pd.DataFrame, mes_label: str):
             st.dataframe(
                 exib.style
                     .map(_estilo_risco, subset=["Risco"])
-                    .map(_estilo_total, subset=["Total (R$)"]),
+                    .map(_estilo_total, subset=["Total (R$)"])
+                    .format({"Baixado (R$)": _R, "Pré-baixa (R$)": _R, "Total (R$)": _R}),
                 use_container_width=True, hide_index=True,
             )
             st.caption(f"Subtotal {sup}: **{_R(total_sup)}**")
@@ -137,7 +138,8 @@ def _tab_alertas(df_zero: pd.DataFrame, df_res: pd.DataFrame):
                 df_s = df_zero[df_zero["Supervisor"] == sup]
                 st.markdown(f"**{sup}** — {len(df_s)} pedido(s)")
                 st.dataframe(
-                    df_s[["Nome", "Pedido", "Valor pedido", "Acerto"]],
+                    df_s[["Nome", "Pedido", "Valor pedido", "Acerto"]].style
+                        .format({"Valor pedido": _R}),
                     use_container_width=True, hide_index=True,
                 )
 
@@ -150,10 +152,12 @@ def _tab_alertas(df_zero: pd.DataFrame, df_res: pd.DataFrame):
             st.success("Nenhuma revendedora abaixo do mínimo neste mês.")
         else:
             exib = df_abaixo[["Nome", "Supervisor", "Total", "Pré-baixa", "Baixado"]].copy()
-            exib.columns = ["Nome", "Supervisor", "Total (R$)", "Pré-baixa", "Baixado"]
+            exib.columns = ["Nome", "Supervisor", "Total (R$)", "Pré-baixa (R$)", "Baixado (R$)"]
             exib = exib.sort_values("Total (R$)")
             st.dataframe(
-                exib.style.map(_estilo_total, subset=["Total (R$)"]),
+                exib.style
+                    .map(_estilo_total, subset=["Total (R$)"])
+                    .format({"Total (R$)": _R, "Pré-baixa (R$)": _R, "Baixado (R$)": _R}),
                 use_container_width=True, hide_index=True,
             )
 
@@ -234,8 +238,8 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
                     customdata=df_r[["Ritmo esperado", "% do ritmo", "Dias do pedido"]].values,
                     hovertemplate=(
                         "<b>%{x}</b><br>"
-                        "Pré-baixa: R$ %{y:,.2f}<br>"
-                        "Ritmo esperado: R$ %{customdata[0]:,.2f}<br>"
+                        "Pré-baixa: R$ %{y:,.0f}<br>"
+                        "Ritmo esperado: R$ %{customdata[0]:,.0f}<br>"
                         "% do ritmo: %{customdata[1]:.1f}%<br>"
                         "Dias do pedido: %{customdata[2]}<br>"
                         "<extra></extra>"
@@ -258,7 +262,10 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
             cols_exib = ["Risco", "Nome", "Supervisor", "Criado", "Acerto",
                          "Dias do pedido", "Pré-baixa", "Ritmo esperado", "% do ritmo", "Valor pedido"]
             st.dataframe(
-                df[cols_exib].style.map(_estilo_risco, subset=["Risco"]),
+                df[cols_exib].style
+                    .map(_estilo_risco, subset=["Risco"])
+                    .format({"Pré-baixa": _R, "Ritmo esperado": _R, "Valor pedido": _R,
+                             "% do ritmo": lambda v: f"{v:.1f}%"}),
                 use_container_width=True, hide_index=True,
             )
 
@@ -276,7 +283,10 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
                     .rename(columns={"Pre_baixa": "Pré-baixa (R$)", "No_ritmo": "No ritmo", "Em_risco": "Em risco"})
                     .sort_values("Pré-baixa (R$)", ascending=False)
                 )
-                st.dataframe(df_sup, use_container_width=True, hide_index=True)
+                st.dataframe(
+                    df_sup.style.format({"Pré-baixa (R$)": _R}),
+                    use_container_width=True, hide_index=True,
+                )
 
 
 # ── Tab 4: Visão gerencial ────────────────────────────────────────────────────
@@ -333,7 +343,8 @@ def _tab_gerencial(df_res: pd.DataFrame, todos_pedidos: list, hoje: date):
                        annotation_text=f"Mínimo R${MINIMO_REV:.0f}", annotation_position="top right")
     fig_rank.update_layout(
         height=max(400, len(df_rank) * 22),
-        xaxis_title="Total vendido (R$)",
+        xaxis_title="Total vendido",
+        xaxis=dict(tickformat=",.0f", tickprefix="R$ "),
         yaxis_title="",
         showlegend=False,
         margin=dict(l=220, r=100),
@@ -398,20 +409,23 @@ def _tab_gerencial(df_res: pd.DataFrame, todos_pedidos: list, hoje: date):
         fig_sup.add_bar(
             x=df_sup_agg["Supervisor"], y=df_sup_agg["Total"],
             name="Total equipe", marker_color="#6B2737",
+            text=df_sup_agg["Total"].apply(_R),
+            textposition="outside",
         )
         fig_sup.add_scatter(
             x=df_sup_agg["Supervisor"], y=df_sup_agg["Media"],
             mode="markers+text", name="Média por rev.",
             marker=dict(size=12, color="#AB6776", symbol="diamond"),
-            text=df_sup_agg["Media"].apply(lambda v: _R(v)),
+            text=df_sup_agg["Media"].apply(_R),
             textposition="top center",
         )
         fig_sup.add_hline(y=MINIMO_REV, line_dash="dot", line_color="#e74c3c",
                           annotation_text="Mínimo/rev", annotation_position="top right")
         fig_sup.update_layout(
             title="Total e média por supervisora",
-            xaxis_tickangle=-20, height=350,
+            xaxis_tickangle=-20, height=380,
             legend=dict(orientation="h"),
+            yaxis=dict(tickformat=",.0f", tickprefix="R$ "),
         )
         st.plotly_chart(fig_sup, use_container_width=True)
 

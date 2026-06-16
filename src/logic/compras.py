@@ -200,40 +200,17 @@ def sugerir_compras_por_modelo(
 
     df["A comprar"] = df.apply(_a_comprar, axis=1)
 
-    # Demanda extra de novas revendedoras — distribuída por categoria, proporc. às vendas
-    df["Novas Rev."] = 0
-    if novas_revendedoras > 0:
-        total_extra = novas_revendedoras * pecas_por_nova
-        vendas_por_cat = df.groupby("Categoria")["Vendas (período)"].sum()
-        total_vendas_geral = vendas_por_cat.sum()
-
-        for cat, cat_df_idx in df.groupby("Categoria").groups.items():
-            cat_extra = (
-                round(vendas_por_cat.get(cat, 0) / total_vendas_geral * total_extra)
-                if total_vendas_geral > 0
-                else round(total_extra / len(vendas_por_cat))
-            )
-            # Distribui entre estilos A e B proporcional às vendas
-            mask_ab = df.index.isin(cat_df_idx) & df["Curva"].isin(["A", "B"])
-            total_vendas_ab = df.loc[mask_ab, "Vendas (período)"].sum()
-            if total_vendas_ab > 0:
-                df.loc[mask_ab, "Novas Rev."] = (
-                    df.loc[mask_ab, "Vendas (período)"] / total_vendas_ab * cat_extra
-                ).round().astype(int)
-            elif mask_ab.any():
-                n = mask_ab.sum()
-                df.loc[mask_ab, "Novas Rev."] = round(cat_extra / n)
-
-    df["A comprar total"] = df["A comprar"] + df["Novas Rev."]
+    # Novas revendedoras: calculado por CATEGORIA em resumo_por_categoria, não por estilo
+    # O detalhamento de estilos mostra apenas demanda de reposição de estoque
 
     # Status
     def _status(r):
         disponivel = r["Em estoque"] + r["Na rua"]
-        if disponivel < r["Mínimo recomendado"] and r["A comprar total"] > 0:
+        if disponivel < r["Mínimo recomendado"] and r["A comprar"] > 0:
             return "🔴 Crítico"
-        if r["Curva"] == "A" and r["A comprar total"] > 0:
+        if r["Curva"] == "A" and r["A comprar"] > 0:
             return "🟡 Comprar A"
-        if r["A comprar total"] > 0:
+        if r["A comprar"] > 0:
             return "🟢 Planejar"
         return "✅ OK"
 
@@ -249,36 +226,56 @@ def sugerir_compras_por_modelo(
     return df
 
 
-def resumo_por_categoria(df: pd.DataFrame) -> pd.DataFrame:
-    """Agrega por categoria: totais de estoque, mínimo, a comprar e curva ABC."""
+def resumo_por_categoria(
+    df: pd.DataFrame,
+    novas_revendedoras: int = 0,
+    pecas_por_nova: int = 40,
+) -> pd.DataFrame:
+    """
+    Agrega por categoria com totais de estoque, curva ABC e novas revendedoras.
+    Novas revendedoras são distribuídas POR CATEGORIA proporcional às vendas —
+    sem atribuir peças a produtos específicos.
+    """
     if df.empty:
         return pd.DataFrame()
 
     agg = df.groupby("Categoria", as_index=False).agg(
-        Estilos=("Estilo", "count"),
-        Itens_A=("Curva", lambda x: (x == "A").sum()),
-        Itens_B=("Curva", lambda x: (x == "B").sum()),
-        Itens_C=("Curva", lambda x: (x == "C").sum()),
-        Vendas_periodo=("Vendas (período)", "sum"),
-        Em_estoque=("Em estoque", "sum"),
-        Na_rua=("Na rua", "sum"),
-        Minimo=("Mínimo recomendado", "sum"),
-        A_comprar=("A comprar", "sum"),
-        Novas_rev=("Novas Rev.", "sum"),
-        A_comprar_total=("A comprar total", "sum"),
+        Estilos        = ("Estilo",           "count"),
+        Itens_A        = ("Curva",            lambda x: (x == "A").sum()),
+        Itens_B        = ("Curva",            lambda x: (x == "B").sum()),
+        Itens_C        = ("Curva",            lambda x: (x == "C").sum()),
+        Vendas_periodo = ("Vendas (período)", "sum"),
+        Em_estoque     = ("Em estoque",       "sum"),
+        Na_rua         = ("Na rua",           "sum"),
+        Minimo         = ("Mínimo recomendado", "sum"),
+        A_comprar      = ("A comprar",        "sum"),
     )
     agg["Total disponível"] = agg["Em_estoque"] + agg["Na_rua"]
+
+    # Novas revendedoras: distribuição por categoria proporcional às vendas
+    total_extra = novas_revendedoras * pecas_por_nova
+    total_vendas = agg["Vendas_periodo"].sum()
+    if novas_revendedoras > 0 and total_vendas > 0:
+        agg["Novas revendedoras"] = (
+            agg["Vendas_periodo"] / total_vendas * total_extra
+        ).round().astype(int)
+    elif novas_revendedoras > 0:
+        # Sem histórico de vendas: divide igualmente entre categorias
+        agg["Novas revendedoras"] = round(total_extra / len(agg))
+    else:
+        agg["Novas revendedoras"] = 0
+
+    agg["A comprar total"] = agg["A_comprar"] + agg["Novas revendedoras"]
+
     agg = agg.rename(columns={
-        "Em_estoque": "Em estoque",
-        "Na_rua": "Na rua",
-        "Minimo": "Mínimo (total)",
+        "Em_estoque":     "Em estoque",
+        "Na_rua":         "Na rua",
+        "Minimo":         "Mínimo (total)",
         "Vendas_periodo": "Vendas (período)",
-        "A_comprar": "A comprar (estoque)",
-        "Novas_rev": "Novas revendedoras",
-        "A_comprar_total": "A comprar total",
-        "Itens_A": "Curva A",
-        "Itens_B": "Curva B",
-        "Itens_C": "Curva C",
+        "A_comprar":      "A comprar (estoque)",
+        "Itens_A":        "Curva A",
+        "Itens_B":        "Curva B",
+        "Itens_C":        "Curva C",
     })
 
     def _status(row):

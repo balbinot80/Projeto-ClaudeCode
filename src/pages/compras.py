@@ -110,16 +110,19 @@ def render():
         return
 
     # ── Resumo global ─────────────────────────────────────────────────────
-    df_cat = resumo_por_categoria(df)
+    df_cat = resumo_por_categoria(df, novas_revendedoras=novas_revendedoras)
 
     novas_detectadas = st.session_state.get("compras_novas_detectadas", 0)
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     col1.metric("Total em estoque", int(df_cat["Em estoque"].sum()))
     col2.metric("Total na rua", int(df_cat["Na rua"].sum()))
     col3.metric("Mínimo recomendado", int(df_cat["Mínimo (total)"].sum()))
-    col4.metric("Total a comprar", int(df_cat["A comprar total"].sum()),
-                delta=f"{len(df[df['A comprar total'] > 0])} estilos", delta_color="off")
+    col4.metric("Reposição de estoque", int(df_cat["A comprar (estoque)"].sum()),
+                delta=f"{len(df[df['A comprar'] > 0])} estilos", delta_color="off")
+    col5.metric("Total a comprar", int(df_cat["A comprar total"].sum()),
+                delta=f"+ {int(df_cat['Novas revendedoras'].sum())} novas rev." if novas_revendedoras > 0 else None,
+                delta_color="off")
 
     if novas_revendedoras > 0:
         st.info(
@@ -179,7 +182,7 @@ def render():
     if cat_sel:
         df_exibir = df_exibir[df_exibir["Categoria"].isin(cat_sel)]
     if apenas_comprar:
-        df_exibir = df_exibir[df_exibir["A comprar total"] > 0]
+        df_exibir = df_exibir[df_exibir["A comprar"] > 0]
     if busca:
         df_exibir = df_exibir[df_exibir["Estilo"].str.contains(busca, case=False, na=False)]
 
@@ -188,7 +191,7 @@ def render():
     for cat in sorted(df_exibir["Categoria"].unique()):
         df_c = df_exibir[df_exibir["Categoria"] == cat].drop(columns="Categoria").copy()
         criticos = (df_c["Status"] == "🔴 Crítico").sum()
-        total_comprar = int(df_c["A comprar total"].sum())
+        total_comprar = int(df_c["A comprar"].sum())
         badge = f" — {criticos} crítico(s) 🔴" if criticos else ""
 
         with st.expander(
@@ -199,7 +202,7 @@ def render():
             rc1.metric("Em estoque", int(df_c["Em estoque"].sum()))
             rc2.metric("Na rua", int(df_c["Na rua"].sum()))
             rc3.metric("Mínimo recomendado", int(df_c["Mínimo recomendado"].sum()))
-            rc4.metric("A comprar total", total_comprar)
+            rc4.metric("A comprar (reposição)", total_comprar)
 
             def _cor(val):
                 if "Crítico" in str(val):
@@ -222,7 +225,7 @@ def render():
 
             if len(cores_presentes) > 1:
                 for cor_label, df_cor in cores_presentes:
-                    st.write(f"**{cor_label}** — {int(df_cor['A comprar total'].sum())} unidades a comprar")
+                    st.write(f"**{cor_label}** — {int(df_cor['A comprar'].sum())} unidades a comprar")
                     st.dataframe(
                         df_cor.style.map(_cor, subset=["Status"]),
                         use_container_width=True, hide_index=True,

@@ -104,7 +104,13 @@ def render():
     try:
         from src.api.jueri_client import _get_lista_pedidos
         todos = _get_lista_pedidos()
-        pedido_baixado = next((p for p in todos if p.get("status") == "Baixado"), None)
+        # Pega o baixado MAIS RECENTE (maior data_baixa) para ter campos mais atuais
+        baixados = [p for p in todos if p.get("status") == "Baixado"]
+        pedido_baixado = max(
+            baixados,
+            key=lambda p: p.get("data_baixa") or "",
+            default=None,
+        )
     except Exception as e:
         pedido_baixado = None
         st.error(f"Erro ao carregar lista: {e}")
@@ -119,10 +125,11 @@ def render():
         st.write("**Todos os campos do pedido baixado (resumo da lista):**")
         st.json(pedido_baixado)
 
-        # Destaca campos de quantidade
+        # Destaca campos de quantidade (inclui "inicial" na busca)
+        termos = ["qtd", "quant", "pec", "item", "total", "inicial", "origin", "consign", "maleta"]
         campos_qtd = {k: v for k, v in pedido_baixado.items()
-                      if any(x in k.lower() for x in ["qtd", "quant", "pec", "item", "total"])}
-        st.write("**Campos relacionados a quantidade/total:**")
+                      if any(x in k.lower() for x in termos)}
+        st.write("**Campos relacionados a quantidade/total/inicial:**")
         st.json(campos_qtd if campos_qtd else {"(nenhum encontrado com esse padrão)": None})
 
         # Campos completos no endpoint individual

@@ -618,7 +618,7 @@ def render(filtro_supervisor: str = ""):
     hoje = date.today()
 
     # ── Filtro de mês ─────────────────────────────────────────────────────────
-    meses = meses_disponiveis(7)
+    meses = meses_disponiveis(7, futuros=1)
     opcoes = [f"{m:02d}/{y}" for y, m in meses]
 
     col_f, col_info = st.columns([2, 5])

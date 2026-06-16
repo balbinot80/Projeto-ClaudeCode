@@ -11,19 +11,34 @@ def parse_date(s):
         return None
 
 
-def meses_disponiveis(n: int = 7):
-    """Retorna lista de (ano, mes) dos últimos n meses, mais recente primeiro."""
+def meses_disponiveis(n: int = 7, futuros: int = 1):
+    """
+    Retorna lista de (ano, mes) com `futuros` meses à frente + mês atual + últimos n-1 meses.
+    Ordem: mais recente (futuro) primeiro.
+    """
     hoje = date.today()
     meses = []
+
+    # Meses futuros
+    for i in range(futuros, 0, -1):
+        m = hoje.month + i
+        y = hoje.year
+        while m > 12:
+            m -= 12
+            y += 1
+        if (y, m) not in meses:
+            meses.append((y, m))
+
+    # Mês atual + passados
     for i in range(n):
-        d = date(hoje.year, hoje.month, 1)
-        m = d.month - i
-        y = d.year
+        m = hoje.month - i
+        y = hoje.year
         while m <= 0:
             m += 12
             y -= 1
         if (y, m) not in meses:
             meses.append((y, m))
+
     return meses
 
 

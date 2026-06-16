@@ -56,32 +56,22 @@ def nivel_por_pecas(qtd) -> str:
 
 def _qtd_original(p: dict) -> int:
     """
-    Quantidade ORIGINAL de peças do pedido (total consignado, não o vendido).
+    Quantidade original de peças do pedido (total consignado na maleta).
 
-    Para pedidos ABERTOS: `quantidade` já é o total consignado.
-    Para pedidos BAIXADOS: `quantidade` pode refletir só o que foi vendido.
-      → tenta campos alternativos; se nenhum, soma quantidade + quantidade_pre_baixa
-        como estimativa do total original.
+    Pedidos ABERTOS:  `quantidade` = total consignado (correto).
+    Pedidos BAIXADOS: `quantidade_antes_baixa` = total que foi na maleta (campo correto).
+                      `quantidade` = apenas o que foi efetivamente vendido (errado para nível).
     """
-    # Campos candidatos ao total original (em ordem de preferência)
-    for campo in ("quantidade_total", "qtd_total", "quantidade_original", "qtd_original"):
-        v = p.get(campo)
-        if v is not None:
+    if p.get("status") == "Baixado":
+        qab = p.get("quantidade_antes_baixa")
+        if qab is not None:
             try:
-                iv = int(float(v))
+                iv = int(float(qab))
                 if iv > 0:
                     return iv
             except (ValueError, TypeError):
                 pass
-
-    qtd     = _qtd_original(p)
-    qtd_pb  = int(float(p.get("quantidade_pre_baixa") or 0))
-
-    # Para pedidos baixados, a soma pode recuperar o total original
-    if p.get("status") == "Baixado" and qtd_pb > 0:
-        return qtd + qtd_pb
-
-    return qtd
+    return int(float(p.get("quantidade") or 0))
 
 
 def _mes_n_atras(mes: int, ano: int, n: int):
@@ -159,8 +149,8 @@ def classificar_revendedoras(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
                 continue
             vendas = float(p.get("valor_total") or 0)
             tipo   = "🔒 Baixado (fechado)"
-            nivel  = nivel_por_vendas(vendas)   # infere pelo valor — API não guarda qtd original
-            qtd    = None                        # não disponível
+            qtd    = _qtd_original(p)   # usa quantidade_antes_baixa (total original da maleta)
+            nivel  = nivel_por_pecas(qtd)
 
         else:  # Aberto
             d = parse_date(p.get("data_acerto"))

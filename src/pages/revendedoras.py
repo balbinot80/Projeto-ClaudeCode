@@ -466,8 +466,8 @@ def _tab_niveis(todos_pedidos: list, mes: int, ano: int):
     if not df_bx.empty:
         st.markdown("#### 🔒 Pedidos fechados no mês — resultado definitivo")
         st.caption(
-            "Pedidos já encerrados. Valor = **valor_total** do pedido. "
-            "**Nível inferido pelo valor vendido** — a API não guarda a quantidade original de peças após o fechamento."
+            "Pedidos já encerrados. Nível pelo campo **quantidade_antes_baixa** (total original da maleta). "
+            "Valor = **valor_total** vendido."
         )
         for nv in ["Diamante", "Ouro", "Pérola", "Sem nível"]:
             df_nv = df_bx[df_bx["Nível"] == nv]
@@ -477,8 +477,8 @@ def _tab_niveis(todos_pedidos: list, mes: int, ano: int):
                 f"{ICONE_NIVEL.get(nv, '')} **{nv}** — {len(df_nv)} pedido(s) fechado(s)",
                 expanded=True,
             ):
-                exib = df_nv[["Nome", "Supervisor", "Vendas mês", "Mínimo nível", "Status"]].copy()
-                exib.columns = ["Nome", "Supervisor", "Vendas (R$)", "Mínimo (R$)", "Status"]
+                exib = df_nv[["Nome", "Supervisor", "Peças pedido", "Vendas mês", "Mínimo nível", "Status"]].copy()
+                exib.columns = ["Nome", "Supervisor", "Peças (maleta)", "Vendas (R$)", "Mínimo (R$)", "Status"]
                 st.dataframe(
                     exib.style
                         .map(_estilo_status, subset=["Status"])

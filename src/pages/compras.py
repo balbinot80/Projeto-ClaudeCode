@@ -11,8 +11,10 @@ from src.logic.compras import (
 _MAX_BAIXADOS = 120  # pedidos baixados mais recentes usados no cálculo de velocidade
 
 
-def _calcular_e_salvar(dias_cobertura, dias_historico, lead_time, chave):
+def _calcular_e_salvar(dias_cobertura, dias_historico, lead_time, novas_revendedoras, chave):
     """Executa o cálculo pesado e salva resultados no session_state."""
+    from src.api.jueri_client import get_pedidos_abertos, get_pedidos_baixados
+    from src.logic.compras import contar_novas_revendedoras
     placeholder = st.empty()
 
     with placeholder.container():
@@ -31,10 +33,17 @@ def _calcular_e_salvar(dias_cobertura, dias_historico, lead_time, chave):
         )
     itens_vendidos = get_itens_pedidos_baixados(dias=dias_historico, max_pedidos=_MAX_BAIXADOS)
 
+    # Conta novas revendedoras detectadas automaticamente (pedido aberto sem histórico)
+    pedidos_abertos = get_pedidos_abertos()
+    pedidos_baixados = get_pedidos_baixados()
+    novas_detectadas = contar_novas_revendedoras(pedidos_abertos, pedidos_baixados)
+    total_novas = novas_revendedoras + novas_detectadas
+
     with placeholder.container():
         st.info("Passo 4/4 — Calculando sugestões de compra...")
     df = sugerir_compras_por_modelo(
         produtos, itens_vendidos, na_rua_map, categorias_map,
+        novas_revendedoras=total_novas,
         dias_cobertura=dias_cobertura, dias_historico=dias_historico, lead_time=lead_time,
     )
 
@@ -42,6 +51,8 @@ def _calcular_e_salvar(dias_cobertura, dias_historico, lead_time, chave):
     st.session_state["compras_itens"] = itens_vendidos
     st.session_state["compras_produtos"] = produtos
     st.session_state["compras_categorias"] = categorias_map
+    st.session_state["compras_novas_detectadas"] = novas_detectadas
+    st.session_state["compras_total_novas"] = total_novas
     st.session_state["compras_chave"] = chave
     placeholder.empty()
 
@@ -50,20 +61,29 @@ def render():
     st.header("Programação de Compras")
 
     # ── Parâmetros ────────────────────────────────────────────────────────
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         dias_cobertura = st.slider("Dias de cobertura desejados", 30, 180, 60)
     with col2:
         dias_historico = st.slider("Histórico de vendas (dias)", 30, 365, 90)
     with col3:
         lead_time = st.slider("Prazo de entrega (dias)", 7, 30, 14)
+    with col4:
+        novas_revendedoras = st.slider(
+            "Previsão de novas revendedoras",
+            0, 100, 0,
+            help="Revendedoras previstas para entrar nos próximos meses. "
+                 "Cada nova revendedora adiciona 40 peças distribuídas por categoria. "
+                 "Revendedoras já detectadas (pedido aberto sem histórico) são somadas automaticamente.",
+        )
 
     st.caption(
-        f"Safety Stock = 1,65 × σ × √({lead_time} dias) → 95% de nível de serviço. "
-        f"Usa os {_MAX_BAIXADOS} pedidos baixados mais recentes no período selecionado."
+        f"Cobertura: A={dias_cobertura}d · B={int(dias_cobertura*0.75)}d · C={int(dias_cobertura*0.5)}d. "
+        f"Mínimo = média_diária × {lead_time} dias × 1,5. "
+        f"Usa os {_MAX_BAIXADOS} pedidos mais recentes."
     )
 
-    chave = f"compras_{dias_cobertura}_{dias_historico}_{lead_time}"
+    chave = f"compras_{dias_cobertura}_{dias_historico}_{lead_time}_{novas_revendedoras}"
     ja_calculado = st.session_state.get("compras_chave") == chave
 
     col_btn1, col_btn2 = st.columns([2, 1])
@@ -75,7 +95,7 @@ def render():
 
     if calcular:
         try:
-            _calcular_e_salvar(dias_cobertura, dias_historico, lead_time, chave)
+            _calcular_e_salvar(dias_cobertura, dias_historico, lead_time, novas_revendedoras, chave)
             st.rerun()
         except Exception as e:
             st.error(f"Erro ao calcular: {e}")
@@ -96,12 +116,23 @@ def render():
     # ── Resumo global ─────────────────────────────────────────────────────
     df_cat = resumo_por_categoria(df)
 
+    novas_detectadas = st.session_state.get("compras_novas_detectadas", 0)
+    total_novas = st.session_state.get("compras_total_novas", 0)
+
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total em estoque", int(df_cat["Em estoque"].sum()))
     col2.metric("Total na rua", int(df_cat["Na rua"].sum()))
     col3.metric("Mínimo recomendado", int(df_cat["Mínimo (total)"].sum()))
-    col4.metric("Total a comprar", int(df_cat["A comprar"].sum()),
-                delta=f"{len(df[df['A comprar'] > 0])} estilos", delta_color="off")
+    col4.metric("Total a comprar", int(df_cat["A comprar total"].sum()),
+                delta=f"{len(df[df['A comprar total'] > 0])} estilos", delta_color="off")
+
+    if total_novas > 0:
+        st.info(
+            f"**Novas revendedoras no cálculo: {total_novas}** "
+            f"({novas_detectadas} detectadas automaticamente + "
+            f"{total_novas - novas_detectadas} previstas) — "
+            f"40 peças × {total_novas} = **{total_novas * 40} peças extras** distribuídas por categoria."
+        )
 
     # ── Resumo por categoria ───────────────────────────────────────────────
     st.divider()
@@ -114,10 +145,11 @@ def render():
             return "background-color: #fff3cd"
         return ""
 
+    colunas_cat = ["Categoria", "Curva A", "Curva B", "Curva C",
+                   "Vendas (período)", "Em estoque", "Na rua",
+                   "Mínimo (total)", "A comprar (estoque)", "Novas revendedoras", "A comprar total", "Status"]
     st.dataframe(
-        df_cat[["Categoria", "Estilos", "Vendas (período)", "Em estoque",
-                "Na rua", "Total disponível", "Mínimo (total)", "A comprar", "Status"]]
-        .style.map(_cor_status, subset=["Status"]),
+        df_cat[colunas_cat].style.map(_cor_status, subset=["Status"]),
         use_container_width=True, hide_index=True,
     )
 
@@ -148,7 +180,7 @@ def render():
     if cat_sel:
         df_exibir = df_exibir[df_exibir["Categoria"].isin(cat_sel)]
     if apenas_comprar:
-        df_exibir = df_exibir[df_exibir["A comprar"] > 0]
+        df_exibir = df_exibir[df_exibir["A comprar total"] > 0]
     if busca:
         df_exibir = df_exibir[df_exibir["Estilo"].str.contains(busca, case=False, na=False)]
 
@@ -157,7 +189,7 @@ def render():
     for cat in sorted(df_exibir["Categoria"].unique()):
         df_c = df_exibir[df_exibir["Categoria"] == cat].drop(columns="Categoria").copy()
         criticos = (df_c["Status"] == "🔴 Crítico").sum()
-        total_comprar = int(df_c["A comprar"].sum())
+        total_comprar = int(df_c["A comprar total"].sum())
         badge = f" — {criticos} crítico(s) 🔴" if criticos else ""
 
         with st.expander(
@@ -168,7 +200,7 @@ def render():
             rc1.metric("Em estoque", int(df_c["Em estoque"].sum()))
             rc2.metric("Na rua", int(df_c["Na rua"].sum()))
             rc3.metric("Mínimo recomendado", int(df_c["Mínimo recomendado"].sum()))
-            rc4.metric("A comprar", total_comprar)
+            rc4.metric("A comprar total", total_comprar)
 
             def _cor(val):
                 if "Crítico" in str(val):

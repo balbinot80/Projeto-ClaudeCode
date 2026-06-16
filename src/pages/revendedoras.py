@@ -352,8 +352,8 @@ def _tab_gerencial(df_res: pd.DataFrame, todos_pedidos: list, hoje: date):
             "Uma equipe saudável tem a maior concentração acima do mínimo."
         )
         faixas = [0, 300, 600, 1000, 2000, 5000, float("inf")]
-        rotulos = ["R$0", "R$1–300", "R$301–600", "R$601–1K", "R$1K–2K", "R$2K–5K", "> R$5K"]
-        cores_faixa = ["#e74c3c", "#e67e22", "#f1c40f", "#2ecc71", "#27ae60", "#1a7a4a", "#0d4a2a"]
+        rotulos = ["R$0–300", "R$301–600", "R$601–1K", "R$1K–2K", "R$2K–5K", "> R$5K"]
+        cores_faixa = ["#e74c3c", "#f39c12", "#f1c40f", "#2ecc71", "#27ae60", "#1a7a4a"]
 
         df_res["Faixa"] = pd.cut(
             df_res["Total"],

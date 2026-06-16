@@ -102,6 +102,20 @@ def _mes_a_frente(mes: int, ano: int, n: int = 1):
     return mes, ano
 
 
+def nivel_por_vendas(valor: float) -> str:
+    """
+    Para pedidos já fechados (baixados): inferimos o nível alcançado pelo valor vendido,
+    pois a quantidade original consignada não é guardada pela API após o fechamento.
+    """
+    if valor >= 2500.0:
+        return "Diamante"
+    if valor >= 1000.0:
+        return "Ouro"
+    if valor > 0:
+        return "Pérola"
+    return "Sem nível"
+
+
 def _status_nivel(nivel: str, vendas: float) -> str:
     if nivel == "Sem nível":
         return "—"
@@ -121,7 +135,11 @@ def classificar_revendedoras(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
     - '🔒 Baixado (fechado)': pedido encerrado com data_baixa no mês → usa valor_total
     - '🔓 Em aberto':         pedido aberto com data_acerto no mês   → usa valor_pre_baixa
 
-    Cada tipo fica separado para não misturar resultados definitivos com parciais.
+    ORIGEM DO NÍVEL:
+    - Pedidos ABERTOS:  `quantidade` do próprio pedido = peças consignadas → nível por peças
+    - Pedidos BAIXADOS: a API não preserva a quantidade original após o fechamento
+                        (`quantidade` passa a refletir apenas o que foi vendido).
+                        Usamos o VALOR VENDIDO para inferir o nível alcançado.
     """
     rows = []
 
@@ -134,8 +152,6 @@ def classificar_revendedoras(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
         comprador  = p.get("comprador") or {}
         nome       = comprador.get("nome") or f"Rev {rid}"
         supervisor = p.get("supervisor_nome") or "Sem supervisora"
-        qtd        = _qtd_original(p)
-        nivel      = nivel_por_pecas(qtd)
 
         if status == "Baixado":
             d = parse_date(p.get("data_baixa"))
@@ -143,6 +159,8 @@ def classificar_revendedoras(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
                 continue
             vendas = float(p.get("valor_total") or 0)
             tipo   = "🔒 Baixado (fechado)"
+            nivel  = nivel_por_vendas(vendas)   # infere pelo valor — API não guarda qtd original
+            qtd    = None                        # não disponível
 
         else:  # Aberto
             d = parse_date(p.get("data_acerto"))
@@ -150,6 +168,8 @@ def classificar_revendedoras(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
                 continue
             vendas = float(p.get("valor_pre_baixa") or 0)
             tipo   = "🔓 Em aberto"
+            qtd    = int(float(p.get("quantidade") or 0))
+            nivel  = nivel_por_pecas(qtd)
 
         rows.append({
             "fk_revendedor_id": rid,

@@ -423,29 +423,6 @@ def _tab_gerencial(df_res: pd.DataFrame, todos_pedidos: list, hoje: date):
     else:
         st.info("Sem pedidos abertos nos últimos 30 dias para o funil.")
 
-    # ── Heatmap supervisora × risco ───────────────────────────────────────────
-    st.divider()
-    st.markdown("#### 🗺️ Mapa de risco — supervisora × situação")
-    st.caption(
-        "Heatmap mostrando a distribuição de situações por equipe. "
-        "Supervisoras com muitas revendedoras 🔴 vermelhas necessitam atenção imediata."
-    )
-    if not df_res.empty:
-        heat_data = (
-            df_res.groupby(["Supervisor", "Risco"], as_index=False)
-            .size()
-            .rename(columns={"size": "Qtd"})
-        )
-        pivot = heat_data.pivot(index="Supervisor", columns="Risco", values="Qtd").fillna(0)
-        fig_heat = px.imshow(
-            pivot,
-            color_continuous_scale=["#2ecc71", "#f39c12", "#e74c3c"],
-            text_auto=True,
-            aspect="auto",
-            title="Número de revendedoras por supervisora e situação",
-        )
-        fig_heat.update_layout(height=max(250, len(pivot) * 60))
-        st.plotly_chart(fig_heat, use_container_width=True)
 
 
 # ── Render principal ──────────────────────────────────────────────────────────

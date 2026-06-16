@@ -57,9 +57,26 @@ def render():
     else:
         st.warning(f"Página 2: HTTP {code2}")
 
+    # ── Estrutura de produto ───────────────────────────────────────────────
+    st.divider()
+    st.subheader("2. Estrutura de um produto `/produto` — todos os campos disponíveis")
+
+    code_p, r_p = _get("produto", {"page": 1})
+    if code_p == 200 and isinstance(r_p, dict):
+        prods = r_p.get("data", [])
+        if prods:
+            st.write(f"**Campos do produto** (`{len(prods)} na página 1`):")
+            st.write(list(prods[0].keys()))
+            st.write("**Exemplo de produto completo:**")
+            st.json(prods[0])
+        else:
+            st.warning("Nenhum produto retornado.")
+    else:
+        st.error(f"HTTP {code_p}: {str(r_p)[:200]}")
+
     # ── Pedido individual ──────────────────────────────────────────────────
     st.divider()
-    st.subheader("2. Pedido individual `/pedido/{id}` — tem itens?")
+    st.subheader("3. Pedido individual `/pedido/{id}` — tem itens?")
 
     if dados_p1:
         pid = dados_p1[0].get("id")

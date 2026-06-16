@@ -99,33 +99,35 @@ def render():
     # ── Pedido BAIXADO individual — campos de quantidade original ─────────
     st.divider()
     st.subheader("4. Pedido BAIXADO — campos de quantidade (diagnóstico de nível)")
-    st.caption("Busca o primeiro pedido com status 'Baixado' para identificar o campo da quantidade original do pedido.")
+    st.caption("Usa a lista completa de pedidos (cacheada) para encontrar o primeiro Baixado e inspecionar seus campos.")
 
-    pedido_baixado = None
-    for pagina in range(1, 6):
-        code_pg, r_pg = _get("pedido", {"page": pagina})
-        if code_pg != 200 or not isinstance(r_pg, dict):
-            break
-        for p in r_pg.get("data", []):
-            if p.get("status") == "Baixado":
-                pedido_baixado = p
-                break
-        if pedido_baixado:
-            break
+    try:
+        from src.api.jueri_client import _get_lista_pedidos
+        todos = _get_lista_pedidos()
+        pedido_baixado = next((p for p in todos if p.get("status") == "Baixado"), None)
+    except Exception as e:
+        pedido_baixado = None
+        st.error(f"Erro ao carregar lista: {e}")
 
     if not pedido_baixado:
-        st.warning("Nenhum pedido com status 'Baixado' encontrado nas primeiras 5 páginas.")
+        st.warning("Nenhum pedido com status 'Baixado' encontrado na lista completa.")
     else:
         pid_bx = pedido_baixado.get("id")
         st.write(f"Pedido baixado encontrado: **ID {pid_bx}**")
 
-        # Campos de quantidade no resumo (lista)
-        campos_qtd_lista = {k: v for k, v in pedido_baixado.items()
-                            if any(x in k.lower() for x in ["qtd", "quant", "pec", "item"])}
-        st.write("**Campos de quantidade no resumo (endpoint lista):**")
-        st.json(campos_qtd_lista if campos_qtd_lista else {"(nenhum encontrado)": None})
+        # Todos os campos do resumo (lista)
+        st.write("**Todos os campos do pedido baixado (resumo da lista):**")
+        st.json(pedido_baixado)
+
+        # Destaca campos de quantidade
+        campos_qtd = {k: v for k, v in pedido_baixado.items()
+                      if any(x in k.lower() for x in ["qtd", "quant", "pec", "item", "total"])}
+        st.write("**Campos relacionados a quantidade/total:**")
+        st.json(campos_qtd if campos_qtd else {"(nenhum encontrado com esse padrão)": None})
 
         # Campos completos no endpoint individual
+        st.write("---")
+        st.write(f"**Campos do endpoint individual `/pedido/{pid_bx}`:**")
         code_bx, r_bx = _get(f"pedido/{pid_bx}")
         if code_bx == 200 and isinstance(r_bx, dict):
             reg = r_bx.get("data", r_bx)
@@ -134,9 +136,9 @@ def render():
             if isinstance(reg, dict):
                 campos_qtd_ind = {k: v for k, v in reg.items()
                                   if any(x in k.lower() for x in ["qtd", "quant", "pec", "item", "total"])}
-                st.write("**Campos de quantidade/total no endpoint individual:**")
+                st.write("**Campos de quantidade/total (endpoint individual):**")
                 st.json(campos_qtd_ind)
-                st.write("**Registro completo do pedido baixado:**")
+                st.write("**Registro completo:**")
                 st.json(reg)
         elif code_bx == 429:
             st.error("⛔ HTTP 429 — limite atingido.")

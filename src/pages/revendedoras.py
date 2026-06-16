@@ -9,6 +9,10 @@ from src.logic.revendedoras import (
     meses_disponiveis, calcular_competencia,
     pedidos_abertos_sem_prebaixa, analise_periodo,
 )
+from src.logic.niveis import (
+    NIVEIS_PECAS, MINIMO_VENDAS, NIVEL_SUPERIOR, LIMIAR_SUBIDA, ICONE_NIVEL,
+    classificar_revendedoras, alertas_rebaixamento, alertas_subida,
+)
 
 _CORES_RISCO = {
     "🟢 No ritmo":           "#2ecc71",
@@ -425,6 +429,102 @@ def _tab_gerencial(df_res: pd.DataFrame, todos_pedidos: list, hoje: date):
 
 
 
+# ── Tab 5: Níveis ─────────────────────────────────────────────────────────────
+
+def _tab_niveis(todos_pedidos: list, mes: int, ano: int):
+    st.subheader("Classificação por nível — " + f"{mes:02d}/{ano}")
+    st.caption(
+        "Nível determinado pela quantidade de peças do pedido de consignação ativo. "
+        "**Pérola**: 40–54 peças · **Ouro**: 55–75 peças · **Diamante**: 76–500 peças."
+    )
+
+    df_cls = classificar_revendedoras(todos_pedidos, mes, ano)
+
+    # ── Resumo por nível ──────────────────────────────────────────────────────
+    niveis_ordem = ["Diamante", "Ouro", "Pérola", "Sem nível"]
+    cols_nv = st.columns(4)
+    for col, nv in zip(cols_nv, niveis_ordem):
+        qtd = int((df_cls["Nível"] == nv).sum()) if not df_cls.empty else 0
+        col.metric(f"{ICONE_NIVEL.get(nv, '')} {nv}", qtd)
+
+    st.divider()
+
+    if df_cls.empty:
+        st.info("Nenhuma revendedora com pedido aberto no mês selecionado.")
+        return
+
+    # ── Tabela por nível ──────────────────────────────────────────────────────
+    def _estilo_status(val):
+        cores = {
+            "✅ Mantendo nível":    "color: #27ae60; font-weight: bold",
+            "⚠️ Abaixo do mínimo": "color: #e67e22; font-weight: bold",
+            "🔴 Sem vendas":        "color: #e74c3c; font-weight: bold",
+        }
+        return cores.get(str(val), "")
+
+    for nv in ["Diamante", "Ouro", "Pérola", "Sem nível"]:
+        df_nv = df_cls[df_cls["Nível"] == nv].copy()
+        if df_nv.empty:
+            continue
+        with st.expander(
+            f"{ICONE_NIVEL.get(nv, '')} **{nv}** — {len(df_nv)} revendedora(s)",
+            expanded=True,
+        ):
+            exib = df_nv[["Nome", "Supervisor", "Peças pedido", "Vendas mês", "Mínimo nível", "Status"]].copy()
+            exib.columns = ["Nome", "Supervisor", "Peças", "Vendas mês (R$)", "Mínimo (R$)", "Status"]
+            st.dataframe(
+                exib.style
+                    .map(_estilo_status, subset=["Status"])
+                    .format({"Vendas mês (R$)": _R, "Mínimo (R$)": _R}),
+                use_container_width=True, hide_index=True,
+            )
+
+    st.divider()
+
+    # ── Alerta: risco de rebaixamento ─────────────────────────────────────────
+    st.markdown("#### ⬇️ Risco de rebaixamento")
+    st.caption(
+        "Revendedoras que ficaram abaixo do mínimo do seu nível nos **2 meses anteriores consecutivos**. "
+        "Se mantiverem esse desempenho, devem retornar ao nível anterior no próximo mês."
+    )
+    df_reb = alertas_rebaixamento(todos_pedidos, mes, ano)
+    if df_reb.empty:
+        st.success("Nenhuma revendedora em risco de rebaixamento nos últimos 2 meses.")
+    else:
+        # identifica colunas de vendas dinamicamente
+        cols_vendas = [c for c in df_reb.columns if c.startswith("Vendas ")]
+        fmt_cols = {"Mínimo do nível": _R}
+        for c in cols_vendas:
+            fmt_cols[c] = _R
+        st.error(f"⚠️ {len(df_reb)} revendedora(s) em risco de rebaixamento!")
+        st.dataframe(
+            df_reb.style.format(fmt_cols),
+            use_container_width=True, hide_index=True,
+        )
+
+    st.divider()
+
+    # ── Alerta: potencial de subida ───────────────────────────────────────────
+    st.markdown("#### ⬆️ Potencial de subida de nível")
+    st.caption(
+        "Revendedoras que já atingiram **75% ou mais** da meta de vendas do próximo nível. "
+        "Priorize o acompanhamento para que cheguem à meta e subam de nível no próximo mês."
+    )
+    df_sub = alertas_subida(todos_pedidos, mes, ano)
+    if df_sub.empty:
+        st.info("Nenhuma revendedora próxima de subir de nível neste mês.")
+    else:
+        st.success(f"🚀 {len(df_sub)} revendedora(s) com potencial de subida!")
+        st.dataframe(
+            df_sub.style.format({
+                "Vendas mês":  _R,
+                "Meta subida": _R,
+                "Falta":       _R,
+            }),
+            use_container_width=True, hide_index=True,
+        )
+
+
 # ── Render principal ──────────────────────────────────────────────────────────
 
 def render(filtro_supervisor: str = ""):
@@ -509,11 +609,12 @@ def render(filtro_supervisor: str = ""):
               help="Pedidos abertos com R$0 + revendedoras com total = R$0")
 
     # ── Tabs ──────────────────────────────────────────────────────────────────
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📅 Competência",
         "⚠️ Alertas",
         "⏱️ Análise por período",
         "📈 Visão gerencial",
+        "🏅 Níveis",
     ])
 
     with tab1:
@@ -527,3 +628,6 @@ def render(filtro_supervisor: str = ""):
 
     with tab4:
         _tab_gerencial(df_res, todos_pedidos, hoje)
+
+    with tab5:
+        _tab_niveis(todos_pedidos, mes_num, ano_num)

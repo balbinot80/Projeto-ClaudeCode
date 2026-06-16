@@ -33,17 +33,16 @@ def _calcular_e_salvar(dias_cobertura, dias_historico, lead_time, novas_revended
         )
     itens_vendidos = get_itens_pedidos_baixados(dias=dias_historico, max_pedidos=_MAX_BAIXADOS)
 
-    # Conta novas revendedoras detectadas automaticamente (pedido aberto sem histórico)
+    # Detecta novas revendedoras automaticamente (informativo — não soma ao slider)
     pedidos_abertos = get_pedidos_abertos()
     pedidos_baixados = get_pedidos_baixados()
     novas_detectadas = contar_novas_revendedoras(pedidos_abertos, pedidos_baixados)
-    total_novas = novas_revendedoras + novas_detectadas
 
     with placeholder.container():
         st.info("Passo 4/4 — Calculando sugestões de compra...")
     df = sugerir_compras_por_modelo(
         produtos, itens_vendidos, na_rua_map, categorias_map,
-        novas_revendedoras=total_novas,
+        novas_revendedoras=novas_revendedoras,  # usa apenas o valor do slider
         dias_cobertura=dias_cobertura, dias_historico=dias_historico, lead_time=lead_time,
     )
 
@@ -52,7 +51,6 @@ def _calcular_e_salvar(dias_cobertura, dias_historico, lead_time, novas_revended
     st.session_state["compras_produtos"] = produtos
     st.session_state["compras_categorias"] = categorias_map
     st.session_state["compras_novas_detectadas"] = novas_detectadas
-    st.session_state["compras_total_novas"] = total_novas
     st.session_state["compras_chave"] = chave
     placeholder.empty()
 
@@ -72,9 +70,8 @@ def render():
         novas_revendedoras = st.slider(
             "Previsão de novas revendedoras",
             0, 100, 0,
-            help="Revendedoras previstas para entrar nos próximos meses. "
-                 "Cada nova revendedora adiciona 40 peças distribuídas por categoria. "
-                 "Revendedoras já detectadas (pedido aberto sem histórico) são somadas automaticamente.",
+            help="Quantidade de novas revendedoras a considerar no cálculo. "
+                 "Cada uma adiciona 40 peças distribuídas por categoria proporcionalmente às vendas.",
         )
 
     st.caption(
@@ -117,7 +114,6 @@ def render():
     df_cat = resumo_por_categoria(df)
 
     novas_detectadas = st.session_state.get("compras_novas_detectadas", 0)
-    total_novas = st.session_state.get("compras_total_novas", 0)
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total em estoque", int(df_cat["Em estoque"].sum()))
@@ -126,12 +122,16 @@ def render():
     col4.metric("Total a comprar", int(df_cat["A comprar total"].sum()),
                 delta=f"{len(df[df['A comprar total'] > 0])} estilos", delta_color="off")
 
-    if total_novas > 0:
+    if novas_revendedoras > 0:
         st.info(
-            f"**Novas revendedoras no cálculo: {total_novas}** "
-            f"({novas_detectadas} detectadas automaticamente + "
-            f"{total_novas - novas_detectadas} previstas) — "
-            f"40 peças × {total_novas} = **{total_novas * 40} peças extras** distribuídas por categoria."
+            f"**{novas_revendedoras} novas revendedoras** no cálculo — "
+            f"{novas_revendedoras} × 40 peças = **{novas_revendedoras * 40} peças extras** "
+            f"distribuídas por categoria proporcionalmente às vendas."
+        )
+    if novas_detectadas > 0:
+        st.caption(
+            f"ℹ️ {novas_detectadas} revendedora(s) com pedido aberto sem histórico anterior detectada(s). "
+            "Se quiser incluí-las no cálculo, ajuste o slider 'Previsão de novas revendedoras' acima e recalcule."
         )
 
     # ── Resumo por categoria ───────────────────────────────────────────────
@@ -154,9 +154,9 @@ def render():
     )
 
     fig_cat = px.bar(
-        df_cat.sort_values("A comprar", ascending=False),
+        df_cat.sort_values("A comprar total", ascending=False),
         x="Categoria",
-        y=["Em estoque", "Na rua", "A comprar"],
+        y=["Em estoque", "Na rua", "A comprar total"],
         barmode="group",
         color_discrete_sequence=["#AB6776", "#D4A0AA", "#6B2737"],
         title="Estoque atual vs. quantidade a comprar por categoria",
@@ -223,7 +223,7 @@ def render():
 
             if len(cores_presentes) > 1:
                 for cor_label, df_cor in cores_presentes:
-                    st.write(f"**{cor_label}** — {int(df_cor['A comprar'].sum())} unidades a comprar")
+                    st.write(f"**{cor_label}** — {int(df_cor['A comprar total'].sum())} unidades a comprar")
                     st.dataframe(
                         df_cor.style.map(_cor, subset=["Status"]),
                         use_container_width=True, hide_index=True,

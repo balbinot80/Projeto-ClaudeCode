@@ -151,28 +151,6 @@ def _tab_alertas(df_zero: pd.DataFrame, df_res: pd.DataFrame):
                 use_container_width=True, hide_index=True,
             )
 
-    # Tabela consolidada com semáforo
-    if not df_res.empty:
-        st.divider()
-        st.markdown("#### Semáforo geral do mês")
-        n_ok = (df_res["Total"] >= MINIMO_REV).sum()
-        n_abx = ((df_res["Total"] > 0) & (df_res["Total"] < MINIMO_REV)).sum()
-        n_zero_res = (df_res["Total"] == 0).sum()
-
-        c1, c2, c3 = st.columns(3)
-        c1.metric("🟢 Acima do mínimo", n_ok)
-        c2.metric("🟡 Abaixo do mínimo", n_abx)
-        c3.metric("🔴 Sem vendas (baixados)", n_zero_res)
-
-        fig = px.pie(
-            values=[n_ok, n_abx, n_zero_res],
-            names=["🟢 OK (≥ R$300)", "🟡 Abaixo do mínimo", "🔴 Sem vendas"],
-            color_discrete_sequence=["#2ecc71", "#f39c12", "#e74c3c"],
-            title="Distribuição de risco das revendedoras",
-            hole=0.4,
-        )
-        fig.update_traces(textinfo="percent+value")
-        st.plotly_chart(fig, use_container_width=True)
 
 
 # ── Tab 3: Análise por período ────────────────────────────────────────────────

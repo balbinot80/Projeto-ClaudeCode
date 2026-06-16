@@ -514,13 +514,28 @@ def _tab_niveis(todos_pedidos: list, mes: int, ano: int):
     if df_sub.empty:
         st.info("Nenhuma revendedora próxima de subir de nível neste mês.")
     else:
-        st.success(f"🚀 {len(df_sub)} revendedora(s) com potencial de subida!")
+        ja_atingiu = (df_sub["Situação"] == "✅ Já atingiu a meta").sum()
+        proxima    = (df_sub["Situação"] == "🔜 Próxima de subir").sum()
+        st.success(
+            f"🚀 {len(df_sub)} revendedora(s) com potencial de subida — "
+            f"{ja_atingiu} já atingiram a meta · {proxima} próximas"
+        )
+
+        def _estilo_sit(val):
+            if "Já atingiu" in str(val):
+                return "color: #27ae60; font-weight: bold"
+            if "Próxima" in str(val):
+                return "color: #e67e22; font-weight: bold"
+            return ""
+
         st.dataframe(
-            df_sub.style.format({
-                "Vendas mês":  _R,
-                "Meta subida": _R,
-                "Falta":       _R,
-            }),
+            df_sub.style
+                .map(_estilo_sit, subset=["Situação"])
+                .format({
+                    "Vendas mês":  _R,
+                    "Meta subida": _R,
+                    "Falta":       _R,
+                }),
             use_container_width=True, hide_index=True,
         )
 

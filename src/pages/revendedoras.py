@@ -62,11 +62,14 @@ def _tab_competencia(df_res: pd.DataFrame, mes_label: str):
     bx_geral = df_res["Baixado"].sum()
 
     # Cards de totais
-    c1, c2, c3, c4 = st.columns(4)
+    ticket_geral = total_geral / len(df_res) if len(df_res) > 0 else 0
+
+    c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Revendedoras no mês", len(df_res))
     c2.metric("Total geral", _R(total_geral))
     c3.metric("  ↳ Pedidos baixados", _R(bx_geral))
     c4.metric("  ↳ Pré-baixa (abertos)", _R(pb_geral))
+    c5.metric("🎯 Ticket médio", _R(ticket_geral))
 
     st.divider()
 
@@ -77,9 +80,10 @@ def _tab_competencia(df_res: pd.DataFrame, mes_label: str):
         n_ok = (df_sup["Total"] >= MINIMO_REV).sum()
         n_risco = len(df_sup) - n_ok
 
+        ticket_sup_val = total_sup / len(df_sup) if len(df_sup) > 0 else 0
         badge = f" — ⚠️ {n_risco} em risco" if n_risco else ""
         with st.expander(
-            f"**{sup}** — {len(df_sup)} revendedoras · {_R(total_sup)}{badge}",
+            f"**{sup}** — {len(df_sup)} revendedoras · total {_R(total_sup)} · ticket médio {_R(ticket_sup_val)}{badge}",
             expanded=(n_risco > 0),
         ):
             exib = df_sup[["Nome", "Pedidos", "Baixado", "Pré-baixa", "Total", "Risco"]].copy()
@@ -548,13 +552,16 @@ def render(filtro_supervisor: str = ""):
     n_abaixo    = int(((df_res["Total"] > 0) & (df_res["Total"] < MINIMO_REV)).sum()) if not df_res.empty else 0
     n_sem_res   = int((df_res["Total"] == 0).sum()) if not df_res.empty else 0
 
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    ticket_medio = total_mes / n_rev if n_rev > 0 else 0
+
+    c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
     c1.metric("Revendedoras no mês", n_rev)
     c2.metric("Total vendido", _R(total_mes))
     c3.metric("  ↳ Baixados", _R(total_bx))
     c4.metric("  ↳ Pré-baixa", _R(total_pb))
-    c5.metric("🟡 Abaixo do mínimo", n_abaixo)
-    c6.metric("🔴 Sem vendas", n_zero + n_sem_res,
+    c5.metric("🎯 Ticket médio", _R(ticket_medio))
+    c6.metric("🟡 Abaixo do mínimo", n_abaixo)
+    c7.metric("🔴 Sem vendas", n_zero + n_sem_res,
               help="Pedidos abertos com R$0 + revendedoras com total = R$0")
 
     # ── Tabs ──────────────────────────────────────────────────────────────────

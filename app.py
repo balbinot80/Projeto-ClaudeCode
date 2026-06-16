@@ -112,11 +112,12 @@ with st.sidebar:
             "📦 Estoque",
             "🛒 Programação de Compras",
             "👥 Revendedoras",
+            "📅 Controle de Acertos",
             "🔍 Diagnóstico",
         ]
     else:
-        # Supervisoras: apenas a tela de revendedoras
-        paginas_disponiveis = ["👥 Revendedoras"]
+        # Supervisoras: tela de revendedoras + controle de acertos
+        paginas_disponiveis = ["👥 Revendedoras", "📅 Controle de Acertos"]
 
     pagina = st.radio("Navegação", paginas_disponiveis)
 
@@ -255,6 +256,10 @@ elif pagina == "🛒 Programação de Compras":
 
 elif pagina == "👥 Revendedoras":
     from src.pages.revendedoras import render
+    render(filtro_supervisor=sup_filtro)
+
+elif pagina == "📅 Controle de Acertos":
+    from src.pages.acertos import render
     render(filtro_supervisor=sup_filtro)
 
 elif pagina == "🔍 Diagnóstico":

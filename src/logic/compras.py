@@ -1,8 +1,8 @@
 import pandas as pd
 from src.logic.estoque import nome_categoria
 
-# ── Palavras removidas do estilo (tamanhos, materiais, preposições) ──────────
-# Cores NÃO são removidas — fazem parte do estilo de compra
+# Palavras removidas do estilo: tamanhos, materiais, preposições
+# A COR vem do campo `produto["cor"]` da API — não é extraída da descrição
 _IGNORAR = {
     "pequeno", "pequena", "pequenos", "pequenas",
     "grande", "grandes",
@@ -11,39 +11,40 @@ _IGNORAR = {
     "fino", "fina", "grosso", "grossa", "finos", "finas",
     "aço", "inox", "folheado", "folheada", "banho", "ródio",
     "cristal", "strass", "zircônia", "zirconia", "zircão",
-    "piercing", "par",
+    "piercing", "par", "prata", "dourado", "dourada", "prateado",
+    "prateada", "ouro", "rosê", "rose", "silver", "gold",
     "com", "de", "da", "do", "e", "em", "na", "no", "para",
     "a", "o", "ou", "por", "dos", "das",
-}
-
-_CORES = {
-    "prata": "Prata", "prateado": "Prata", "prateada": "Prata", "silver": "Prata",
-    "dourado": "Dourado", "dourada": "Dourado", "gold": "Dourado", "ouro": "Dourado",
-    "rosê": "Rosê", "rose": "Rosê", "rosado": "Rosê", "rosada": "Rosê",
-    "preto": "Preto", "preta": "Preto",
-    "branco": "Branco", "branca": "Branco",
-    "colorido": "Colorido", "colorida": "Colorido",
 }
 
 # Quantidade máxima de unidades por item de pedido (evita valores absurdos da API)
 _MAX_QTD_POR_ITEM = 200
 
 
-def extrair_modelo(descricao: str) -> str:
+def _normalizar_cor(cor: str) -> str:
+    """Normaliza o valor do campo `cor` do produto para Prata / Dourado / Rosê."""
+    c = (cor or "").strip().lower()
+    if c in ("prata", "prateado", "prateada", "silver"):
+        return "Prata"
+    if c in ("dourado", "dourada", "ouro", "gold"):
+        return "Dourado"
+    if c in ("rosê", "rose", "rosado", "rosada"):
+        return "Rosê"
+    return cor.strip().title() if cor else ""
+
+
+def extrair_base_estilo(descricao: str) -> str:
     """
-    Extrai estilo + cor da descrição. Remove tamanho/material, mantém cor.
-    'Brinco Argola Pequena Prata' → 'Brinco Argola Prata'
-    'Brinco Argola Grande Dourada' → 'Brinco Argola Dourado'
+    Extrai o nome-base do estilo a partir da descrição, SEM cor.
+    A cor vem do campo `produto["cor"]` e é combinada externamente.
+    Remove tamanhos, materiais e preposições.
+    'Brinco Argola Pequena'  → 'Brinco Argola'
+    'Colar Ponto de Luz'     → 'Colar Ponto Luz'
     """
     words = (descricao or "").strip().split()
-    cor = None
     estilo = []
     for w in words:
         wl = w.lower()
-        if wl in _CORES:
-            if cor is None:
-                cor = _CORES[wl]
-            continue
         if wl in _IGNORAR:
             continue
         if w.replace(".", "").replace(",", "").replace("/", "").isdigit():
@@ -51,8 +52,17 @@ def extrair_modelo(descricao: str) -> str:
         if len(w) <= 1:
             continue
         estilo.append(w)
-    base = " ".join(estilo[:3])
-    return f"{base} {cor}" if cor else (base or (words[0] if words else "Outros"))
+    return " ".join(estilo[:4]) or (words[0] if words else "Outros")
+
+
+def extrair_modelo(descricao: str, cor_campo: str = "") -> str:
+    """
+    Retorna 'Base Estilo + Cor' onde a cor vem do campo `produto["cor"]`.
+    Mantido compatível com chamadas antigas (cor_campo="" usa só a base).
+    """
+    base = extrair_base_estilo(descricao)
+    cor  = _normalizar_cor(cor_campo)
+    return f"{base} {cor}".strip() if cor else base
 
 
 def classificar_abc(df: pd.DataFrame) -> pd.DataFrame:
@@ -125,14 +135,16 @@ def sugerir_compras_por_modelo(
         venda_pid.setdefault(pid, {})
         venda_pid[pid][ds] = venda_pid[pid].get(ds, 0) + qtd
 
-    # Agrupa produtos por (categoria, modelo)
+    # Agrupa produtos por (categoria, modelo+cor)
+    # A cor vem do campo produto["cor"] (banho: Prata ou Dourado), não da descrição
     modelo_pids: dict = {}
     for p in produtos:
-        pid = p.get("id")
-        desc = p.get("descricao", "")
+        pid    = p.get("id")
+        desc   = p.get("descricao", "")
+        cor    = p.get("cor", "")
         cat_id = p.get("fk_categoria_id")
-        cat = nome_categoria(cat_id, categorias_map, desc)
-        modelo = extrair_modelo(desc)
+        cat    = nome_categoria(cat_id, categorias_map, desc)
+        modelo = extrair_modelo(desc, cor)
         modelo_pids.setdefault((cat, modelo), []).append(pid)
 
     rows = []
@@ -287,13 +299,14 @@ def top_vendidos_por_categoria(itens: list, produtos_map: dict,
         return {}
     rows = []
     for item in itens:
-        pid = item.get("produto_id")
+        pid  = item.get("produto_id")
         info = produtos_map.get(pid, {})
-        desc = info.get("descricao", f"Produto {pid}")
+        desc   = info.get("descricao", f"Produto {pid}")
+        cor    = info.get("cor", "")           # campo real de banho da API
         cat_id = info.get("fk_categoria_id")
-        cat = nome_categoria(cat_id, categorias_map, desc)
-        modelo = extrair_modelo(desc)
-        qtd = min(float(item.get("quantidade") or 0), _MAX_QTD_POR_ITEM)
+        cat    = nome_categoria(cat_id, categorias_map, desc)
+        modelo = extrair_modelo(desc, cor)     # usa campo cor, não descrição
+        qtd    = min(float(item.get("quantidade") or 0), _MAX_QTD_POR_ITEM)
         rows.append({"modelo": modelo, "categoria": cat, "quantidade": qtd})
 
     df = pd.DataFrame(rows)

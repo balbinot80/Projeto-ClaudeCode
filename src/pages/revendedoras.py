@@ -250,12 +250,11 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
 
             # Tabela detalhada
             cols_exib = ["Risco", "Nome", "Supervisor", "Criado", "Acerto",
-                         "Dias do pedido", "Pré-baixa", "Ritmo esperado", "% do ritmo", "Valor pedido"]
+                         "Dias do pedido", "Pré-baixa", "Valor pedido"]
             st.dataframe(
                 df[cols_exib].style
                     .map(_estilo_risco, subset=["Risco"])
-                    .format({"Pré-baixa": _R, "Ritmo esperado": _R, "Valor pedido": _R,
-                             "% do ritmo": lambda v: f"{v:.1f}%"}),
+                    .format({"Pré-baixa": _R, "Valor pedido": _R}),
                 use_container_width=True, hide_index=True,
             )
 

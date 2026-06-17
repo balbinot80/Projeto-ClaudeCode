@@ -579,6 +579,175 @@ def _tab_niveis(todos_pedidos: list, mes: int, ano: int):
         )
 
 
+# ── Tab 6: Premiações ─────────────────────────────────────────────────────────
+
+def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
+    from src.logic.premiacoes import (
+        load_premiacoes, save_premiacao, calcular_ranking, verificar_colar,
+    )
+
+    st.subheader(f"🏆 Premiações — {mes_label}")
+
+    prem    = load_premiacoes()
+    mes_key = f"{mes:02d}/{ano}"
+    cfg     = prem.get(mes_key, {})
+    meta_atual   = float(cfg.get("meta", 0.0))
+    premio_atual = cfg.get("premio", "")
+
+    # ── Configuração do mês ───────────────────────────────────────────────────
+    with st.expander("⚙️ Configurar premiação do mês", expanded=(meta_atual == 0)):
+        c1, c2 = st.columns(2)
+        with c1:
+            meta_input = st.number_input(
+                "Meta de vendas (R$)", min_value=0.0, value=meta_atual,
+                step=100.0, format="%.2f", key=f"meta_{mes_key}",
+            )
+        with c2:
+            premio_input = st.text_input(
+                "Prêmio do mês", value=premio_atual,
+                placeholder="Ex: Kit beleza, Viagem...", key=f"premio_{mes_key}",
+            )
+        if st.button("💾 Salvar configuração", type="primary", key=f"salvar_{mes_key}"):
+            save_premiacao(mes_key, meta_input, premio_input)
+            st.success("Configuração salva!")
+            st.rerun()
+
+    if not meta_atual:
+        st.info("Configure a meta de vendas do mês acima para ver o ranking de premiações.")
+        return
+
+    # ── Banner do prêmio ──────────────────────────────────────────────────────
+    st.markdown(
+        f'<div style="background:linear-gradient(135deg,#6B2737 0%,#AB6776 100%);'
+        f'color:white;padding:16px 24px;border-radius:12px;margin-bottom:4px">'
+        f'<span style="font-size:1.6em">🏆</span> '
+        f'<span style="font-size:1.15em;font-weight:700">'
+        f'{premio_atual or "Prêmio do mês"}</span>'
+        f'<br><span style="opacity:0.85;font-size:0.9em">'
+        f'Meta: {_R(meta_atual)} &nbsp;·&nbsp; {mes_label}</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Calcular ranking ──────────────────────────────────────────────────────
+    ranking    = calcular_ranking(todos_pedidos, mes, ano, meta_atual)
+    ganhadoras = [r for r in ranking if r["Categoria"] == "ganhadora"]
+    potenciais = [r for r in ranking if r["Categoria"] == "potencial"]
+    proximas   = [r for r in ranking if r["Categoria"] == "proxima"]
+    colar      = verificar_colar(todos_pedidos, mes, ano)
+
+    # Métricas resumo
+    st.markdown("<br>", unsafe_allow_html=True)
+    mc1, mc2, mc3, mc4 = st.columns(4)
+    mc1.metric("🏆 Ganhadoras confirmadas", len(ganhadoras))
+    mc2.metric("🎯 Potenciais ganhadoras",  len(potenciais))
+    mc3.metric("📈 Próximas (≥ 70%)",       len(proximas))
+    mc4.metric("💎 Colar personalizado",    len(colar))
+
+    st.divider()
+
+    # ── Seção 1: Ganhadoras confirmadas ───────────────────────────────────────
+    st.markdown("### 🏆 Ganhadoras confirmadas")
+    st.caption("Atingiram a meta com pedidos já **baixados** — resultado definitivo.")
+    if ganhadoras:
+        cols = st.columns(min(len(ganhadoras), 3))
+        for i, r in enumerate(ganhadoras):
+            with cols[i % 3]:
+                st.markdown(
+                    f'<div style="background:#fff8e1;border:2px solid #f9a825;'
+                    f'border-radius:10px;padding:14px;margin-bottom:8px">'
+                    f'<div style="font-weight:700">🥇 {r["Nome"]}</div>'
+                    f'<div style="color:#888;font-size:0.82em;margin-bottom:6px">'
+                    f'{r["Supervisor"]}</div>'
+                    f'<div style="font-size:0.9em">Baixado: <b>{_R(r["Baixado"])}</b></div>'
+                    f'<div style="font-size:0.9em">Total: <b>{_R(r["Total"])}</b></div>'
+                    f'<div style="color:#27ae60;font-weight:700;margin-top:4px">'
+                    f'✅ {r["% da meta"]:.1f}% da meta</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+    else:
+        st.info("Nenhuma revendedora atingiu a meta com pedidos já baixados neste mês.")
+
+    st.divider()
+
+    # ── Seção 2: Potenciais ganhadoras ────────────────────────────────────────
+    st.markdown("### 🎯 Potenciais ganhadoras")
+    st.caption(
+        "Total (baixado + pré-baixa) já atingiu a meta, mas ainda há pedidos em aberto. "
+        "Ganharão se a pré-baixa converter."
+    )
+    if potenciais:
+        cols = st.columns(min(len(potenciais), 3))
+        for i, r in enumerate(potenciais):
+            with cols[i % 3]:
+                st.markdown(
+                    f'<div style="background:#e8f5e9;border:2px solid #66bb6a;'
+                    f'border-radius:10px;padding:14px;margin-bottom:8px">'
+                    f'<div style="font-weight:700">🎯 {r["Nome"]}</div>'
+                    f'<div style="color:#888;font-size:0.82em;margin-bottom:6px">'
+                    f'{r["Supervisor"]}</div>'
+                    f'<div style="font-size:0.9em">Baixado: {_R(r["Baixado"])}</div>'
+                    f'<div style="font-size:0.9em">Pré-baixa: {_R(r["Pré-baixa"])}</div>'
+                    f'<div style="font-weight:700;margin-top:4px">'
+                    f'Total: {_R(r["Total"])}</div>'
+                    f'<div style="color:#1976d2;font-weight:700">'
+                    f'📊 {r["% da meta"]:.1f}% da meta</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+    else:
+        st.info("Nenhuma revendedora com total (baixado + pré-baixa) acima da meta neste mês.")
+
+    st.divider()
+
+    # ── Seção 3: Próximas da meta ─────────────────────────────────────────────
+    st.markdown("### 📈 Próximas da meta")
+    st.caption("Entre 70% e 99% da meta — ainda têm chance de alcançar.")
+    if proximas:
+        for r in proximas:
+            pct_val = min(r["% da meta"] / 100, 1.0)
+            st.markdown(
+                f'**{r["Nome"]}** &nbsp;<span style="color:#888;font-size:0.85em">'
+                f'{r["Supervisor"]}</span>',
+                unsafe_allow_html=True,
+            )
+            st.progress(pct_val,
+                        text=f'{_R(r["Total"])} / {_R(meta_atual)} '
+                             f'({r["% da meta"]:.1f}%) — faltam {_R(r["Falta"])}')
+    else:
+        st.info("Nenhuma revendedora entre 70% e 99% da meta neste mês.")
+
+    st.divider()
+
+    # ── Seção 4: Colar personalizado ──────────────────────────────────────────
+    st.markdown("### 💎 Colar personalizado — nova revendedora")
+    st.caption(
+        "Regra fixa: revendedora com **primeiro pedido** baixado neste mês "
+        "com valor > R$ 1.000,00 ganha um colar personalizado."
+    )
+    if colar:
+        cols = st.columns(min(len(colar), 3))
+        for i, r in enumerate(colar):
+            with cols[i % 3]:
+                st.markdown(
+                    f'<div style="background:linear-gradient(135deg,#f3e5f5,#e1bee7);'
+                    f'border:2px solid #9c27b0;border-radius:10px;padding:14px;'
+                    f'margin-bottom:8px">'
+                    f'<div style="font-weight:700">💎 {r["Nome"]}</div>'
+                    f'<div style="color:#888;font-size:0.82em;margin-bottom:6px">'
+                    f'{r["Supervisor"]}</div>'
+                    f'<div style="font-size:0.9em">1º pedido: '
+                    f'<b>{_R(r["Valor 1º pedido"])}</b></div>'
+                    f'<div style="color:#7b1fa2;font-weight:700;margin-top:4px">'
+                    f'🎁 Colar personalizado</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+    else:
+        st.info("Nenhuma nova revendedora qualificou para o colar personalizado neste mês.")
+
+
 # ── Render principal ──────────────────────────────────────────────────────────
 
 def render(filtro_supervisor: str = ""):
@@ -666,12 +835,13 @@ def render(filtro_supervisor: str = ""):
               help="Pedidos abertos com R$0 + revendedoras com total = R$0")
 
     # ── Tabs ──────────────────────────────────────────────────────────────────
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📅 Competência",
         "⚠️ Alertas",
         "⏱️ Análise por período",
         "📈 Visão gerencial",
         "🏅 Níveis",
+        "🏆 Premiações",
     ])
 
     with tab1:
@@ -688,3 +858,6 @@ def render(filtro_supervisor: str = ""):
 
     with tab5:
         _tab_niveis(todos_pedidos, mes_num, ano_num)
+
+    with tab6:
+        _tab_premiacoes(todos_pedidos, mes_num, ano_num, mes_sel)

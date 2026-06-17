@@ -109,14 +109,13 @@ def render():
     )
 
     # Carregar dados
-    from src.api.jueri_client import get_produtos, get_revendedores, get_pedidos_baixados, get_pedidos_abertos
+    from src.api.jueri_client import get_produtos, get_revendedores, get_pedidos_baixados
 
     try:
         with st.spinner(""):
-            produtos       = get_produtos(status="1")
-            revendedores   = get_revendedores()
-            pedidos_abertos = get_pedidos_abertos()
-            baixados       = get_pedidos_baixados()
+            produtos     = get_produtos(status="1")
+            revendedores = get_revendedores()
+            baixados     = get_pedidos_baixados()
     except Exception as e:
         st.error("Erro ao carregar dados: " + str(e))
         return

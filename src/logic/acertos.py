@@ -11,7 +11,7 @@ _FILE = os.path.normpath(
 FORMAS = {
     "Presencial":   "🏪",
     "Correios":     "📮",
-    "Disk Entrega": "🚗",
+    "Disk Tenha":   "🚗",
     "Motoboy":      "🏍️",
 }
 

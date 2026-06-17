@@ -18,6 +18,8 @@ _CSS = """
   --au-perola: #EDE8E3; --au-perola-t: #6b5d4f;
   --au-ouro: #C4985A;  --au-ouro-t: #fff;
   --au-diamante: #AB6774; --au-diamante-t: #fff;
+  --au-font-display: 'Cormorant Garamond', Georgia, serif;
+  --au-font-body: 'Jost', sans-serif;
 }
 
 /* ── Brand header ─────────────────────────────────────────────── */
@@ -192,17 +194,17 @@ def kpi_html(label: str, valor: str, delta: str = "", alerta: bool = False) -> s
 
 def rev_card_html(nome: str, meta: str, valor: str, tier: str = "") -> str:
     iniciais = "".join(w[0].upper() for w in nome.split()[:2]) if nome else "—"
-    badge = f'<span class="au-badge au-badge-{tier.lower()}">{tier}</span>' if tier else ""
-    return f"""
-    <div class="au-rev-card">
-      <div class="au-avatar">{iniciais}</div>
-      <div style="flex:1;min-width:0">
-        <div class="au-rev-nome">{nome}</div>
-        <div class="au-rev-meta">{meta} {badge}</div>
-      </div>
-      <div class="au-rev-valor">{valor}</div>
-    </div>
-    """
+    badge = ('<span class="au-badge au-badge-' + tier.lower() + '">' + tier + "</span>") if tier else ""
+    return (
+        '<div class="au-rev-card" style="display:flex;align-items:center;gap:12px">'
+        '<div class="au-avatar">' + iniciais + "</div>"
+        '<div style="flex:1;min-width:0">'
+        '<div class="au-rev-nome">' + nome + "</div>"
+        '<div class="au-rev-meta">' + meta + " " + badge + "</div>"
+        "</div>"
+        '<div class="au-rev-valor">' + valor + "</div>"
+        "</div>"
+    )
 
 
 def empty_state(titulo: str, texto: str, icone: str = "✦") -> str:

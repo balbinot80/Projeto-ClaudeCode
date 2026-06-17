@@ -82,7 +82,7 @@ if not st.session_state.autenticado:
     col_c, col_f, col_c2 = st.columns([2, 3, 2])
     with col_f:
         # Logo principal rosa centralizada
-        if not _logo("logo_rosa.png", use_container_width=True):
+        if not _logo("Logo rosa.png", use_container_width=True):
             st.title("💍 Aureum Joias")
 
         st.markdown("<br>", unsafe_allow_html=True)
@@ -134,8 +134,8 @@ _time_cfg = _TIMES.get(usuario.get("login", "")) if role == "supervisora" else N
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    # Badge circular rosa no topo do sidebar
-    if not _logo("badge_rosa.png", use_container_width=True):
+    # Submarca circular rosa no topo do sidebar
+    if not _logo("Submarca rosa.png", use_container_width=True):
         st.title("💍 Aureum Joias")
 
     if _time_cfg:
@@ -185,7 +185,7 @@ with st.sidebar:
 # ── Logo principal no topo do conteúdo ────────────────────────────────────────
 
 with st.columns([1, 5])[0]:
-    _logo("logo_rosa.png", use_container_width=True)
+    _logo("Logo rosa.png", use_container_width=True)
 
 
 # ── Banner de time (supervisoras) ──────────────────────────────────────────────

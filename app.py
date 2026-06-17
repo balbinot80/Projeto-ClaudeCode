@@ -1,4 +1,5 @@
 import os
+import base64
 from pathlib import Path
 import streamlit as st
 from dotenv import load_dotenv
@@ -10,6 +11,21 @@ def _logo(arquivo: str, **kwargs):
         st.image(str(p), **kwargs)
         return True
     return False
+
+def _logo_sidebar_bottom(arquivo: str, width: int = 170):
+    """Renderiza logo fixada no rodapé do sidebar via CSS."""
+    p = Path("assets") / arquivo
+    if not p.exists():
+        return
+    b64 = base64.b64encode(p.read_bytes()).decode()
+    ext = p.suffix.lstrip(".")
+    st.markdown(
+        f'<div style="position:fixed;bottom:20px;left:0;width:260px;'
+        f'display:flex;justify-content:center;pointer-events:none">'
+        f'<img src="data:image/{ext};base64,{b64}" width="{width}" style="opacity:0.85">'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 load_dotenv()
 
@@ -91,10 +107,12 @@ if not st.session_state.autenticado:
         st.subheader("Sistema de Gestão")
         st.divider()
 
-        login_input = st.text_input("Usuário", placeholder="Ex: admin")
-        senha_input = st.text_input("Senha", type="password")
+        with st.form("form_login"):
+            login_input = st.text_input("Usuário", placeholder="Ex: admin")
+            senha_input = st.text_input("Senha", type="password")
+            submitted  = st.form_submit_button("Entrar", type="primary", use_container_width=True)
 
-        if st.button("Entrar", type="primary", use_container_width=True):
+        if submitted:
             usuario = _autenticar(login_input, senha_input)
             if usuario:
                 st.session_state.autenticado = True
@@ -136,9 +154,7 @@ _time_cfg = _TIMES.get(usuario.get("login", "")) if role == "supervisora" else N
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    # Submarca circular rosa no topo do sidebar
-    if not _logo("Submarca rosa.png", use_container_width=True):
-        st.title("💍 Aureum Joias")
+    st.title("💍 Aureum Joias")
 
     if _time_cfg:
         st.markdown(
@@ -183,11 +199,8 @@ with st.sidebar:
         st.session_state.usuario = {}
         st.rerun()
 
-
-# ── Logo principal no topo do conteúdo ────────────────────────────────────────
-
-with st.columns([2, 5])[0]:
-    _logo("Logo rosa.png", use_container_width=True)
+    # Submarca circular no rodapé do sidebar
+    _logo_sidebar_bottom("Submarca rosa.png", width=170)
 
 
 # ── Banner de time (supervisoras) ──────────────────────────────────────────────

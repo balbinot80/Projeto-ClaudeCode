@@ -95,16 +95,15 @@ if "autenticado" not in st.session_state:
     st.session_state.usuario = {}
 
 if not st.session_state.autenticado:
-    col_c, col_f, col_c2 = st.columns([2, 3, 2])
-    with col_f:
-        # Logo centralizada com largura controlada no login
-        c1, c2, c3 = st.columns([1, 3, 1])
-        with c2:
-            if not _logo("Logo rosa.png", use_container_width=True):
-                st.title("💍 Aureum Joias")
+    st.markdown("<div style='margin-top:80px'></div>", unsafe_allow_html=True)
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.subheader("Sistema de Gestão")
+    _, col_f, _ = st.columns([3, 4, 3])
+    with col_f:
+        if not _logo("Logo rosa.png", use_container_width=True):
+            st.title("💍 Aureum Joias")
+
+        st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
+        st.subheader("Sistema de Gestão", anchor=False)
         st.divider()
 
         with st.form("form_login"):

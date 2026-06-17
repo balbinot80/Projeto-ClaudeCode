@@ -81,9 +81,11 @@ if "autenticado" not in st.session_state:
 if not st.session_state.autenticado:
     col_c, col_f, col_c2 = st.columns([2, 3, 2])
     with col_f:
-        # Logo principal rosa centralizada
-        if not _logo("Logo rosa.png", use_container_width=True):
-            st.title("💍 Aureum Joias")
+        # Logo centralizada com largura controlada no login
+        c1, c2, c3 = st.columns([1, 3, 1])
+        with c2:
+            if not _logo("Logo rosa.png", use_container_width=True):
+                st.title("💍 Aureum Joias")
 
         st.markdown("<br>", unsafe_allow_html=True)
         st.subheader("Sistema de Gestão")
@@ -184,7 +186,7 @@ with st.sidebar:
 
 # ── Logo principal no topo do conteúdo ────────────────────────────────────────
 
-with st.columns([1, 5])[0]:
+with st.columns([2, 5])[0]:
     _logo("Logo rosa.png", use_container_width=True)
 
 

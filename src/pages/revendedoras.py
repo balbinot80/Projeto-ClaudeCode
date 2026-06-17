@@ -475,7 +475,7 @@ def _tab_niveis(todos_pedidos: list, mes: int, ano: int):
                 continue
             with st.expander(
                 f"{ICONE_NIVEL.get(nv, '')} **{nv}** — {len(df_nv)} pedido(s) fechado(s)",
-                expanded=True,
+                expanded=False,
             ):
                 exib = df_nv[["Nome", "Supervisor", "Peças pedido", "Vendas mês", "Mínimo nível", "Status"]].copy()
                 exib.columns = ["Nome", "Supervisor", "Peças (maleta)", "Vendas (R$)", "Mínimo (R$)", "Status"]
@@ -497,7 +497,7 @@ def _tab_niveis(todos_pedidos: list, mes: int, ano: int):
                 continue
             with st.expander(
                 f"{ICONE_NIVEL.get(nv, '')} **{nv}** — {len(df_nv)} pedido(s) em aberto",
-                expanded=True,
+                expanded=False,
             ):
                 exib = df_nv[["Nome", "Supervisor", "Peças pedido", "Vendas mês", "Mínimo nível", "Status"]].copy()
                 exib.columns = ["Nome", "Supervisor", "Peças", "Pré-baixa (R$)", "Mínimo (R$)", "Status"]

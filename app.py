@@ -95,14 +95,33 @@ if "autenticado" not in st.session_state:
     st.session_state.usuario = {}
 
 if not st.session_state.autenticado:
-    st.markdown("<div style='margin-top:80px'></div>", unsafe_allow_html=True)
+    # Pattern rosa como fundo com 10% de opacidade (90% transparente)
+    _p = Path("assets") / "Pattern rosa.png"
+    if _p.exists():
+        _pb64 = base64.b64encode(_p.read_bytes()).decode()
+        _pext = _p.suffix.lstrip(".")
+        st.markdown(
+            f'<style>'
+            f'[data-testid="stAppViewContainer"]::before {{'
+            f'  content: "";'
+            f'  position: fixed; top: 0; left: 0; right: 0; bottom: 0;'
+            f'  background-image: url("data:image/{_pext};base64,{_pb64}");'
+            f'  background-repeat: repeat;'
+            f'  background-size: auto;'
+            f'  opacity: 0.10;'
+            f'  z-index: 0;'
+            f'  pointer-events: none;'
+            f'}}'
+            f'[data-testid="stAppViewContainer"] > * {{ position: relative; z-index: 1; }}'
+            f'</style>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<div style='margin-top:100px'></div>", unsafe_allow_html=True)
 
     _, col_f, _ = st.columns([3, 4, 3])
     with col_f:
-        if not _logo("Logo rosa.png", use_container_width=True):
-            st.title("💍 Aureum Joias")
-
-        st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
+        st.title("💍 Aureum Joias")
         st.subheader("Sistema de Gestão", anchor=False)
         st.divider()
 

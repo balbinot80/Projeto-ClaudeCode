@@ -117,13 +117,17 @@ if not st.session_state.autenticado:
             unsafe_allow_html=True,
         )
 
-    # Carrega fonte Argue Regular se o arquivo existir em assets/
+    # Carrega fonte Argue se o arquivo existir em assets/
     _font_css = ""
-    for _fname in ("Argue Regular.ttf", "Argue-Regular.ttf", "Argue Regular.woff2", "Argue-Regular.woff2"):
+    for _fname in (
+        "Argue DEMO.otf", "Argue Regular.otf", "Argue-Regular.otf",
+        "Argue Regular.ttf", "Argue-Regular.ttf",
+        "Argue Regular.woff2", "Argue-Regular.woff2",
+    ):
         _fp = Path("assets") / _fname
         if _fp.exists():
             _fb64 = base64.b64encode(_fp.read_bytes()).decode()
-            _fmt  = "woff2" if _fp.suffix == ".woff2" else "truetype"
+            _fmt  = "woff2" if _fp.suffix == ".woff2" else ("opentype" if _fp.suffix == ".otf" else "truetype")
             _font_css = (
                 f'@font-face {{'
                 f'  font-family: "Argue";'
@@ -138,7 +142,7 @@ if not st.session_state.autenticado:
         f'.aureum-title {{'
         f'  font-family: "Argue", "Cormorant Garamond", "Playfair Display", Georgia, serif;'
         f'  color: #AB6776;'
-        f'  font-size: 2.6rem;'
+        f'  font-size: 3.4rem;'
         f'  font-weight: 400;'
         f'  letter-spacing: 2px;'
         f'  margin-bottom: 4px;'

@@ -114,6 +114,7 @@ with st.sidebar:
             "👥 Revendedoras",
             "📅 Controle de Acertos",
             "🔍 Diagnóstico",
+            "🎨 Preview UI",
         ]
     else:
         # Supervisoras: tela de revendedoras + controle de acertos
@@ -264,4 +265,8 @@ elif pagina == "📅 Controle de Acertos":
 
 elif pagina == "🔍 Diagnóstico":
     from src.pages.diagnostico import render
+    render()
+
+elif pagina == "🎨 Preview UI":
+    from src.pages.dashboard_preview import render
     render()

@@ -11,25 +11,44 @@ _R     = lambda v: "R$ " + f"{v:,.2f}".replace(",", "X").replace(".", ",").repla
 _ini   = lambda n: "".join(w[0].upper() for w in n.split()[:2]) if n else "—"
 _pnome = lambda n: (n.split()[0] + (" " + n.split()[-1] if len(n.split()) > 1 else "")) if n else "—"
 
+_FONT_D = "Georgia,'Cormorant Garamond',serif"
+_FONT_B = "Jost,'Helvetica Neue',sans-serif"
+_ROSA   = "#AB6774"
+_GOLD   = "#C4985A"
+_INK    = "#2A1A1F"
+_MUTED  = "#7A6068"
+
+
+def _section_title(titulo: str, subtitulo: str = "") -> str:
+    sub = (
+        '<p style="font-family:' + _FONT_B + ';font-weight:300;font-size:10px;'
+        'letter-spacing:.09em;text-transform:uppercase;color:' + _MUTED + ';margin:0 0 14px">'
+        + subtitulo + "</p>"
+    ) if subtitulo else ""
+    return (
+        '<p style="font-family:' + _FONT_D + ';font-size:20px;font-weight:400;'
+        'letter-spacing:.03em;color:' + _INK + ';margin:0 0 2px">'
+        + titulo + "</p>" + sub
+    )
+
 
 # ── Pódio: um card por lugar, renderizado via st.columns ──────────────────────
 
 def _card_lugar(col, dados, pos_label: str, destaque: bool = False):
-    """Renderiza um card de pódio dentro de `col` (st.column)."""
-    nome, val = dados
-    ini       = _ini(nome)
+    nome, val  = dados
+    ini        = _ini(nome)
     nome_curto = _pnome(nome)
     valor_str  = _R(val)
 
-    pad_top   = "22px" if destaque else "14px"
-    av_size   = "52px" if destaque else "40px"
-    av_fs     = "19px" if destaque else "14px"
-    av_border = ";border:2px solid #C4985A" if destaque else ""
-    pos_color = "#C4985A" if destaque else "#7A6068"
-    shadow    = "0 6px 20px rgba(171,103,116,.18)" if destaque else "0 4px 12px rgba(171,103,116,.08)"
-    border    = "2px solid #C4985A" if destaque else "1px solid rgba(171,103,116,.15)"
-    margin_t  = "-10px" if destaque else "0"
-    crown     = '<div style="font-size:14px;color:#C4985A;margin-bottom:6px">✦</div>' if destaque else ""
+    pad_top    = "22px" if destaque else "14px"
+    av_size    = "52px" if destaque else "40px"
+    av_fs      = "19px" if destaque else "14px"
+    av_border  = ";border:2px solid " + _GOLD if destaque else ""
+    pos_color  = _GOLD if destaque else _MUTED
+    shadow     = "0 6px 20px rgba(171,103,116,.18)" if destaque else "0 4px 12px rgba(171,103,116,.08)"
+    border     = "2px solid " + _GOLD if destaque else "1px solid rgba(171,103,116,.15)"
+    margin_t   = "-10px" if destaque else "0"
+    crown      = ('<div style="font-size:14px;color:' + _GOLD + ';margin-bottom:6px">✦</div>') if destaque else ""
 
     html = (
         '<div style="margin-top:' + margin_t + ';background:#fff;border-radius:14px;'
@@ -38,15 +57,15 @@ def _card_lugar(col, dados, pos_label: str, destaque: bool = False):
         + '<div style="width:' + av_size + ';height:' + av_size + ';border-radius:50%;'
         'background:linear-gradient(135deg,#F5EBEC,#C89199);'
         'display:flex;align-items:center;justify-content:center;'
-        'margin:0 auto 8px;font-family:var(--au-font-body);'
-        'font-size:' + av_fs + ';font-weight:600;color:#AB6774' + av_border + '>'
+        'margin:0 auto 8px;font-family:' + _FONT_B + ';'
+        'font-size:' + av_fs + ';font-weight:600;color:' + _ROSA + av_border + '>'
         + ini
         + '</div>'
-        '<div style="font-family:var(--au-font-body);font-size:12px;font-weight:600;'
-        'color:#2A1A1F;margin-bottom:3px">' + nome_curto + '</div>'
-        '<div style="font-family:var(--au-font-display);font-size:14px;font-weight:600;'
-        'color:#AB6774;margin-bottom:4px">' + valor_str + '</div>'
-        '<div style="font-family:var(--au-font-body);font-size:9px;font-weight:600;'
+        '<div style="font-family:' + _FONT_B + ';font-size:12px;font-weight:600;'
+        'color:' + _INK + ';margin-bottom:3px">' + nome_curto + '</div>'
+        '<div style="font-family:' + _FONT_D + ';font-size:14px;font-weight:600;'
+        'color:' + _ROSA + ';margin-bottom:4px">' + valor_str + '</div>'
+        '<div style="font-family:' + _FONT_B + ';font-size:9px;font-weight:600;'
         'letter-spacing:.06em;color:' + pos_color + '">' + pos_label + '</div>'
         '</div>'
     )
@@ -68,26 +87,26 @@ def _rank_item_html(pos: int, nome: str, vendas: float, meta: float, label_meta:
     return (
         '<div style="display:flex;align-items:center;gap:10px;background:#fff;border-radius:10px;'
         'padding:9px 14px;border:1px solid rgba(171,103,116,.1);margin-bottom:6px">'
-        '<span style="font-family:var(--au-font-body);font-size:11px;font-weight:600;'
-        'color:#AB6774;width:22px;flex-shrink:0">' + str(pos) + 'º</span>'
+        '<span style="font-family:' + _FONT_B + ';font-size:11px;font-weight:600;'
+        'color:' + _ROSA + ';width:22px;flex-shrink:0">' + str(pos) + 'º</span>'
         '<div style="width:30px;height:30px;border-radius:50%;flex-shrink:0;'
         'background:linear-gradient(135deg,#F5EBEC,#C89199);'
         'display:flex;align-items:center;justify-content:center;'
-        'font-family:var(--au-font-body);font-size:10px;font-weight:600;color:#AB6774">'
+        'font-family:' + _FONT_B + ';font-size:10px;font-weight:600;color:' + _ROSA + '">'
         + ini
         + '</div>'
         '<div style="flex:1;min-width:0">'
-        '<div style="font-family:var(--au-font-body);font-size:12px;font-weight:600;color:#2A1A1F">' + nome_curto + '</div>'
+        '<div style="font-family:' + _FONT_B + ';font-size:12px;font-weight:600;color:' + _INK + '">' + nome_curto + '</div>'
         '<div style="display:flex;align-items:center;gap:6px;margin-top:3px">'
         '<div style="background:rgba(171,103,116,.1);border-radius:999px;height:4px;overflow:hidden;flex:1">'
         '<div style="height:100%;background:linear-gradient(90deg,#E8D5A3,#C4985A);'
         'border-radius:999px;width:' + pct_s + '"></div>'
         '</div>'
-        '<span style="font-family:var(--au-font-body);font-size:9px;color:#7A6068;white-space:nowrap">' + txt + '</span>'
+        '<span style="font-family:' + _FONT_B + ';font-size:9px;color:' + _MUTED + ';white-space:nowrap">' + txt + '</span>'
         '</div>'
         '</div>'
-        '<div style="font-family:var(--au-font-display);font-size:14px;font-weight:600;'
-        'color:#AB6774;white-space:nowrap">' + valor_str + '</div>'
+        '<div style="font-family:' + _FONT_D + ';font-size:14px;font-weight:600;'
+        'color:' + _ROSA + ';white-space:nowrap">' + valor_str + '</div>'
         '</div>'
     )
 
@@ -97,13 +116,27 @@ def _rank_item_html(pos: int, nome: str, vendas: float, meta: float, label_meta:
 def render():
     inject()
 
+    # Tag de preview
+    st.markdown(
+        '<span style="display:inline-block;background:rgba(171,103,116,.12);'
+        'color:#AB6774;font-family:Jost,sans-serif;font-size:9px;font-weight:600;'
+        'letter-spacing:.08em;text-transform:uppercase;padding:3px 10px;'
+        'border-radius:999px;margin-bottom:10px">Preview — versão paralela</span>',
+        unsafe_allow_html=True,
+    )
+
     # Header de marca
     st.markdown(
-        '<span class="au-preview-tag">Preview — versão paralela</span>'
-        '<div class="au-header">'
-        '<p class="au-header-sub">Sistema de Gestão</p>'
-        '<h1 class="au-header-title">💍 Aureum Joias</h1>'
-        '<p class="au-header-sub" style="margin-top:5px;opacity:.65">Dashboard · Visão Geral</p>'
+        '<div style="background:linear-gradient(135deg,#AB6774 0%,#C89199 50%,#D4A5AC 100%);'
+        'border-radius:16px;padding:28px 32px;margin-bottom:24px;'
+        'box-shadow:0 8px 32px rgba(171,103,116,.25)">'
+        '<p style="font-family:Jost,sans-serif;font-weight:300;font-size:10px;'
+        'letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.7);margin:0 0 8px">Sistema de Gestão</p>'
+        '<h1 style="font-family:Georgia,serif;font-size:30px;font-weight:400;'
+        'letter-spacing:.05em;color:#fff;margin:0;line-height:1.1">💍 Aureum Joias</h1>'
+        '<p style="font-family:Jost,sans-serif;font-weight:300;font-size:11px;'
+        'letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.65);margin:5px 0 0;opacity:.65">'
+        'Dashboard · Visão Geral</p>'
         '</div>',
         unsafe_allow_html=True,
     )
@@ -154,7 +187,10 @@ def render():
     if criticos > 0:
         st.warning("⚠️ " + str(criticos) + " produto(s) com estoque crítico — acesse **Programação de Compras**.")
 
-    st.markdown('<hr class="au-divider">', unsafe_allow_html=True)
+    st.markdown(
+        '<hr style="border:none;border-top:1px solid rgba(171,103,116,.15);margin:24px 0">',
+        unsafe_allow_html=True,
+    )
 
     # ── Colunas: Ticket médio | Top Revendedoras ──────────────────
     col_ticket, col_ranking = st.columns(2)
@@ -165,15 +201,11 @@ def render():
     for p in baixados_30d:
         sup = p.get("supervisor_nome") or "Sem supervisora"
         val = float(p.get("valor_total") or 0)
-        ticket_sup[sup]    = ticket_sup.get(sup, 0) + val
-        contagem_sup[sup]  = contagem_sup.get(sup, 0) + 1
+        ticket_sup[sup]   = ticket_sup.get(sup, 0) + val
+        contagem_sup[sup] = contagem_sup.get(sup, 0) + 1
 
     with col_ticket:
-        st.markdown(
-            '<p class="au-section-title">Ticket Médio</p>'
-            '<p class="au-section-sub">Por supervisora · últimos 30 dias</p>',
-            unsafe_allow_html=True,
-        )
+        st.markdown(_section_title("Ticket Médio", "Por supervisora · últimos 30 dias"), unsafe_allow_html=True)
         if ticket_sup:
             for sup in sorted(ticket_sup.keys()):
                 media = ticket_sup[sup] / contagem_sup[sup] if contagem_sup[sup] else 0
@@ -196,14 +228,10 @@ def render():
     ranking = sorted(rev_vendas.items(), key=lambda x: -x[1])[:10]
 
     with col_ranking:
-        st.markdown(
-            '<p class="au-section-title">Top Revendedoras</p>'
-            '<p class="au-section-sub">Por faturamento · últimos 30 dias</p>',
-            unsafe_allow_html=True,
-        )
+        st.markdown(_section_title("Top Revendedoras", "Por faturamento · últimos 30 dias"), unsafe_allow_html=True)
 
         if len(ranking) >= 3:
-            # Pódio: 3 colunas nativas do Streamlit — sem f-string aninhada
+            # Pódio: 3 colunas nativas — sem f-string aninhada
             pc2, pc1, pc3 = st.columns([1, 1.2, 1])
             _card_lugar(pc2, ranking[1], "2º LUGAR", destaque=False)
             _card_lugar(pc1, ranking[0], "1º LUGAR", destaque=True)
@@ -211,7 +239,6 @@ def render():
 
             st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
 
-            # 4º em diante
             meta_diamante = 2500.0
             for i, (nome, val) in enumerate(ranking[3:], start=4):
                 st.markdown(_rank_item_html(i, nome, val, meta_diamante, "Diamante"), unsafe_allow_html=True)
@@ -225,10 +252,9 @@ def render():
                 unsafe_allow_html=True,
             )
 
-    # Rodapé
-    st.markdown('<hr class="au-divider">', unsafe_allow_html=True)
     st.markdown(
-        '<p style="font-family:var(--au-font-body);font-size:10px;color:#7A6068;text-align:center">'
+        '<hr style="border:none;border-top:1px solid rgba(171,103,116,.15);margin:24px 0">'
+        '<p style="font-family:Jost,sans-serif;font-size:10px;color:#7A6068;text-align:center">'
         "🎨 Preview UI — versão paralela para avaliação. O Dashboard principal não foi alterado."
         "</p>",
         unsafe_allow_html=True,

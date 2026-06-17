@@ -38,7 +38,6 @@ def _nome_curto(nome: str) -> str:
 
 
 def _card_open(row: pd.Series) -> str:
-    """Card visual para pedido aberto — sem borda externa (container fornece)."""
     cor   = _cor(row["Situação"])
     forma = FORMAS.get(row["Forma"], "")
     valor = _R(row["Valor"])
@@ -55,7 +54,6 @@ def _card_open(row: pd.Series) -> str:
 
 
 def _card_closed(row: pd.Series) -> str:
-    """Card para pedidos já realizados/baixados."""
     cor   = _cor(row["Situação"])
     forma = FORMAS.get(row["Forma"], "")
     valor = _R(row["Valor"])
@@ -87,58 +85,81 @@ def _google_calendar_link(nome: str, data: date, forma: str, obs: str, valor: fl
     )
 
 
-def _popover_form(row: pd.Series):
-    """Formulário de agendamento exibido dentro do popover."""
+# ── Formulário de agendamento (aparece no topo da aba) ───────────────────────
+
+def _form_topo(row: pd.Series):
+    """
+    Formulário exibido no TOPO da aba quando o usuário clica 'Agendar'.
+    O Streamlit rola a página para o topo no rerun, então o formulário
+    fica visível imediatamente sem o usuário precisar rolar a tela.
+    """
     pid  = row["id"]
     nome = row["Nome"]
 
-    st.markdown(f"**{nome}**")
-    st.caption(
-        f"Acerto previsto: {row['Data acerto'].strftime('%d/%m/%Y')}  ·  "
-        f"Supervisora: {row['Supervisor']}  ·  "
-        f"Pré-baixa: {_R(row['Valor'])}"
-    )
+    with st.container(border=True):
+        col_tit, col_fechar = st.columns([11, 1])
+        with col_tit:
+            st.markdown(f"#### 📅 Agendar acerto — **{nome}**")
+        with col_fechar:
+            if st.button("✖", key="_btn_fechar", help="Fechar"):
+                st.session_state.pop("_ag_id", None)
+                st.rerun()
 
-    idx_forma = list(FORMAS.keys()).index(row["Forma"]) if row["Forma"] in FORMAS else 0
-    forma = st.selectbox(
-        "Forma de envio",
-        list(FORMAS.keys()),
-        index=idx_forma,
-        format_func=lambda f: f"{FORMAS[f]} {f}",
-        key=f"pf_forma_{pid}",
-    )
+        st.caption(
+            f"Supervisora: **{row['Supervisor']}**  ·  "
+            f"Acerto previsto: **{row['Data acerto'].strftime('%d/%m/%Y')}**  ·  "
+            f"Pré-baixa: **{_R(row['Valor'])}**"
+        )
 
-    data_padrao = row["Data agendada"] or row["Data acerto"]
-    data_ag = st.date_input(
-        "Data agendada",
-        value=data_padrao,
-        format="DD/MM/YYYY",
-        key=f"pf_data_{pid}",
-    )
-
-    obs = st.text_input(
-        "Observação (opcional)",
-        value=row["Obs"] or "",
-        key=f"pf_obs_{pid}",
-    )
-
-    col_s, col_r = st.columns([3, 1])
-    with col_s:
-        if st.button("💾 Salvar agendamento", type="primary",
-                     use_container_width=True, key=f"pf_salvar_{pid}"):
-            save_agendamento(pid, str(data_ag), forma, obs)
-            st.session_state["_gcal_link"] = _google_calendar_link(
-                nome, data_ag, forma, obs, row["Valor"]
+        col_f, col_d, col_obs = st.columns([1, 1, 2])
+        with col_f:
+            idx_forma = list(FORMAS.keys()).index(row["Forma"]) if row["Forma"] in FORMAS else 0
+            forma = st.selectbox(
+                "Forma de envio",
+                list(FORMAS.keys()),
+                index=idx_forma,
+                format_func=lambda f: f"{FORMAS[f]} {f}",
+                key="_ff_forma",
             )
-            st.session_state["_gcal_nome"] = nome
-            st.session_state["_gcal_data"] = data_ag.strftime("%d/%m/%Y")
-            st.rerun()
-    with col_r:
-        if row["Data agendada"] and st.button(
-            "🗑️ Remover", use_container_width=True, key=f"pf_rem_{pid}"
-        ):
-            remove_agendamento(pid)
-            st.rerun()
+        with col_d:
+            data_padrao = row["Data agendada"] or row["Data acerto"]
+            data_ag = st.date_input(
+                "Data agendada",
+                value=data_padrao,
+                format="DD/MM/YYYY",
+                key="_ff_data",
+            )
+        with col_obs:
+            obs = st.text_input(
+                "Observação (opcional)",
+                value=row["Obs"] or "",
+                key="_ff_obs",
+            )
+
+        col_s, col_r = st.columns([3, 1])
+        with col_s:
+            if st.button(
+                "💾 Salvar agendamento", type="primary",
+                use_container_width=True, key="_ff_salvar"
+            ):
+                save_agendamento(pid, str(data_ag), forma, obs)
+                st.session_state["_gcal_link"] = _google_calendar_link(
+                    nome, data_ag, forma, obs, row["Valor"]
+                )
+                st.session_state["_gcal_nome"] = nome
+                st.session_state["_gcal_data"] = data_ag.strftime("%d/%m/%Y")
+                st.session_state.pop("_ag_id", None)
+                st.rerun()
+        with col_r:
+            if row["Data agendada"] and st.button(
+                "🗑️ Remover agendamento",
+                use_container_width=True, key="_ff_remover"
+            ):
+                remove_agendamento(pid)
+                st.session_state.pop("_ag_id", None)
+                st.rerun()
+
+    st.divider()
 
 
 # ── Grade de uma semana ───────────────────────────────────────────────────────
@@ -162,12 +183,15 @@ def _grade_semana(df: pd.DataFrame, seg: date, hoje: date):
             else:
                 for _, row in df_dia.iterrows():
                     if row["Status"] == "Aberto":
-                        # Container com borda agrupa card + botão visualmente
                         with st.container(border=True):
                             st.markdown(_card_open(row), unsafe_allow_html=True)
-                            # Popover abre painel flutuante próximo ao botão
-                            with st.popover("📅 Agendar", use_container_width=True):
-                                _popover_form(row)
+                            if st.button(
+                                "📅 Agendar",
+                                key=f"ag_{row['id']}",
+                                use_container_width=True,
+                            ):
+                                st.session_state["_ag_id"] = row["id"]
+                                st.rerun()
                     else:
                         st.markdown(_card_closed(row), unsafe_allow_html=True)
 
@@ -177,7 +201,37 @@ def _grade_semana(df: pd.DataFrame, seg: date, hoje: date):
 def _tab_calendario(df: pd.DataFrame, filtro_supervisor: str):
     hoje = date.today()
 
-    # Métricas rápidas
+    # ── Formulário aparece aqui quando um card é selecionado ─────────────────
+    ag_id = st.session_state.get("_ag_id")
+    if ag_id:
+        rows = df[df["id"] == ag_id]
+        if not rows.empty:
+            _form_topo(rows.iloc[0])
+        else:
+            st.session_state.pop("_ag_id", None)
+
+    # ── Notificação + link Google Agenda ─────────────────────────────────────
+    if st.session_state.get("_gcal_link"):
+        gcal_link = st.session_state["_gcal_link"]
+        gcal_nome = st.session_state.get("_gcal_nome", "")
+        gcal_data = st.session_state.get("_gcal_data", "")
+        col_msg, col_fechar = st.columns([8, 1])
+        with col_msg:
+            st.success(f"✅ Agendamento salvo — **{gcal_nome}** · {gcal_data}")
+            st.markdown(
+                f"📅 [**Adicionar ao Google Agenda →**]({gcal_link})  "
+                "Clique para registrar na agenda compartilhada da Aureum."
+            )
+        with col_fechar:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("✖", key="_fechar_gcal"):
+                st.session_state.pop("_gcal_link", None)
+                st.session_state.pop("_gcal_nome", None)
+                st.session_state.pop("_gcal_data", None)
+                st.rerun()
+        st.divider()
+
+    # ── Métricas rápidas ──────────────────────────────────────────────────────
     prox        = proxima_semana_resumo(df, hoje)
     n_vencidos  = int((df["Situação"] == "🔴 Vencido").sum())   if not df.empty else 0
     n_a_agendar = int((df["Situação"] == "⬜ A agendar").sum()) if not df.empty else 0
@@ -194,36 +248,16 @@ def _tab_calendario(df: pd.DataFrame, filtro_supervisor: str):
             "clique em **📅 Agendar** dentro do card."
         )
 
-    # Notificação + link Google Agenda (aparece após salvar)
-    if st.session_state.get("_gcal_link"):
-        gcal_link = st.session_state["_gcal_link"]
-        gcal_nome = st.session_state.get("_gcal_nome", "")
-        gcal_data = st.session_state.get("_gcal_data", "")
-        col_msg, col_fechar = st.columns([7, 1])
-        with col_msg:
-            st.success(f"✅ Agendamento salvo — **{gcal_nome}** · {gcal_data}")
-            st.markdown(
-                f"📅 [**Adicionar ao Google Agenda →**]({gcal_link})  "
-                "Clique para registrar na agenda compartilhada da Aureum."
-            )
-        with col_fechar:
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("✖", key="_fechar_gcal"):
-                st.session_state.pop("_gcal_link", None)
-                st.session_state.pop("_gcal_nome", None)
-                st.session_state.pop("_gcal_data", None)
-                st.rerun()
-
     st.divider()
 
-    # Semana atual
+    # ── Semana atual ──────────────────────────────────────────────────────────
     seg1, dom1 = semana_de(hoje)
     st.markdown(f"**Semana atual** · {seg1.strftime('%d/%m')} – {dom1.strftime('%d/%m/%Y')}")
     _grade_semana(df, seg1, hoje)
 
     st.divider()
 
-    # Próxima semana
+    # ── Próxima semana ────────────────────────────────────────────────────────
     seg2 = seg1 + timedelta(weeks=1)
     dom2 = seg2 + timedelta(days=6)
     st.markdown(f"**Próxima semana** · {seg2.strftime('%d/%m')} – {dom2.strftime('%d/%m/%Y')}")
@@ -294,7 +328,8 @@ def _tab_lista(df: pd.DataFrame):
         exib.style
             .map(lambda v: f"color:{_cor(str(v))};font-weight:bold", subset=["Situação"])
             .format({"Valor": _R}),
-        use_container_width=True, hide_index=True,
+        use_container_width=True,
+        hide_index=True,
     )
 
     csv = df_f.drop(columns=["id"], errors="ignore").to_csv(index=False).encode("utf-8")

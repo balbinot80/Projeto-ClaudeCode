@@ -112,10 +112,8 @@ with st.sidebar:
             "📦 Estoque",
             "🛒 Programação de Compras",
             "👥 Revendedoras",
-            "👥 Revendedoras ✦ Preview",
             "📅 Controle de Acertos",
             "🔍 Diagnóstico",
-            "🎨 Preview UI",
         ]
     else:
         # Supervisoras: tela de revendedoras + controle de acertos
@@ -260,10 +258,6 @@ elif pagina == "👥 Revendedoras":
     from src.pages.revendedoras import render
     render(filtro_supervisor=sup_filtro)
 
-elif pagina == "👥 Revendedoras ✦ Preview":
-    from src.pages.revendedoras_preview import render
-    render(filtro_supervisor=sup_filtro)
-
 elif pagina == "📅 Controle de Acertos":
     from src.pages.acertos import render
     render(filtro_supervisor=sup_filtro)
@@ -272,6 +266,3 @@ elif pagina == "🔍 Diagnóstico":
     from src.pages.diagnostico import render
     render()
 
-elif pagina == "🎨 Preview UI":
-    from src.pages.dashboard_preview import render
-    render()

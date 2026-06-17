@@ -621,9 +621,12 @@ def render(filtro_supervisor: str = ""):
     meses = meses_disponiveis(7, futuros=1)
     opcoes = [f"{m:02d}/{y}" for y, m in meses]
 
+    mes_atual = f"{hoje.month:02d}/{hoje.year}"
+    idx_default = opcoes.index(mes_atual) if mes_atual in opcoes else 0
+
     col_f, col_info = st.columns([2, 5])
     with col_f:
-        mes_sel = st.selectbox("Mês de competência", opcoes, index=0)
+        mes_sel = st.selectbox("Mês de competência", opcoes, index=idx_default)
     mes_num = int(mes_sel[:2])
     ano_num = int(mes_sel[3:])
 

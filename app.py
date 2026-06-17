@@ -142,7 +142,7 @@ if not st.session_state.autenticado:
         f'.aureum-title {{'
         f'  font-family: "Argue", "Cormorant Garamond", "Playfair Display", Georgia, serif;'
         f'  color: #AB6776;'
-        f'  font-size: 3.4rem;'
+        f'  font-size: 5.1rem;'
         f'  font-weight: 400;'
         f'  letter-spacing: 2px;'
         f'  margin-bottom: 4px;'

@@ -70,6 +70,10 @@ def montar_acertos(pedidos: list) -> pd.DataFrame:
         rid    = p.get("fk_revendedor_id")
         status = p.get("status", "")
 
+        # Ignora pedidos cancelados ou com status desconhecido
+        if status not in ("Aberto", "Baixado"):
+            continue
+
         d_acerto = parse_date(p.get("data_acerto"))
         if not d_acerto:
             continue

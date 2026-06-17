@@ -84,9 +84,10 @@ def montar_acertos(pedidos: list) -> pd.DataFrame:
         if status != "Baixado" and d_acerto < corte:
             continue
 
-        comprador  = p.get("comprador") or {}
-        nome       = comprador.get("nome") or f"Rev {rid}"
-        supervisor = p.get("supervisor_nome") or "Sem supervisora"
+        comprador   = p.get("comprador") or {}
+        nome        = comprador.get("nome") or f"Rev {rid}"
+        supervisor  = p.get("supervisor_nome") or "Sem supervisora"
+        cod_pedido  = p.get("codigo_pedido") or ""
 
         ag         = ag_map.get(str(pid), {})
         d_ag_str   = ag.get("data_agendada")
@@ -115,6 +116,7 @@ def montar_acertos(pedidos: list) -> pd.DataFrame:
 
         rows.append({
             "id":            pid,
+            "Código":        cod_pedido,
             "Nome":          nome,
             "Supervisor":    supervisor,
             "Status":        status,

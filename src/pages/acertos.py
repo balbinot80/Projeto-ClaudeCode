@@ -365,7 +365,9 @@ def _tab_vencidos(df: pd.DataFrame):
                                 f'Previsto: {row["Data acerto"].strftime("%d/%m/%Y")}<br>'
                                 f'{forma_icon} {forma_txt}<br>'
                                 f'{_R(row["Valor"])}<br>'
-                                f'<span style="color:#888;font-size:0.9em">Pedido #{row["id"]}</span>'
+                                f'<span style="color:#888;font-size:0.9em">'
+                                f'Pedido: {row["Código"] or row["id"]}'
+                                f'</span>'
                                 f'</div>',
                                 unsafe_allow_html=True,
                             )

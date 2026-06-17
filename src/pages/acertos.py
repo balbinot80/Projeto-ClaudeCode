@@ -38,7 +38,7 @@ def _nome_curto(nome: str) -> str:
 
 
 def _card_open(row: pd.Series) -> str:
-    """Card para pedidos abertos — sem borda externa (st.container fornece)."""
+    """Card visual para pedido aberto — sem borda externa (container fornece)."""
     cor   = _cor(row["Situação"])
     forma = FORMAS.get(row["Forma"], "")
     valor = _R(row["Valor"])
@@ -72,11 +72,10 @@ def _card_closed(row: pd.Series) -> str:
 
 
 def _google_calendar_link(nome: str, data: date, forma: str, obs: str, valor: float) -> str:
-    titulo = f"Acerto · {nome}"
+    titulo   = f"Acerto · {nome}"
     data_ini = data.strftime("%Y%m%d")
     data_fim = (data + timedelta(days=1)).strftime("%Y%m%d")
-    forma_emoji = FORMAS.get(forma, "")
-    linhas = [f"Forma: {forma_emoji} {forma}", f"Valor pré-baixa: {_R(valor)}"]
+    linhas   = [f"Forma: {FORMAS.get(forma, '')} {forma}", f"Valor pré-baixa: {_R(valor)}"]
     if obs:
         linhas.append(f"Obs: {obs}")
     return (
@@ -88,45 +87,57 @@ def _google_calendar_link(nome: str, data: date, forma: str, obs: str, valor: fl
     )
 
 
-# ── Modal de agendamento (pop-up nativo do Streamlit) ─────────────────────────
-
-@st.dialog("📅 Agendar Acerto", width="large")
-def _modal_agendar(row: pd.Series):
+def _popover_form(row: pd.Series):
+    """Formulário de agendamento exibido dentro do popover."""
+    pid  = row["id"]
     nome = row["Nome"]
+
     st.markdown(f"**{nome}**")
     st.caption(
-        f"Supervisora: {row['Supervisor']}  ·  "
         f"Acerto previsto: {row['Data acerto'].strftime('%d/%m/%Y')}  ·  "
+        f"Supervisora: {row['Supervisor']}  ·  "
         f"Pré-baixa: {_R(row['Valor'])}"
     )
 
-    col_f, col_d = st.columns(2)
-    with col_f:
-        idx_forma = list(FORMAS.keys()).index(row["Forma"]) if row["Forma"] in FORMAS else 0
-        forma = st.selectbox(
-            "Forma de envio",
-            list(FORMAS.keys()),
-            index=idx_forma,
-            format_func=lambda f: f"{FORMAS[f]} {f}",
-        )
-    with col_d:
-        data_padrao = row["Data agendada"] or row["Data acerto"]
-        data_ag = st.date_input("Data agendada", value=data_padrao, format="DD/MM/YYYY")
+    idx_forma = list(FORMAS.keys()).index(row["Forma"]) if row["Forma"] in FORMAS else 0
+    forma = st.selectbox(
+        "Forma de envio",
+        list(FORMAS.keys()),
+        index=idx_forma,
+        format_func=lambda f: f"{FORMAS[f]} {f}",
+        key=f"pf_forma_{pid}",
+    )
 
-    obs = st.text_input("Observação (opcional)", value=row["Obs"] or "")
+    data_padrao = row["Data agendada"] or row["Data acerto"]
+    data_ag = st.date_input(
+        "Data agendada",
+        value=data_padrao,
+        format="DD/MM/YYYY",
+        key=f"pf_data_{pid}",
+    )
 
-    st.markdown("")
-    col_salvar, col_remover = st.columns([3, 1])
-    with col_salvar:
-        if st.button("💾 Salvar agendamento", type="primary", use_container_width=True):
-            save_agendamento(row["id"], str(data_ag), forma, obs)
-            st.session_state["_gcal_link"] = _google_calendar_link(nome, data_ag, forma, obs, row["Valor"])
+    obs = st.text_input(
+        "Observação (opcional)",
+        value=row["Obs"] or "",
+        key=f"pf_obs_{pid}",
+    )
+
+    col_s, col_r = st.columns([3, 1])
+    with col_s:
+        if st.button("💾 Salvar agendamento", type="primary",
+                     use_container_width=True, key=f"pf_salvar_{pid}"):
+            save_agendamento(pid, str(data_ag), forma, obs)
+            st.session_state["_gcal_link"] = _google_calendar_link(
+                nome, data_ag, forma, obs, row["Valor"]
+            )
             st.session_state["_gcal_nome"] = nome
             st.session_state["_gcal_data"] = data_ag.strftime("%d/%m/%Y")
             st.rerun()
-    with col_remover:
-        if row["Data agendada"] and st.button("🗑️ Remover", use_container_width=True):
-            remove_agendamento(row["id"])
+    with col_r:
+        if row["Data agendada"] and st.button(
+            "🗑️ Remover", use_container_width=True, key=f"pf_rem_{pid}"
+        ):
+            remove_agendamento(pid)
             st.rerun()
 
 
@@ -151,10 +162,12 @@ def _grade_semana(df: pd.DataFrame, seg: date, hoje: date):
             else:
                 for _, row in df_dia.iterrows():
                     if row["Status"] == "Aberto":
+                        # Container com borda agrupa card + botão visualmente
                         with st.container(border=True):
                             st.markdown(_card_open(row), unsafe_allow_html=True)
-                            if st.button("📅 Agendar", key=f"ag_{row['id']}", use_container_width=True):
-                                _modal_agendar(row)
+                            # Popover abre painel flutuante próximo ao botão
+                            with st.popover("📅 Agendar", use_container_width=True):
+                                _popover_form(row)
                     else:
                         st.markdown(_card_closed(row), unsafe_allow_html=True)
 
@@ -176,11 +189,13 @@ def _tab_calendario(df: pd.DataFrame, filtro_supervisor: str):
     c4.metric("🔴 Vencidos",          n_vencidos)
 
     if n_a_agendar:
-        st.warning(f"⚠️ {n_a_agendar} pedido(s) sem data de acerto — clique em **📅 Agendar** no card.")
+        st.warning(
+            f"⚠️ {n_a_agendar} pedido(s) sem data de acerto — "
+            "clique em **📅 Agendar** dentro do card."
+        )
 
     # Notificação + link Google Agenda (aparece após salvar)
     if st.session_state.get("_gcal_link"):
-        st.divider()
         gcal_link = st.session_state["_gcal_link"]
         gcal_nome = st.session_state.get("_gcal_nome", "")
         gcal_data = st.session_state.get("_gcal_data", "")
@@ -189,7 +204,7 @@ def _tab_calendario(df: pd.DataFrame, filtro_supervisor: str):
             st.success(f"✅ Agendamento salvo — **{gcal_nome}** · {gcal_data}")
             st.markdown(
                 f"📅 [**Adicionar ao Google Agenda →**]({gcal_link})  "
-                f"Clique para registrar na agenda compartilhada da Aureum."
+                "Clique para registrar na agenda compartilhada da Aureum."
             )
         with col_fechar:
             st.markdown("<br>", unsafe_allow_html=True)

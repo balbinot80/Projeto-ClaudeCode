@@ -650,18 +650,16 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
     st.markdown("### 🏆 Ganhadoras confirmadas")
     st.caption("Atingiram a meta com pedidos já **baixados** — resultado definitivo.")
     if ganhadoras:
-        cols = st.columns(min(len(ganhadoras), 3))
+        cols = st.columns(min(len(ganhadoras), 4))
         for i, r in enumerate(ganhadoras):
-            with cols[i % 3]:
+            with cols[i % 4]:
                 st.markdown(
                     f'<div style="background:#fff8e1;border:2px solid #f9a825;'
-                    f'border-radius:10px;padding:14px;margin-bottom:8px">'
-                    f'<div style="font-weight:700">🥇 {r["Nome"]}</div>'
-                    f'<div style="color:#888;font-size:0.82em;margin-bottom:6px">'
-                    f'{r["Supervisor"]}</div>'
-                    f'<div style="font-size:0.9em">Baixado: <b>{_R(r["Baixado"])}</b></div>'
-                    f'<div style="font-size:0.9em">Total: <b>{_R(r["Total"])}</b></div>'
-                    f'<div style="color:#27ae60;font-weight:700;margin-top:4px">'
+                    f'border-radius:10px;padding:10px 12px;margin-bottom:8px">'
+                    f'<div style="font-weight:700;font-size:0.95em">🥇 {r["Nome"]}</div>'
+                    f'<div style="color:#888;font-size:0.78em;margin-bottom:4px">{r["Supervisor"]}</div>'
+                    f'<div style="font-size:1em;font-weight:700">{_R(r["Total"])}</div>'
+                    f'<div style="color:#27ae60;font-size:0.82em;font-weight:700">'
                     f'✅ {r["% da meta"]:.1f}% da meta</div>'
                     f'</div>',
                     unsafe_allow_html=True,
@@ -678,20 +676,16 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
         "Ganharão se a pré-baixa converter."
     )
     if potenciais:
-        cols = st.columns(min(len(potenciais), 3))
+        cols = st.columns(min(len(potenciais), 4))
         for i, r in enumerate(potenciais):
-            with cols[i % 3]:
+            with cols[i % 4]:
                 st.markdown(
                     f'<div style="background:#e8f5e9;border:2px solid #66bb6a;'
-                    f'border-radius:10px;padding:14px;margin-bottom:8px">'
-                    f'<div style="font-weight:700">🎯 {r["Nome"]}</div>'
-                    f'<div style="color:#888;font-size:0.82em;margin-bottom:6px">'
-                    f'{r["Supervisor"]}</div>'
-                    f'<div style="font-size:0.9em">Baixado: {_R(r["Baixado"])}</div>'
-                    f'<div style="font-size:0.9em">Pré-baixa: {_R(r["Pré-baixa"])}</div>'
-                    f'<div style="font-weight:700;margin-top:4px">'
-                    f'Total: {_R(r["Total"])}</div>'
-                    f'<div style="color:#1976d2;font-weight:700">'
+                    f'border-radius:10px;padding:10px 12px;margin-bottom:8px">'
+                    f'<div style="font-weight:700;font-size:0.95em">🎯 {r["Nome"]}</div>'
+                    f'<div style="color:#888;font-size:0.78em;margin-bottom:4px">{r["Supervisor"]}</div>'
+                    f'<div style="font-size:1em;font-weight:700">{_R(r["Pré-baixa"])}</div>'
+                    f'<div style="color:#1976d2;font-size:0.82em;font-weight:700">'
                     f'📊 {r["% da meta"]:.1f}% da meta</div>'
                     f'</div>',
                     unsafe_allow_html=True,
@@ -705,16 +699,20 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
     st.markdown("### 📈 Próximas da meta")
     st.caption("Entre 70% e 99% da meta — ainda têm chance de alcançar.")
     if proximas:
-        for r in proximas:
-            pct_val = min(r["% da meta"] / 100, 1.0)
-            st.markdown(
-                f'**{r["Nome"]}** &nbsp;<span style="color:#888;font-size:0.85em">'
-                f'{r["Supervisor"]}</span>',
-                unsafe_allow_html=True,
-            )
-            st.progress(pct_val,
-                        text=f'{_R(r["Total"])} / {_R(meta_atual)} '
-                             f'({r["% da meta"]:.1f}%) — faltam {_R(r["Falta"])}')
+        cols = st.columns(min(len(proximas), 4))
+        for i, r in enumerate(proximas):
+            with cols[i % 4]:
+                st.markdown(
+                    f'<div style="background:#e3f2fd;border:2px solid #90caf9;'
+                    f'border-radius:10px;padding:10px 12px;margin-bottom:8px">'
+                    f'<div style="font-weight:700;font-size:0.95em">📈 {r["Nome"]}</div>'
+                    f'<div style="color:#888;font-size:0.78em;margin-bottom:4px">{r["Supervisor"]}</div>'
+                    f'<div style="font-size:1em;font-weight:700">{_R(r["Total"])}</div>'
+                    f'<div style="color:#1565c0;font-size:0.82em;font-weight:700">'
+                    f'{r["% da meta"]:.1f}% — faltam {_R(r["Falta"])}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
     else:
         st.info("Nenhuma revendedora entre 70% e 99% da meta neste mês.")
 
@@ -723,24 +721,26 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
     # ── Seção 4: Colar personalizado ──────────────────────────────────────────
     st.markdown("### 💎 Colar personalizado — nova revendedora")
     st.caption(
-        "Regra fixa: revendedora com **primeiro pedido** baixado neste mês "
-        "com valor > R$ 1.000,00 ganha um colar personalizado."
+        "Regra fixa: primeiro pedido de nova revendedora com valor > R$ 1.000,00. "
+        "✅ Pedido finalizado = ganhou. 📊 Em aberto = contando pré-baixa (ainda pode mudar)."
     )
     if colar:
-        cols = st.columns(min(len(colar), 3))
+        cols = st.columns(min(len(colar), 4))
         for i, r in enumerate(colar):
-            with cols[i % 3]:
+            with cols[i % 4]:
+                confirmado = r["status_pedido"] == "Baixado"
+                status_txt = "✅ Pedido finalizado — ganhou!" if confirmado else "📊 Pedido em aberto (pré-baixa)"
+                status_cor = "#7b1fa2" if confirmado else "#1976d2"
+                borda      = "#9c27b0" if confirmado else "#90caf9"
+                fundo      = "linear-gradient(135deg,#f3e5f5,#e1bee7)" if confirmado else "#e3f2fd"
                 st.markdown(
-                    f'<div style="background:linear-gradient(135deg,#f3e5f5,#e1bee7);'
-                    f'border:2px solid #9c27b0;border-radius:10px;padding:14px;'
-                    f'margin-bottom:8px">'
-                    f'<div style="font-weight:700">💎 {r["Nome"]}</div>'
-                    f'<div style="color:#888;font-size:0.82em;margin-bottom:6px">'
-                    f'{r["Supervisor"]}</div>'
-                    f'<div style="font-size:0.9em">1º pedido: '
-                    f'<b>{_R(r["Valor 1º pedido"])}</b></div>'
-                    f'<div style="color:#7b1fa2;font-weight:700;margin-top:4px">'
-                    f'🎁 Colar personalizado</div>'
+                    f'<div style="background:{fundo};border:2px solid {borda};'
+                    f'border-radius:10px;padding:10px 12px;margin-bottom:8px">'
+                    f'<div style="font-weight:700;font-size:0.95em">💎 {r["Nome"]}</div>'
+                    f'<div style="color:#888;font-size:0.78em;margin-bottom:4px">{r["Supervisor"]}</div>'
+                    f'<div style="font-size:1em;font-weight:700">{_R(r["Valor 1º pedido"])}</div>'
+                    f'<div style="color:{status_cor};font-size:0.82em;font-weight:700">'
+                    f'{status_txt}</div>'
                     f'</div>',
                     unsafe_allow_html=True,
                 )

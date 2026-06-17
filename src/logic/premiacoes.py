@@ -99,7 +99,10 @@ def _criacao_key(p):
 def verificar_colar(todos_pedidos: list, mes: int, ano: int) -> list:
     """
     Regra fixa: nova revendedora cujo PRIMEIRO pedido (mais antigo por data_criacao)
-    foi baixado neste mês com valor_total > R$ 1.000,00 ganha colar personalizado.
+    está relacionado a este mês e tem valor > R$ 1.000,00.
+    - Baixado no mês com valor_total > 1000 → ganhou (confirmado)
+    - Aberto com data_acerto no mês e valor_pre_baixa > 1000 → potencial (em aberto)
+    Retorna campo "status_pedido": "Baixado" ou "Aberto".
     """
     pedidos_por_rev: dict = defaultdict(list)
     for p in todos_pedidos:
@@ -110,21 +113,37 @@ def verificar_colar(todos_pedidos: list, mes: int, ano: int) -> list:
     winners = []
     for rid, pedidos in pedidos_por_rev.items():
         primeiro = sorted(pedidos, key=_criacao_key)[0]
-
-        if primeiro.get("status") != "Baixado":
-            continue
-        d_baixa = parse_date(primeiro.get("data_baixa"))
-        if not (d_baixa and d_baixa.month == mes and d_baixa.year == ano):
-            continue
-        valor = float(primeiro.get("valor_total") or 0)
-        if valor <= 1000:
-            continue
-
+        status   = primeiro.get("status", "")
         comprador = primeiro.get("comprador") or {}
-        winners.append({
-            "Nome":              comprador.get("nome") or f"Rev {rid}",
-            "Supervisor":        primeiro.get("supervisor_nome") or "Sem supervisora",
-            "Valor 1º pedido":   round(valor, 2),
-        })
+        nome      = comprador.get("nome") or f"Rev {rid}"
+        supervisor = primeiro.get("supervisor_nome") or "Sem supervisora"
+
+        if status == "Baixado":
+            d_baixa = parse_date(primeiro.get("data_baixa"))
+            if not (d_baixa and d_baixa.month == mes and d_baixa.year == ano):
+                continue
+            valor = float(primeiro.get("valor_total") or 0)
+            if valor <= 1000:
+                continue
+            winners.append({
+                "Nome":            nome,
+                "Supervisor":      supervisor,
+                "Valor 1º pedido": round(valor, 2),
+                "status_pedido":   "Baixado",
+            })
+
+        elif status == "Aberto":
+            d_acerto = parse_date(primeiro.get("data_acerto"))
+            if not (d_acerto and d_acerto.month == mes and d_acerto.year == ano):
+                continue
+            valor = float(primeiro.get("valor_pre_baixa") or 0)
+            if valor <= 1000:
+                continue
+            winners.append({
+                "Nome":            nome,
+                "Supervisor":      supervisor,
+                "Valor 1º pedido": round(valor, 2),
+                "status_pedido":   "Aberto",
+            })
 
     return sorted(winners, key=lambda x: x["Nome"])

@@ -1,6 +1,15 @@
 import os
+from pathlib import Path
 import streamlit as st
 from dotenv import load_dotenv
+
+def _logo(arquivo: str, **kwargs):
+    """Exibe uma logo da pasta assets/ se o arquivo existir."""
+    p = Path("assets") / arquivo
+    if p.exists():
+        st.image(str(p), **kwargs)
+        return True
+    return False
 
 load_dotenv()
 
@@ -72,7 +81,11 @@ if "autenticado" not in st.session_state:
 if not st.session_state.autenticado:
     col_c, col_f, col_c2 = st.columns([2, 3, 2])
     with col_f:
-        st.title("💍 Aureum Joias")
+        # Logo principal rosa centralizada
+        if not _logo("logo_rosa.png", use_container_width=True):
+            st.title("💍 Aureum Joias")
+
+        st.markdown("<br>", unsafe_allow_html=True)
         st.subheader("Sistema de Gestão")
         st.divider()
 
@@ -121,7 +134,9 @@ _time_cfg = _TIMES.get(usuario.get("login", "")) if role == "supervisora" else N
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    st.title("💍 Aureum Joias")
+    # Badge circular rosa no topo do sidebar
+    if not _logo("badge_rosa.png", use_container_width=True):
+        st.title("💍 Aureum Joias")
 
     if _time_cfg:
         st.markdown(
@@ -165,6 +180,12 @@ with st.sidebar:
         st.session_state.autenticado = False
         st.session_state.usuario = {}
         st.rerun()
+
+
+# ── Logo principal no topo do conteúdo ────────────────────────────────────────
+
+with st.columns([1, 5])[0]:
+    _logo("logo_rosa.png", use_container_width=True)
 
 
 # ── Banner de time (supervisoras) ──────────────────────────────────────────────

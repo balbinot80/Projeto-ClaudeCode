@@ -30,9 +30,20 @@ def load_agendamentos() -> dict:
     return {}
 
 
-def save_agendamento(pedido_id, data_agendada: str, forma: str, obs: str = ""):
+def save_agendamento(
+    pedido_id,
+    data_agendada: str,
+    forma: str,
+    obs: str = "",
+    hora: str = "",
+):
     ag = load_agendamentos()
-    ag[str(pedido_id)] = {"data_agendada": data_agendada, "forma": forma, "obs": obs}
+    ag[str(pedido_id)] = {
+        "data_agendada": data_agendada,
+        "forma":         forma,
+        "obs":           obs,
+        "hora_agendada": hora,
+    }
     os.makedirs(os.path.dirname(_FILE), exist_ok=True)
     with open(_FILE, "w", encoding="utf-8") as f:
         json.dump(ag, f, ensure_ascii=False, indent=2)
@@ -49,13 +60,9 @@ def remove_agendamento(pedido_id):
 # ── Montagem do DataFrame de acertos ──────────────────────────────────────────
 
 def montar_acertos(pedidos: list) -> pd.DataFrame:
-    """
-    Retorna um DataFrame com todos os pedidos relevantes para o calendário
-    de acertos (abertos com data_acerto futura/corrente + baixados recentes).
-    """
-    ag_map    = load_agendamentos()
-    hoje      = date.today()
-    corte_passado = hoje - timedelta(days=90)   # baixados dos últimos 90 dias
+    ag_map = load_agendamentos()
+    hoje   = date.today()
+    corte  = hoje - timedelta(days=90)  # 3 meses: baixados recentes + abertos não muito antigos
 
     rows = []
     for p in pedidos:
@@ -67,28 +74,32 @@ def montar_acertos(pedidos: list) -> pd.DataFrame:
         if not d_acerto:
             continue
 
-        # Inclui: abertos com acerto futuro/atual e baixados dos últimos 90 dias
         d_baixa = parse_date(p.get("data_baixa")) if status == "Baixado" else None
-        if status == "Baixado" and (not d_baixa or d_baixa < corte_passado):
+
+        # Baixados: apenas últimos 90 dias
+        if status == "Baixado" and (not d_baixa or d_baixa < corte):
+            continue
+
+        # Abertos: apenas acertos dos últimos 3 meses (evita vencidos muito antigos)
+        if status != "Baixado" and d_acerto < corte:
             continue
 
         comprador  = p.get("comprador") or {}
         nome       = comprador.get("nome") or f"Rev {rid}"
         supervisor = p.get("supervisor_nome") or "Sem supervisora"
 
-        ag          = ag_map.get(str(pid), {})
-        d_ag_str    = ag.get("data_agendada")
-        d_agendada  = parse_date(d_ag_str) if d_ag_str else None
-        forma       = ag.get("forma", "")
-        obs         = ag.get("obs", "")
+        ag         = ag_map.get(str(pid), {})
+        d_ag_str   = ag.get("data_agendada")
+        d_agendada = parse_date(d_ag_str) if d_ag_str else None
+        forma      = ag.get("forma", "")
+        obs        = ag.get("obs", "")
+        hora_ag    = ag.get("hora_agendada", "")
 
-        # Data de referência para posição no calendário
         data_ref = d_agendada or d_baixa or d_acerto
 
-        # Situação
         if status == "Baixado":
             if d_baixa and d_baixa > d_acerto:
-                atraso = (d_baixa - d_acerto).days
+                atraso   = (d_baixa - d_acerto).days
                 situacao = f"⚠️ Atrasou {atraso}d"
             else:
                 situacao = "✅ Realizado"
@@ -100,24 +111,22 @@ def montar_acertos(pedidos: list) -> pd.DataFrame:
             else:
                 situacao = "⬜ A agendar"
 
-        if status == "Baixado":
-            valor = float(p.get("valor_total") or 0)
-        else:
-            valor = float(p.get("valor_pre_baixa") or 0)
+        valor = float(p.get("valor_total") if status == "Baixado" else p.get("valor_pre_baixa") or 0)
 
         rows.append({
-            "id":           pid,
-            "Nome":         nome,
-            "Supervisor":   supervisor,
-            "Status":       status,
-            "Data acerto":  d_acerto,
+            "id":            pid,
+            "Nome":          nome,
+            "Supervisor":    supervisor,
+            "Status":        status,
+            "Data acerto":   d_acerto,
             "Data agendada": d_agendada,
-            "Data baixa":   d_baixa,
-            "Data ref":     data_ref,
-            "Valor":        round(valor, 2),
-            "Forma":        forma,
-            "Obs":          obs,
-            "Situação":     situacao,
+            "Data baixa":    d_baixa,
+            "Data ref":      data_ref,
+            "Valor":         round(valor, 2),
+            "Forma":         forma,
+            "Obs":           obs,
+            "Hora agendada": hora_ag,
+            "Situação":      situacao,
         })
 
     if not rows:
@@ -133,13 +142,11 @@ def montar_acertos(pedidos: list) -> pd.DataFrame:
 # ── Helpers de semana ─────────────────────────────────────────────────────────
 
 def semana_de(d: date):
-    """Retorna (segunda, domingo) da semana que contém d."""
     seg = d - timedelta(days=d.weekday())
     return seg, seg + timedelta(days=6)
 
 
 def proxima_semana_resumo(df: pd.DataFrame, hoje: date = None) -> dict:
-    """Conta acertos da próxima semana (segunda a domingo)."""
     if hoje is None:
         hoje = date.today()
     seg_prox = hoje - timedelta(days=hoje.weekday()) + timedelta(weeks=1)
@@ -148,10 +155,10 @@ def proxima_semana_resumo(df: pd.DataFrame, hoje: date = None) -> dict:
     if df.empty:
         return {"total": 0, "agendados": 0, "a_agendar": 0}
 
-    mask = (df["Data ref"] >= seg_prox) & (df["Data ref"] <= dom_prox)
+    mask    = (df["Data ref"] >= seg_prox) & (df["Data ref"] <= dom_prox)
     df_prox = df[mask]
     return {
-        "total":      len(df_prox),
-        "agendados":  (df_prox["Situação"] == "📅 Agendado").sum(),
-        "a_agendar":  (df_prox["Situação"] == "⬜ A agendar").sum(),
+        "total":     len(df_prox),
+        "agendados": (df_prox["Situação"] == "📅 Agendado").sum(),
+        "a_agendar": (df_prox["Situação"] == "⬜ A agendar").sum(),
     }

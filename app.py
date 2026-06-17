@@ -117,11 +117,41 @@ if not st.session_state.autenticado:
             unsafe_allow_html=True,
         )
 
+    # Carrega fonte Argue Regular se o arquivo existir em assets/
+    _font_css = ""
+    for _fname in ("Argue Regular.ttf", "Argue-Regular.ttf", "Argue Regular.woff2", "Argue-Regular.woff2"):
+        _fp = Path("assets") / _fname
+        if _fp.exists():
+            _fb64 = base64.b64encode(_fp.read_bytes()).decode()
+            _fmt  = "woff2" if _fp.suffix == ".woff2" else "truetype"
+            _font_css = (
+                f'@font-face {{'
+                f'  font-family: "Argue";'
+                f'  src: url("data:font/{_fmt};base64,{_fb64}") format("{_fmt}");'
+                f'  font-weight: normal; font-style: normal;'
+                f'}}'
+            )
+            break
+
+    st.markdown(
+        f'<style>{_font_css}'
+        f'.aureum-title {{'
+        f'  font-family: "Argue", "Cormorant Garamond", "Playfair Display", Georgia, serif;'
+        f'  color: #AB6776;'
+        f'  font-size: 2.6rem;'
+        f'  font-weight: 400;'
+        f'  letter-spacing: 2px;'
+        f'  margin-bottom: 4px;'
+        f'}}'
+        f'</style>',
+        unsafe_allow_html=True,
+    )
+
     st.markdown("<div style='margin-top:100px'></div>", unsafe_allow_html=True)
 
     _, col_f, _ = st.columns([3, 4, 3])
     with col_f:
-        st.title("💍 Aureum Joias")
+        st.markdown('<p class="aureum-title">Aureum Joias</p>', unsafe_allow_html=True)
         st.subheader("Sistema de Gestão", anchor=False)
         st.divider()
 

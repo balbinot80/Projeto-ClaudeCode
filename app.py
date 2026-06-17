@@ -98,12 +98,43 @@ role = usuario.get("role", "admin")
 nome_usuario = usuario.get("nome", "Usuário")
 sup_filtro = usuario.get("supervisor_nome", "") if role == "supervisora" else ""
 
+_TIMES = {
+    "yasmim": {
+        "nome":  "Time Jade",
+        "pedra": "Jade",
+        "cor":   "#00A877",
+        "cor2":  "#006b4e",
+        "emoji": "💚",
+    },
+    "julia": {
+        "nome":  "Time Ametista",
+        "pedra": "Ametista",
+        "cor":   "#9966CC",
+        "cor2":  "#6a3d99",
+        "emoji": "💜",
+    },
+}
+
+_time_cfg = _TIMES.get(usuario.get("login", "")) if role == "supervisora" else None
+
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 
 with st.sidebar:
     st.title("💍 Aureum Joias")
-    st.caption(f"Olá, **{nome_usuario}**")
+
+    if _time_cfg:
+        st.markdown(
+            f'<div style="text-align:center;padding:6px 0 2px">'
+            f'<span style="font-size:1.6em">{_time_cfg["emoji"]}</span><br>'
+            f'<span style="color:{_time_cfg["cor"]};font-weight:700;font-size:1.05em;'
+            f'letter-spacing:1px">{_time_cfg["nome"].upper()}</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.caption(f"Olá, **{nome_usuario}**")
+
     st.divider()
 
     if role == "admin":
@@ -134,6 +165,44 @@ with st.sidebar:
         st.session_state.autenticado = False
         st.session_state.usuario = {}
         st.rerun()
+
+
+# ── Banner de time (supervisoras) ──────────────────────────────────────────────
+
+if _time_cfg:
+    cor  = _time_cfg["cor"]
+    cor2 = _time_cfg["cor2"]
+    nome_time  = _time_cfg["nome"]
+    pedra      = _time_cfg["pedra"]
+    emoji      = _time_cfg["emoji"]
+    st.markdown(
+        f'<div style="'
+        f'background:linear-gradient(135deg,{cor} 0%,{cor2} 100%);'
+        f'color:white;padding:18px 28px;border-radius:14px;'
+        f'margin-bottom:8px;position:relative;overflow:hidden">'
+
+        # Decoração de fundo — pedras estilizadas
+        f'<div style="position:absolute;top:-12px;right:24px;'
+        f'font-size:5.5em;opacity:0.13;transform:rotate(20deg)">◆</div>'
+        f'<div style="position:absolute;bottom:-18px;right:90px;'
+        f'font-size:3.5em;opacity:0.10;transform:rotate(-12deg)">◆</div>'
+        f'<div style="position:absolute;top:8px;right:110px;'
+        f'font-size:2em;opacity:0.08;transform:rotate(40deg)">◆</div>'
+
+        # Conteúdo principal
+        f'<div style="display:flex;align-items:center;gap:16px;position:relative;z-index:1">'
+        f'<span style="font-size:2.4em;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3))">{emoji}</span>'
+        f'<div>'
+        f'<div style="font-size:1.55em;font-weight:800;letter-spacing:2px;'
+        f'text-shadow:0 1px 3px rgba(0,0,0,0.2)">{nome_time.upper()}</div>'
+        f'<div style="font-size:0.82em;opacity:0.88;margin-top:2px;letter-spacing:0.5px">'
+        f'✦ Pedra: {pedra} &nbsp;·&nbsp; {nome_usuario}'
+        f'</div>'
+        f'</div>'
+        f'</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 
 # ── Roteamento ─────────────────────────────────────────────────────────────────

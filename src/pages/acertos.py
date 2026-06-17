@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import date, timedelta
+from urllib.parse import quote
 from src.api.jueri_client import _get_lista_pedidos
 from src.logic.acertos import (
     FORMAS, DIAS_PT,
@@ -8,11 +9,8 @@ from src.logic.acertos import (
     save_agendamento, remove_agendamento,
 )
 
-_R = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+_R   = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 _Rmd = lambda v: f"R\\$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-
-# ── Cores de situação ─────────────────────────────────────────────────────────
 
 _COR_SITUACAO = {
     "✅ Realizado":  "#27ae60",
@@ -31,14 +29,12 @@ def _cor(sit: str) -> str:
     return "#95a5a6"
 
 
-# ── Card de um acerto no calendário ──────────────────────────────────────────
-
 def _card(row: pd.Series) -> str:
-    cor    = _cor(row["Situação"])
-    forma  = FORMAS.get(row["Forma"], "")
-    valor  = _R(row["Valor"])
-    nome   = row["Nome"].split()[0]          # primeiro nome
-    sit    = row["Situação"]
+    cor   = _cor(row["Situação"])
+    forma = FORMAS.get(row["Forma"], "")
+    valor = _R(row["Valor"])
+    nome  = row["Nome"].split()[0]
+    sit   = row["Situação"]
     return (
         f'<div style="background:{cor}22;border-left:3px solid {cor};'
         f'border-radius:4px;padding:4px 6px;margin:2px 0;font-size:0.78em;line-height:1.4">'
@@ -49,74 +45,179 @@ def _card(row: pd.Series) -> str:
     )
 
 
-# ── Calendário semanal ────────────────────────────────────────────────────────
+def _google_calendar_link(nome: str, data: date, forma: str, obs: str, valor: float) -> str:
+    titulo = f"Acerto · {nome}"
+    # Data fim = +1 dia (Google Calendar trata end como exclusivo para all-day)
+    data_ini = data.strftime("%Y%m%d")
+    data_fim = (data + timedelta(days=1)).strftime("%Y%m%d")
+    forma_emoji = FORMAS.get(forma, "")
+    linhas = [f"Forma: {forma_emoji} {forma}", f"Valor pré-baixa: {_R(valor)}"]
+    if obs:
+        linhas.append(f"Obs: {obs}")
+    detalhes = "\n".join(linhas)
+    return (
+        "https://calendar.google.com/calendar/render?action=TEMPLATE"
+        f"&text={quote(titulo)}"
+        f"&dates={data_ini}/{data_fim}"
+        f"&details={quote(detalhes)}"
+        "&ctz=America%2FSao_Paulo&sf=true&output=xml"
+    )
 
-def _tab_calendario(df: pd.DataFrame, filtro_supervisor: str):
-    hoje = date.today()
 
-    # ── Resumo geral ─────────────────────────────────────────────────────────
-    prox = proxima_semana_resumo(df, hoje)
-    n_vencidos   = int((df["Situação"] == "🔴 Vencido").sum())       if not df.empty else 0
-    n_a_agendar  = int((df["Situação"] == "⬜ A agendar").sum())     if not df.empty else 0
+# ── Grade de uma semana ───────────────────────────────────────────────────────
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("📅 Próxima semana",   prox["total"])
-    c2.metric("✅ Já agendados",     prox["agendados"])
-    c3.metric("⬜ A agendar (prox.)", prox["a_agendar"])
-    c4.metric("🔴 Vencidos",         n_vencidos)
-
-    if n_a_agendar:
-        st.warning(f"⚠️ {n_a_agendar} pedido(s) sem data de acerto agendada — agende antes que vençam.")
-
-    st.divider()
-
-    # ── Navegação de semana ───────────────────────────────────────────────────
-    if "acertos_semana_offset" not in st.session_state:
-        st.session_state.acertos_semana_offset = 0
-
-    col_prev, col_label, col_next = st.columns([1, 4, 1])
-    with col_prev:
-        if st.button("◀ Anterior"):
-            st.session_state.acertos_semana_offset -= 1
-    with col_next:
-        if st.button("Próxima ▶"):
-            st.session_state.acertos_semana_offset += 1
-
-    offset  = st.session_state.acertos_semana_offset
-    seg, dom = semana_de(hoje + timedelta(weeks=offset))
-
-    with col_label:
-        st.markdown(
-            f"<h4 style='text-align:center;margin:0'>"
-            f"Semana {seg.strftime('%d/%m')} – {dom.strftime('%d/%m/%Y')}"
-            f"</h4>",
-            unsafe_allow_html=True,
-        )
-
-    # ── Grade semanal ─────────────────────────────────────────────────────────
+def _grade_semana(df: pd.DataFrame, seg: date, hoje: date):
+    """Renderiza 7 colunas com cards e botões de agendamento."""
     dias = [seg + timedelta(days=i) for i in range(7)]
     cols = st.columns(7)
 
     for col, dia in zip(cols, dias):
-        label_dia = f"**{DIAS_PT[dia.weekday()]}**  \n{dia.strftime('%d/%m')}"
-        destaque  = "🔵 " if dia == hoje else ""
-        col.markdown(f"{destaque}{label_dia}", unsafe_allow_html=False)
+        destaque = "🔵 " if dia == hoje else ""
+        col.markdown(f"{destaque}**{DIAS_PT[dia.weekday()]}**  \n{dia.strftime('%d/%m')}")
 
-        if not df.empty:
-            df_dia = df[df["Data ref"] == dia]
-            if df_dia.empty:
-                col.markdown(
-                    '<div style="color:#bdc3c7;font-size:0.75em;text-align:center">—</div>',
-                    unsafe_allow_html=True,
-                )
-            else:
-                for _, row in df_dia.iterrows():
-                    col.markdown(_card(row), unsafe_allow_html=True)
-        else:
+        df_dia = df[df["Data ref"] == dia] if not df.empty else pd.DataFrame()
+
+        if df_dia.empty:
             col.markdown(
                 '<div style="color:#bdc3c7;font-size:0.75em;text-align:center">—</div>',
                 unsafe_allow_html=True,
             )
+        else:
+            for _, row in df_dia.iterrows():
+                col.markdown(_card(row), unsafe_allow_html=True)
+                if row["Status"] == "Aberto":
+                    if col.button("📅 Agendar", key=f"ag_{row['id']}", use_container_width=True):
+                        st.session_state["_ag_id"]    = row["id"]
+                        st.session_state["_ag_nome"]  = row["Nome"]
+                        st.session_state["_ag_valor"] = row["Valor"]
+                        st.session_state["_ag_data"]  = row["Data agendada"] or row["Data acerto"]
+                        st.session_state["_ag_forma"] = row["Forma"] or list(FORMAS.keys())[0]
+                        st.session_state["_ag_obs"]   = row["Obs"] or ""
+                        st.session_state.pop("_gcal_link", None)
+                        st.rerun()
+
+
+# ── Formulário inline de agendamento ─────────────────────────────────────────
+
+def _form_agendar_inline(df: pd.DataFrame):
+    pid = st.session_state.get("_ag_id")
+    if not pid:
+        return
+
+    rows = df[df["id"] == pid]
+    if rows.empty:
+        st.session_state.pop("_ag_id", None)
+        return
+    row = rows.iloc[0]
+    nome = row["Nome"]
+
+    st.divider()
+    st.markdown(f"#### 📅 Agendar acerto — **{nome}**")
+    st.caption(
+        f"Supervisora: {row['Supervisor']} · "
+        f"Acerto previsto: {row['Data acerto'].strftime('%d/%m/%Y')} · "
+        f"Valor pré-baixa: {_R(row['Valor'])}"
+    )
+
+    col_f, col_d, col_obs = st.columns([1, 1, 2])
+    with col_f:
+        idx_forma = list(FORMAS.keys()).index(row["Forma"]) if row["Forma"] in FORMAS else 0
+        forma = st.selectbox(
+            "Forma de envio",
+            list(FORMAS.keys()),
+            index=idx_forma,
+            format_func=lambda f: f"{FORMAS[f]} {f}",
+            key="_form_forma",
+        )
+    with col_d:
+        data_ag = st.date_input(
+            "Data agendada",
+            value=st.session_state.get("_ag_data") or row["Data acerto"],
+            format="DD/MM/YYYY",
+            key="_form_data",
+        )
+    with col_obs:
+        obs = st.text_input("Observação (opcional)", value=st.session_state.get("_ag_obs", ""), key="_form_obs")
+
+    col_salvar, col_cancelar, col_remover = st.columns([2, 1, 1])
+    with col_salvar:
+        if st.button("💾 Salvar agendamento", type="primary", use_container_width=True, key="_btn_salvar"):
+            save_agendamento(pid, str(data_ag), forma, obs)
+            st.session_state["_gcal_link"] = _google_calendar_link(nome, data_ag, forma, obs, row["Valor"])
+            st.session_state["_gcal_nome"] = nome
+            st.session_state["_gcal_data"] = data_ag.strftime("%d/%m/%Y")
+            st.session_state.pop("_ag_id", None)
+            st.rerun()
+
+    with col_cancelar:
+        if st.button("✖ Cancelar", use_container_width=True, key="_btn_cancelar"):
+            st.session_state.pop("_ag_id", None)
+            st.rerun()
+
+    with col_remover:
+        if row["Data agendada"] and st.button("🗑️ Remover", use_container_width=True, key="_btn_remover"):
+            remove_agendamento(pid)
+            st.session_state.pop("_ag_id", None)
+            st.rerun()
+
+
+# ── Calendário (2 semanas fixas) ──────────────────────────────────────────────
+
+def _tab_calendario(df: pd.DataFrame, filtro_supervisor: str):
+    hoje = date.today()
+
+    # Métricas rápidas
+    prox         = proxima_semana_resumo(df, hoje)
+    n_vencidos   = int((df["Situação"] == "🔴 Vencido").sum())   if not df.empty else 0
+    n_a_agendar  = int((df["Situação"] == "⬜ A agendar").sum()) if not df.empty else 0
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("📅 Próxima semana",    prox["total"])
+    c2.metric("✅ Já agendados",      prox["agendados"])
+    c3.metric("⬜ A agendar (prox.)", prox["a_agendar"])
+    c4.metric("🔴 Vencidos",          n_vencidos)
+
+    if n_a_agendar:
+        st.warning(f"⚠️ {n_a_agendar} pedido(s) sem data de acerto agendada — use o botão **📅 Agendar** no card.")
+
+    st.divider()
+
+    # Notificação Google Agenda (aparece após salvar)
+    if st.session_state.get("_gcal_link"):
+        gcal_nome = st.session_state.get("_gcal_nome", "")
+        gcal_data = st.session_state.get("_gcal_data", "")
+        gcal_link = st.session_state["_gcal_link"]
+        col_msg, col_fechar = st.columns([6, 1])
+        with col_msg:
+            st.success(f"✅ Agendamento salvo — **{gcal_nome}** · {gcal_data}")
+            st.markdown(
+                f"📅 [**Adicionar ao Google Agenda →**]({gcal_link})  "
+                f"Clique para registrar na agenda compartilhada da Aureum.",
+            )
+        with col_fechar:
+            if st.button("✖", key="_fechar_gcal"):
+                st.session_state.pop("_gcal_link", None)
+                st.session_state.pop("_gcal_nome", None)
+                st.session_state.pop("_gcal_data", None)
+                st.rerun()
+        st.divider()
+
+    # ── Semana atual ──────────────────────────────────────────────────────────
+    seg1, dom1 = semana_de(hoje)
+    st.markdown(
+        f"**Semana atual** · {seg1.strftime('%d/%m')} – {dom1.strftime('%d/%m/%Y')}",
+    )
+    _grade_semana(df, seg1, hoje)
+
+    st.divider()
+
+    # ── Próxima semana ────────────────────────────────────────────────────────
+    seg2 = seg1 + timedelta(weeks=1)
+    dom2 = seg2 + timedelta(days=6)
+    st.markdown(
+        f"**Próxima semana** · {seg2.strftime('%d/%m')} – {dom2.strftime('%d/%m/%Y')}",
+    )
+    _grade_semana(df, seg2, hoje)
 
     # Legenda
     st.divider()
@@ -126,82 +227,13 @@ def _tab_calendario(df: pd.DataFrame, filtro_supervisor: str):
         "🟠 Realizado com atraso · "
         "🔵 Agendado · "
         "⬜ A agendar · "
-        "🔴 Vencido sem baixa"
+        "🔴 Vencido sem baixa  —  "
+        "Clique em **📅 Agendar** para registrar data, forma de envio e observação."
     )
 
-
-# ── Agendamento / edição ──────────────────────────────────────────────────────
-
-def _tab_agendar(df: pd.DataFrame, todos_pedidos: list, filtro_supervisor: str):
-    st.subheader("Agendar ou editar acerto")
-    st.caption("Selecione um pedido aberto para registrar a data e forma do acerto.")
-
-    if df.empty:
-        st.info("Nenhum pedido disponível para agendamento.")
-        return
-
-    # Pedidos abertos — prioriza vencidos e sem agendamento
-    abertos = df[df["Status"] == "Aberto"].copy()
-    if abertos.empty:
-        st.info("Não há pedidos abertos no período exibido.")
-        return
-
-    abertos = abertos.sort_values(["Situação", "Data acerto"])
-
-    # Monta opções de seleção
-    opcoes = {}
-    for _, row in abertos.iterrows():
-        sit   = row["Situação"]
-        forma = f" {FORMAS.get(row['Forma'], '')} {row['Forma']}" if row["Forma"] else ""
-        label = (
-            f"{row['Nome']} | Acerto: {row['Data acerto'].strftime('%d/%m/%y')} "
-            f"| {sit}{forma}"
-        )
-        opcoes[label] = row
-
-    escolhido_label = st.selectbox("Pedido", list(opcoes.keys()))
-    row_sel = opcoes[escolhido_label]
-
-    col_f, col_d = st.columns(2)
-    with col_f:
-        forma_atual = row_sel["Forma"] if row_sel["Forma"] else list(FORMAS.keys())[0]
-        forma = st.selectbox(
-            "Forma de acerto",
-            list(FORMAS.keys()),
-            index=list(FORMAS.keys()).index(forma_atual) if forma_atual in FORMAS else 0,
-            format_func=lambda f: f"{FORMAS[f]} {f}",
-        )
-
-    with col_d:
-        data_padrao = row_sel["Data agendada"] or row_sel["Data acerto"]
-        data_ag = st.date_input("Data agendada", value=data_padrao, format="DD/MM/YYYY")
-
-    obs = st.text_input("Observação (opcional)", value=row_sel["Obs"] or "")
-
-    col_salvar, col_remover = st.columns([2, 1])
-    with col_salvar:
-        if st.button("💾 Salvar agendamento", type="primary", use_container_width=True):
-            save_agendamento(row_sel["id"], str(data_ag), forma, obs)
-            st.success(f"Agendamento salvo: {row_sel['Nome']} — {data_ag.strftime('%d/%m/%Y')} — {FORMAS[forma]} {forma}")
-            st.rerun()
-
-    with col_remover:
-        if row_sel["Data agendada"] and st.button("🗑️ Remover agendamento", use_container_width=True):
-            remove_agendamento(row_sel["id"])
-            st.info("Agendamento removido.")
-            st.rerun()
-
-    # Preview do pedido selecionado
-    with st.expander("Detalhes do pedido selecionado"):
-        info = {
-            "Revendedora":   row_sel["Nome"],
-            "Supervisora":   row_sel["Supervisor"],
-            "Data acerto":   row_sel["Data acerto"].strftime("%d/%m/%Y"),
-            "Pré-baixa":     _R(row_sel["Valor"]),
-            "Situação":      row_sel["Situação"],
-        }
-        for k, v in info.items():
-            st.markdown(f"**{k}:** {v}")
+    # Formulário inline (aparece quando um botão é clicado)
+    if st.session_state.get("_ag_id"):
+        _form_agendar_inline(df)
 
 
 # ── Lista geral ───────────────────────────────────────────────────────────────
@@ -213,13 +245,12 @@ def _tab_lista(df: pd.DataFrame):
         st.info("Nenhum acerto no período.")
         return
 
-    # Filtros
     col_sit, col_sup = st.columns(2)
     with col_sit:
-        situacoes = ["Todas"] + sorted(df["Situação"].unique().tolist())
+        situacoes  = ["Todas"] + sorted(df["Situação"].unique().tolist())
         sit_filtro = st.selectbox("Situação", situacoes)
     with col_sup:
-        sups = ["Todas"] + sorted(df["Supervisor"].unique().tolist())
+        sups       = ["Todas"] + sorted(df["Supervisor"].unique().tolist())
         sup_filtro = st.selectbox("Supervisora", sups)
 
     df_f = df.copy()
@@ -228,11 +259,10 @@ def _tab_lista(df: pd.DataFrame):
     if sup_filtro != "Todas":
         df_f = df_f[df_f["Supervisor"] == sup_filtro]
 
-    # Métricas da listagem filtrada
-    n_real  = (df_f["Situação"] == "✅ Realizado").sum()
-    n_atr   = df_f["Situação"].str.contains("Atrasou").sum()
-    n_ag    = (df_f["Situação"] == "📅 Agendado").sum()
-    n_venc  = (df_f["Situação"] == "🔴 Vencido").sum()
+    n_real = (df_f["Situação"] == "✅ Realizado").sum()
+    n_atr  = df_f["Situação"].str.contains("Atrasou").sum()
+    n_ag   = (df_f["Situação"] == "📅 Agendado").sum()
+    n_venc = (df_f["Situação"] == "🔴 Vencido").sum()
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("✅ Realizados", n_real)
@@ -242,10 +272,8 @@ def _tab_lista(df: pd.DataFrame):
 
     st.divider()
 
-    exib = df_f[[
-        "Nome", "Supervisor", "Situação", "Forma",
-        "Data acerto", "Data agendada", "Data baixa", "Valor",
-    ]].copy()
+    exib = df_f[["Nome", "Supervisor", "Situação", "Forma",
+                 "Data acerto", "Data agendada", "Data baixa", "Valor"]].copy()
     exib["Data acerto"]   = exib["Data acerto"].apply(
         lambda d: d.strftime("%d/%m/%y") if pd.notna(d) else "—"
     )
@@ -257,15 +285,11 @@ def _tab_lista(df: pd.DataFrame):
     )
 
     def _estilo_sit(val):
-        c = _cor(str(val))
-        return f"color:{c};font-weight:bold"
+        return f"color:{_cor(str(val))};font-weight:bold"
 
     st.dataframe(
-        exib.style
-            .map(_estilo_sit, subset=["Situação"])
-            .format({"Valor": _R}),
-        use_container_width=True,
-        hide_index=True,
+        exib.style.map(_estilo_sit, subset=["Situação"]).format({"Valor": _R}),
+        use_container_width=True, hide_index=True,
     )
 
     csv = df_f.drop(columns=["id"], errors="ignore").to_csv(index=False).encode("utf-8")
@@ -292,20 +316,17 @@ def render(filtro_supervisor: str = ""):
             st.error(f"Erro ao carregar dados: {e}")
             return
 
-    if filtro_supervisor:
-        todos = [p for p in todos_bruto if (p.get("supervisor_nome") or "") == filtro_supervisor]
-    else:
-        todos = todos_bruto
+    todos = (
+        [p for p in todos_bruto if (p.get("supervisor_nome") or "") == filtro_supervisor]
+        if filtro_supervisor else todos_bruto
+    )
 
     df = montar_acertos(todos)
 
-    tab1, tab2, tab3 = st.tabs(["📅 Calendário", "✏️ Agendar acerto", "📋 Lista geral"])
+    tab1, tab2 = st.tabs(["📅 Calendário", "📋 Lista geral"])
 
     with tab1:
         _tab_calendario(df, filtro_supervisor)
 
     with tab2:
-        _tab_agendar(df, todos, filtro_supervisor)
-
-    with tab3:
         _tab_lista(df)

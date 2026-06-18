@@ -161,7 +161,31 @@ def _tab_alertas(df_zero: pd.DataFrame, df_res: pd.DataFrame):
 
 @st.dialog("Acompanhamento de Revendedora", width="large")
 def _dialog_acompanhamento():
+    import html as _html
     from src.logic.acompanhamentos import save_acompanhamento, get_ultimos_valores
+
+    # Tradução PT-BR do calendário (observer no DOM pai via srcdoc iframe)
+    _js = (
+        "var M={'January':'Janeiro','February':'Fevereiro','March':'Março',"
+        "'April':'Abril','May':'Maio','June':'Junho','July':'Julho','August':'Agosto',"
+        "'September':'Setembro','October':'Outubro','November':'Novembro','December':'Dezembro'};"
+        "var D={'Su':'Dom','Mo':'Seg','Tu':'Ter','We':'Qua','Th':'Qui','Fr':'Sex','Sa':'Sáb'};"
+        "function tr(r){"
+        "r.querySelectorAll('select option').forEach(function(o){"
+        "var t=o.textContent.trim();if(M[t])o.textContent=M[t];});"
+        "r.querySelectorAll('[role=columnheader]').forEach(function(e){"
+        "var t=e.textContent.trim();if(D[t])e.textContent=D[t];});"
+        "}"
+        "if(!window.parent._ptCal){"
+        "window.parent._ptCal=1;"
+        "var doc=window.parent.document;"
+        "new MutationObserver(function(){"
+        "doc.querySelectorAll('[data-baseweb=calendar]').forEach(tr);"
+        "}).observe(doc.body,{childList:true,subtree:true});"
+        "doc.querySelectorAll('[data-baseweb=calendar]').forEach(tr);}"
+    )
+    _src = _html.escape(f"<script>{_js}</script>")
+    st.markdown(f'<iframe style="display:none" srcdoc="{_src}"></iframe>', unsafe_allow_html=True)
 
     nome     = st.session_state.get("_acomp_nome", "")
     prebaixa = st.session_state.get("_acomp_prebaixa", {})
@@ -173,7 +197,7 @@ def _dialog_acompanhamento():
     st.markdown(f"**Revendedora:** {nome}")
     st.divider()
 
-    data_sel  = st.date_input("Data do acompanhamento", value=date.today(), key="dlg_acomp_data")
+    data_sel  = st.date_input("Data do acompanhamento", value=date.today(), key="dlg_acomp_data", format="DD/MM/YY")
     descricao = st.text_area(
         "Como foi feito o acompanhamento *",
         placeholder="Ex: Ligação realizada, acordo de entrega até dia X...",

@@ -325,15 +325,18 @@ def _tab_calendario(df: pd.DataFrame):
     with col_prev:
         if st.button("◀ Anterior", use_container_width=True, key="nav_prev"):
             st.session_state.acertos_offset -= 1
+            st.session_state.pop("_ag_id", None)
             st.rerun()
     with col_next:
         if st.button("Próxima ▶", use_container_width=True, key="nav_next"):
             st.session_state.acertos_offset += 1
+            st.session_state.pop("_ag_id", None)
             st.rerun()
     with col_hoje:
         if st.button("Hoje", use_container_width=True, key="nav_hoje",
                      disabled=(offset == 0)):
             st.session_state.acertos_offset = 0
+            st.session_state.pop("_ag_id", None)
             st.rerun()
     with col_lbl:
         st.markdown(

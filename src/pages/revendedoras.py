@@ -348,13 +348,6 @@ def _tab_periodo(todos_pedidos: list, hoje: date, is_admin: bool = True):
         "e o valor já vendido (pré-baixa). "
         "🔵 Linhas em azul: revendedoras com o **primeiro pedido na história**."
     )
-    st.info(
-        "📊 **Ritmo de referência (3M):** média mensal das vendas realizadas (baixadas) "
-        "pela revendedora nos **3 meses anteriores** ao mês atual. "
-        "Representa o que ela costuma vender por mês — e é o parâmetro usado para avaliar "
-        "se o pedido está **🟢 No ritmo**, **🟡 Abaixo do ritmo** ou em risco. "
-        "Para novas revendedoras sem histórico, usa R\\$ 300 como referência mínima."
-    )
 
     # Info maps para tooltips
     _sub_map, _reb_map, _prm_map = _build_info_maps(todos_pedidos, hoje.month, hoje.year)
@@ -411,7 +404,10 @@ def _tab_periodo(todos_pedidos: list, hoje: date, is_admin: bool = True):
 
             c1, c2, c3, c4, c5 = st.columns(5)
             c1.metric("Pedidos no período", n_total)
-            c2.metric("🟢 No ritmo", n_ok)
+            c2.metric("🟢 No ritmo", n_ok,
+                      help="Ritmo de referência (3M): média mensal das vendas baixadas nos 3 meses anteriores. "
+                           "Representa o que a revendedora costuma vender por mês. "
+                           "Para novas revendedoras sem histórico, usa R$ 300 como referência mínima.")
             c3.metric("🔴🟠 Em risco", n_risco)
             c4.metric("Total pré-baixa", _R(total_pb))
             c5.metric("📋 Sem acompanhamento", n_sem_acomp,

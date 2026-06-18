@@ -338,6 +338,7 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
                 .set_tooltips(ttips, props=_tip_props)
                 .map(_estilo_risco, subset=["Risco"])
                 .format({"Pré-baixa": _R, "Ritmo ref. (3M)": _R, "Valor pedido": _R})
+                .hide(axis="index")
             )
             st.markdown(styled.to_html(), unsafe_allow_html=True)
 

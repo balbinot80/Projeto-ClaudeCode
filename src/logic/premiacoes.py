@@ -9,7 +9,26 @@ _FILE = os.path.normpath(
 )
 
 
-def load_premiacoes() -> dict:
+# ── Supabase ──────────────────────────────────────────────────────────────────
+
+def _get_client():
+    try:
+        from supabase import create_client
+        import streamlit as st
+        try:
+            url = st.secrets["SUPABASE_URL"]
+            key = st.secrets["SUPABASE_KEY"]
+        except (KeyError, FileNotFoundError):
+            url = os.getenv("SUPABASE_URL", "")
+            key = os.getenv("SUPABASE_KEY", "")
+        if url and key:
+            return create_client(url, key)
+    except Exception:
+        pass
+    return None
+
+
+def _load_local() -> dict:
     try:
         if os.path.exists(_FILE):
             with open(_FILE, "r", encoding="utf-8") as f:
@@ -19,13 +38,46 @@ def load_premiacoes() -> dict:
     return {}
 
 
+# ── API pública ───────────────────────────────────────────────────────────────
+
+def load_premiacoes() -> dict:
+    client = _get_client()
+    if client is not None:
+        try:
+            res = client.table("premiacoes").select("mes_key,meta,premio").execute()
+            return {
+                row["mes_key"]: {"meta": float(row["meta"]), "premio": row["premio"]}
+                for row in (res.data or [])
+            }
+        except Exception:
+            pass
+    return _load_local()
+
+
 def save_premiacao(mes_key: str, meta: float, premio: str):
-    p = load_premiacoes()
+    client = _get_client()
+    if client is not None:
+        try:
+            client.table("premiacoes").upsert(
+                {"mes_key": mes_key, "meta": meta, "premio": premio},
+                on_conflict="mes_key",
+            ).execute()
+            return
+        except Exception as e:
+            try:
+                import streamlit as st
+                st.warning(f"⚠️ Erro ao salvar premiação no Supabase: {e}. Salvando localmente.")
+            except Exception:
+                pass
+    # Fallback: salva no JSON local
+    p = _load_local()
     p[mes_key] = {"meta": meta, "premio": premio}
     os.makedirs(os.path.dirname(_FILE), exist_ok=True)
     with open(_FILE, "w", encoding="utf-8") as f:
         json.dump(p, f, ensure_ascii=False, indent=2)
 
+
+# ── Cálculos ──────────────────────────────────────────────────────────────────
 
 def calcular_ranking(todos_pedidos: list, mes: int, ano: int, meta: float) -> list:
     """
@@ -75,7 +127,6 @@ def calcular_ranking(todos_pedidos: list, mes: int, ano: int, meta: float) -> li
         elif total >= meta:
             cat = "potencial"
         elif rid not in tem_baixado and pre >= meta * 0.70:
-            # Só entra em "próxima" quem não tem pedido baixado e a pré-baixa já >= 70%
             cat = "proxima"
         else:
             cat = "outras"

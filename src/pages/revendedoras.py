@@ -359,38 +359,6 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
             c3.metric("🔴🟠 Em risco", n_risco)
             c4.metric("Total pré-baixa", _R(total_pb))
 
-            # Gráfico
-            df_graf = df.sort_values("Pré-baixa", ascending=False).head(40).copy()
-            fig = go.Figure()
-            for risco, cor in [
-                ("🟢 No ritmo",         "#2ecc71"),
-                ("🟡 Abaixo do ritmo",  "#f1c40f"),
-                ("🟠 Abaixo do mínimo", "#e67e22"),
-                ("🔴 Sem vendas",        "#e74c3c"),
-            ]:
-                df_r = df_graf[df_graf["Risco"] == risco]
-                if df_r.empty:
-                    continue
-                fig.add_bar(
-                    x=df_r["Nome"], y=df_r["Pré-baixa"], name=risco, marker_color=cor,
-                    customdata=df_r[["Ritmo ref. (3M)", "% do ritmo", "Dias do pedido"]].values,
-                    hovertemplate=(
-                        "<b>%{x}</b><br>Pré-baixa: R$ %{y:,.0f}<br>"
-                        "Ritmo ref. (média 3M): R$ %{customdata[0]:,.0f}<br>"
-                        "% do ritmo: %{customdata[1]:.1f}%<br>"
-                        "Dias do pedido: %{customdata[2]}<br><extra></extra>"
-                    ),
-                )
-            fig.add_hline(y=MINIMO_REV, line_dash="dash", line_color="#e74c3c",
-                          annotation_text=f"Mínimo R${MINIMO_REV:.0f}")
-            lbl_intervalo = f"{dias_min+1}–{dias} dias" if dias_min else f"0–{dias} dias"
-            fig.update_layout(
-                barmode="group", title=f"Pré-baixa — pedidos abertos ({lbl_intervalo})",
-                xaxis_tickangle=-45, height=400, margin=dict(b=120),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02),
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
             # ── Tabela detalhada ──────────────────────────────────────────────
             df_show = df.copy()
 
@@ -468,24 +436,37 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
                 st.session_state["_acomp_prebaixa"] = prebaixa_por_periodo.get(sel_acomp, {})
                 st.rerun()
 
-            # Por supervisora
-            if "Supervisor" in df.columns:
-                st.markdown("**Pré-baixa por supervisora**")
-                df_sup = (
-                    df.groupby("Supervisor", as_index=False)
-                    .agg(
-                        Pedidos=("Nome", "count"),
-                        Pre_baixa=("Pré-baixa", "sum"),
-                        No_ritmo=("Risco", lambda x: (x == "🟢 No ritmo").sum()),
-                        Em_risco=("Risco", lambda x: x.isin(["🔴 Sem vendas", "🟠 Abaixo do mínimo"]).sum()),
-                    )
-                    .rename(columns={"Pre_baixa": "Pré-baixa (R$)", "No_ritmo": "No ritmo", "Em_risco": "Em risco"})
-                    .sort_values("Pré-baixa (R$)", ascending=False)
+            # Gráfico (abaixo da tabela)
+            df_graf = df.sort_values("Pré-baixa", ascending=False).head(40).copy()
+            fig = go.Figure()
+            for risco, cor in [
+                ("🟢 No ritmo",         "#2ecc71"),
+                ("🟡 Abaixo do ritmo",  "#f1c40f"),
+                ("🟠 Abaixo do mínimo", "#e67e22"),
+                ("🔴 Sem vendas",        "#e74c3c"),
+            ]:
+                df_r = df_graf[df_graf["Risco"] == risco]
+                if df_r.empty:
+                    continue
+                fig.add_bar(
+                    x=df_r["Nome"], y=df_r["Pré-baixa"], name=risco, marker_color=cor,
+                    customdata=df_r[["Ritmo ref. (3M)", "% do ritmo", "Dias do pedido"]].values,
+                    hovertemplate=(
+                        "<b>%{x}</b><br>Pré-baixa: R$ %{y:,.0f}<br>"
+                        "Ritmo ref. (média 3M): R$ %{customdata[0]:,.0f}<br>"
+                        "% do ritmo: %{customdata[1]:.1f}%<br>"
+                        "Dias do pedido: %{customdata[2]}<br><extra></extra>"
+                    ),
                 )
-                st.dataframe(
-                    df_sup.style.format({"Pré-baixa (R$)": _R}),
-                    use_container_width=True, hide_index=True,
-                )
+            fig.add_hline(y=MINIMO_REV, line_dash="dash", line_color="#e74c3c",
+                          annotation_text=f"Mínimo R${MINIMO_REV:.0f}")
+            lbl_intervalo = f"{dias_min+1}–{dias} dias" if dias_min else f"0–{dias} dias"
+            fig.update_layout(
+                barmode="group", title=f"Pré-baixa — pedidos abertos ({lbl_intervalo})",
+                xaxis_tickangle=-45, height=400, margin=dict(b=120),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02),
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
 
 # ── Tab 4: Visão gerencial ────────────────────────────────────────────────────

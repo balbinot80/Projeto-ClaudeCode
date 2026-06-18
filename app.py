@@ -295,16 +295,13 @@ if _time_cfg:
         f'<div style="position:absolute;top:8px;right:110px;'
         f'font-size:2em;opacity:0.08;transform:rotate(40deg)">◆</div>'
 
-        # Conteúdo principal
-        f'<div style="display:flex;align-items:center;gap:16px;position:relative;z-index:1">'
-        f'<span style="font-size:2.4em;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3))">{emoji}</span>'
-        f'<div>'
-        f'<div style="font-size:1.55em;font-weight:800;letter-spacing:2px;'
+        # Conteúdo principal centralizado
+        f'<div style="display:flex;align-items:center;justify-content:center;gap:18px;'
+        f'position:relative;z-index:1;text-align:center">'
+        f'<span style="font-size:2.8em;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3))">{emoji}</span>'
+        f'<div style="font-size:2em;font-weight:800;letter-spacing:3px;'
         f'text-shadow:0 1px 3px rgba(0,0,0,0.2)">{nome_time.upper()}</div>'
-        f'<div style="font-size:0.82em;opacity:0.88;margin-top:2px;letter-spacing:0.5px">'
-        f'✦ Pedra: {pedra} &nbsp;·&nbsp; {nome_usuario}'
-        f'</div>'
-        f'</div>'
+        f'<span style="font-size:2.8em;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3))">{emoji}</span>'
         f'</div>'
         f'</div>',
         unsafe_allow_html=True,

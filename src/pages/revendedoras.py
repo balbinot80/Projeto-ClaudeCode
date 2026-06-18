@@ -197,7 +197,7 @@ def _dialog_acompanhamento():
     st.markdown(f"**Revendedora:** {nome}")
     st.divider()
 
-    data_sel  = st.date_input("Data do acompanhamento", value=date.today(), key="dlg_acomp_data", format="DD/MM/YY")
+    data_sel  = st.date_input("Data do acompanhamento", value=date.today(), key="dlg_acomp_data", format="DD/MM/YYYY")
     descricao = st.text_area(
         "Como foi feito o acompanhamento *",
         placeholder="Ex: Ligação realizada, acordo de entrega até dia X...",

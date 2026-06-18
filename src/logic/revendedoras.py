@@ -226,6 +226,7 @@ def analise_periodo(pedidos: list, dias: int, hoje: date = None, dias_min: int =
             risco = "🟢 No ritmo"
 
         rows.append({
+            "Pedido":           p.get("codigo_pedido", ""),
             "Nome":             nome,
             "Supervisor":       supervisor,
             "Criado":           d_criacao.strftime("%d/%m/%y"),

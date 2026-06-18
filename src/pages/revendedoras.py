@@ -188,13 +188,15 @@ def _dialog_acompanhamento():
     st.markdown(f'<iframe style="display:none" srcdoc="{_src}"></iframe>', unsafe_allow_html=True)
 
     nome     = st.session_state.get("_acomp_nome", "")
+    pedido   = st.session_state.get("_acomp_pedido", "")
     prebaixa = st.session_state.get("_acomp_prebaixa", {})
 
     if not nome:
         st.error("Revendedora não identificada.")
         return
 
-    st.markdown(f"**Revendedora:** {nome}")
+    pedido_txt = f"&nbsp;&nbsp;·&nbsp;&nbsp;Pedido: **{pedido}**" if pedido else ""
+    st.markdown(f"**Revendedora:** {nome}{pedido_txt}", unsafe_allow_html=True)
     st.divider()
 
     data_sel  = st.date_input("Data do acompanhamento", value=date.today(), key="dlg_acomp_data", format="DD/MM/YYYY")
@@ -251,11 +253,13 @@ def _dialog_acompanhamento():
             semanas = {key: r["Pré-baixa (R$)"] for key, r in zip(chaves, rows_pb)}
             save_acompanhamento(nome, str(data_sel), descricao.strip(), semanas)
             st.toast("✅ Acompanhamento registrado!")
-            st.session_state.pop("_acomp_nome", None)
+            st.session_state.pop("_acomp_nome",     None)
+            st.session_state.pop("_acomp_pedido",   None)
             st.session_state.pop("_acomp_prebaixa", None)
             st.rerun(scope="app")
     if c2.button("Cancelar", use_container_width=True, key="dlg_acomp_cancel"):
-        st.session_state.pop("_acomp_nome", None)
+        st.session_state.pop("_acomp_nome",     None)
+        st.session_state.pop("_acomp_pedido",   None)
         st.session_state.pop("_acomp_prebaixa", None)
         st.rerun(scope="app")
 
@@ -456,10 +460,12 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
 
             if event.selection.rows:
                 sel_idx  = event.selection.rows[0]
-                sel_nome = df_show.iloc[sel_idx]["Nome"]
+                sel_row  = df_show.iloc[sel_idx]
+                sel_nome = sel_row["Nome"]
                 # Rotaciona a chave para limpar a seleção na próxima renderização
-                st.session_state["_df_acomp_gen"] = _gen + 1
+                st.session_state["_df_acomp_gen"]   = _gen + 1
                 st.session_state["_acomp_nome"]     = sel_nome
+                st.session_state["_acomp_pedido"]   = sel_row.get("Pedido", "")
                 st.session_state["_acomp_prebaixa"] = prebaixa_por_periodo.get(sel_nome, {})
                 _dialog_acompanhamento()
 

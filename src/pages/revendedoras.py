@@ -260,7 +260,7 @@ def _dialog_acompanhamento():
                                 record_id=reg.get("_id"),
                                 local_idx=reg.get("_local_idx"),
                             )
-                            st.rerun(scope="app")
+                            st.rerun()
 
     st.divider()
     c1, c2 = st.columns(2)

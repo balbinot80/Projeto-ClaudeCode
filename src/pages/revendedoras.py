@@ -291,16 +291,19 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
 
             def _cell_icon(nome):
                 icons = []
+                tem_positivo = nome in _sub_map or nome in _prm_map
                 if nome in _sub_map:  icons.append("🔼")
-                if nome in _reb_map:  icons.append("🔽")
+                # rebaixamento só aparece se não há indicador positivo (evita contradição)
+                if nome in _reb_map and not tem_positivo:  icons.append("🔽")
                 if nome in _prm_map:
                     icons.append("🏆" if "Ganhadora" in _prm_map[nome] else "🎯")
                 return "".join(icons)
 
             def _cell_tip(nome):
                 lines = []
+                tem_positivo = nome in _sub_map or nome in _prm_map
                 if nome in _sub_map:  lines.append(_sub_map[nome])
-                if nome in _reb_map:  lines.append(_reb_map[nome])
+                if nome in _reb_map and not tem_positivo:  lines.append(_reb_map[nome])
                 if nome in _prm_map:  lines.append(_prm_map[nome])
                 return "\n".join(lines)
 

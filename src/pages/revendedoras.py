@@ -232,12 +232,13 @@ def _dialog_acompanhamento():
             st.caption("Nenhum acompanhamento registrado ainda.")
         else:
             from datetime import datetime as _dt
+            scroll = st.container(height=280)
             for reg in reversed(historico):
                 try:
                     data_fmt = _dt.strptime(reg["data"], "%Y-%m-%d").strftime("%d/%m/%Y")
                 except Exception:
                     data_fmt = reg.get("data", "?")
-                with st.container(border=True):
+                with scroll.container(border=True):
                     st.caption(f"🗓️ {data_fmt}")
                     st.write(reg.get("descricao", ""))
 

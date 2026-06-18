@@ -1,14 +1,72 @@
 import json
 import os
 
+import streamlit as st
+
+_SEMANAS = ["0-7", "8-15", "16-20", "21-30"]
+
+# ── Arquivo local (fallback para dev offline) ─────────────────────────────────
 _FILE = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..", "data", "acompanhamentos.json")
 )
 
-_SEMANAS = ["0-7", "8-15", "16-20", "21-30"]
+
+def _get_client():
+    """Retorna cliente Supabase ou None se não configurado."""
+    try:
+        from supabase import create_client
+        try:
+            url = st.secrets["SUPABASE_URL"]
+            key = st.secrets["SUPABASE_KEY"]
+        except (KeyError, FileNotFoundError):
+            url = os.getenv("SUPABASE_URL", "")
+            key = os.getenv("SUPABASE_KEY", "")
+        if url and key:
+            return create_client(url, key)
+    except Exception:
+        pass
+    return None
 
 
-def load_acompanhamentos() -> dict:
+# ── Supabase ──────────────────────────────────────────────────────────────────
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _fetch_supabase() -> list:
+    """Busca todos os registros no Supabase. Cache de 5 minutos."""
+    client = _get_client()
+    if client is None:
+        return []
+    try:
+        res = client.table("acompanhamentos").select("*").order("criado_em").execute()
+        return res.data or []
+    except Exception:
+        return []
+
+
+def _rows_para_dict(rows: list) -> dict:
+    dados: dict = {}
+    for row in rows:
+        nome = row.get("nome", "")
+        if not nome:
+            continue
+        if nome not in dados:
+            dados[nome] = []
+        dados[nome].append({
+            "data": str(row.get("data", "")),
+            "descricao": row.get("descricao", ""),
+            "prebaixa_semanas": {
+                "0-7":   float(row.get("prebaixa_0_7",   0) or 0),
+                "8-15":  float(row.get("prebaixa_8_15",  0) or 0),
+                "16-20": float(row.get("prebaixa_16_20", 0) or 0),
+                "21-30": float(row.get("prebaixa_21_30", 0) or 0),
+            },
+        })
+    return dados
+
+
+# ── JSON local (fallback) ─────────────────────────────────────────────────────
+
+def _load_local() -> dict:
     try:
         if os.path.exists(_FILE):
             with open(_FILE, "r", encoding="utf-8") as f:
@@ -18,8 +76,8 @@ def load_acompanhamentos() -> dict:
     return {}
 
 
-def save_acompanhamento(nome: str, data_str: str, descricao: str, prebaixa_semanas: dict):
-    dados = load_acompanhamentos()
+def _save_local(nome: str, data_str: str, descricao: str, prebaixa_semanas: dict):
+    dados = _load_local()
     if nome not in dados:
         dados[nome] = []
     dados[nome].append({
@@ -32,15 +90,40 @@ def save_acompanhamento(nome: str, data_str: str, descricao: str, prebaixa_seman
         json.dump(dados, f, ensure_ascii=False, indent=2)
 
 
+# ── API pública ───────────────────────────────────────────────────────────────
+
+def load_acompanhamentos() -> dict:
+    if _get_client() is not None:
+        return _rows_para_dict(_fetch_supabase())
+    return _load_local()
+
+
+def save_acompanhamento(nome: str, data_str: str, descricao: str, prebaixa_semanas: dict):
+    client = _get_client()
+    if client is not None:
+        try:
+            client.table("acompanhamentos").insert({
+                "nome":           nome,
+                "data":           data_str,
+                "descricao":      descricao,
+                "prebaixa_0_7":   float(prebaixa_semanas.get("0-7",   0)),
+                "prebaixa_8_15":  float(prebaixa_semanas.get("8-15",  0)),
+                "prebaixa_16_20": float(prebaixa_semanas.get("16-20", 0)),
+                "prebaixa_21_30": float(prebaixa_semanas.get("21-30", 0)),
+            }).execute()
+            _fetch_supabase.clear()  # invalida cache para exibir o novo registro
+            return
+        except Exception as e:
+            st.warning(f"⚠️ Erro ao salvar no Supabase: {e}. Salvando localmente.")
+    _save_local(nome, data_str, descricao, prebaixa_semanas)
+
+
 def get_ultimos_valores(nome: str) -> dict:
-    """Últimos valores de pré-baixa registrados por semana para uma revendedora."""
-    dados = load_acompanhamentos()
-    registros = dados.get(nome, [])
+    registros = load_acompanhamentos().get(nome, [])
     if not registros:
         return {k: 0.0 for k in _SEMANAS}
     return {k: registros[-1].get("prebaixa_semanas", {}).get(k, 0.0) for k in _SEMANAS}
 
 
 def get_historico(nome: str) -> list:
-    """Todos os registros de acompanhamento de uma revendedora."""
     return load_acompanhamentos().get(nome, [])

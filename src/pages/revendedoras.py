@@ -1133,7 +1133,7 @@ def _tab_desempenho(todos_pedidos: list, hoje: date):
     )
 
     MESES_PT  = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
-    NIVEIS_ORD = ["Diamante", "Ouro", "Pérola", "Sem nível"]
+    NIVEIS_ORD = ["Diamante", "Ouro", "Pérola"]
     ano = hoje.year
     meses_range = list(range(1, hoje.month + 1))
 
@@ -1192,10 +1192,12 @@ def _tab_desempenho(todos_pedidos: list, hoje: date):
                 _pct_html(pct, n) if n > 0 else '<span style="color:#cbd5e1">—</span>',
                 unsafe_allow_html=True,
             )
-        st.markdown('<hr style="margin:2px 0;border:none;border-top:1px solid #f1f5f9">',
+        st.markdown('<hr style="margin:2px 0;border:none;border-top:1px solid #e2e8f0">',
                     unsafe_allow_html=True)
 
-    # Linha total
+    # Linha total (separador mais espesso para destacar)
+    st.markdown('<hr style="margin:4px 0;border:none;border-top:2px solid #e2e8f0">',
+                unsafe_allow_html=True)
     tcols = st.columns(_PC_anual)
     tcols[0].markdown('<span style="font-size:0.9em;font-weight:700">🔢 Total</span>',
                       unsafe_allow_html=True)
@@ -1261,7 +1263,7 @@ def _tab_desempenho(todos_pedidos: list, hoje: date):
         dcols[4].markdown(f'<span style="font-size:0.87em">{_R(r["Valor Baixa"])}</span>',
                           unsafe_allow_html=True)
         dcols[5].markdown(_pct_html(r["Desempenho"]), unsafe_allow_html=True)
-        st.markdown('<hr style="margin:2px 0;border:none;border-top:1px solid #f1f5f9">',
+        st.markdown('<hr style="margin:2px 0;border:none;border-top:1px solid #e2e8f0">',
                     unsafe_allow_html=True)
 
 

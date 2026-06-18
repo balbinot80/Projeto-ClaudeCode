@@ -13,7 +13,7 @@ def _logo(arquivo: str, **kwargs):
     return False
 
 def _logo_sidebar_bottom(arquivo: str):
-    """Renderiza logo no rodapé do sidebar, dentro dos limites da barra."""
+    """Renderiza logo no final do sidebar, ajustando à largura da barra."""
     p = Path("assets") / arquivo
     if not p.exists():
         return
@@ -26,28 +26,12 @@ def _logo_sidebar_bottom(arquivo: str):
             img = img.crop(bbox)
         buf = io.BytesIO()
         img.save(buf, format="PNG")
-        b64 = base64.b64encode(buf.getvalue()).decode()
+        buf.seek(0)
+        st.markdown("<div style='margin-top:32px'></div>", unsafe_allow_html=True)
+        st.image(buf, use_container_width=True)
     except Exception:
-        b64 = base64.b64encode(p.read_bytes()).decode()
-
-    # CSS: transforma o sidebar em flex-column para que margin-top:auto
-    # empurre a logo para o fundo, sempre dentro dos limites da barra
-    st.markdown(
-        "<style>"
-        "[data-testid='stSidebarContent'] > div:first-child {"
-        "  display:flex !important;"
-        "  flex-direction:column !important;"
-        "  min-height:100vh !important;"
-        "}"
-        "</style>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        f'<div style="margin-top:auto;padding:20px 0 12px;text-align:center;pointer-events:none">'
-        f'<img src="data:image/png;base64,{b64}" style="width:92%;opacity:0.9">'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
+        st.markdown("<div style='margin-top:32px'></div>", unsafe_allow_html=True)
+        st.image(str(p), use_container_width=True)
 
 load_dotenv()
 

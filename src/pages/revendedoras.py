@@ -766,7 +766,6 @@ def render(filtro_supervisor: str = ""):
     """
     if filtro_supervisor:
         st.header(f"👥 Minha Equipe — {filtro_supervisor}")
-        st.info(f"Exibindo apenas revendedoras da equipe de **{filtro_supervisor}**.")
     else:
         st.header("👥 Acompanhamento de Revendedoras")
 

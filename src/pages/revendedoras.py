@@ -74,7 +74,7 @@ def _tab_competencia(df_res: pd.DataFrame, mes_label: str):
         badge = f" — ⚠️ {n_risco} em risco" if n_risco else ""
         with st.expander(
             f"**{sup}** — {len(df_sup)} revendedoras · total {_Rmd(total_sup)} · ticket médio {_Rmd(ticket_sup_val)}{badge}",
-            expanded=(n_risco > 0),
+            expanded=False,
         ):
             exib = df_sup[["Nome", "Pedidos", "Baixado", "Pré-baixa", "Total", "Risco"]].copy()
             exib.columns = ["Nome", "Pedidos", "Baixado (R$)", "Pré-baixa (R$)", "Total (R$)", "Risco"]

@@ -13,7 +13,7 @@ def _logo(arquivo: str, **kwargs):
     return False
 
 def _logo_sidebar_bottom(arquivo: str):
-    """Renderiza logo fixada no rodapé do sidebar, sem bordas transparentes."""
+    """Renderiza logo no rodapé do sidebar, dentro dos limites da barra."""
     p = Path("assets") / arquivo
     if not p.exists():
         return
@@ -29,10 +29,22 @@ def _logo_sidebar_bottom(arquivo: str):
         b64 = base64.b64encode(buf.getvalue()).decode()
     except Exception:
         b64 = base64.b64encode(p.read_bytes()).decode()
+
+    # CSS: transforma o sidebar em flex-column para que margin-top:auto
+    # empurre a logo para o fundo, sempre dentro dos limites da barra
     st.markdown(
-        f'<div style="position:fixed;bottom:16px;left:0;width:260px;'
-        f'display:flex;justify-content:center;pointer-events:none">'
-        f'<img src="data:image/png;base64,{b64}" style="width:88%;opacity:0.9">'
+        "<style>"
+        "[data-testid='stSidebarContent'] > div:first-child {"
+        "  display:flex !important;"
+        "  flex-direction:column !important;"
+        "  min-height:100vh !important;"
+        "}"
+        "</style>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f'<div style="margin-top:auto;padding:20px 0 12px;text-align:center;pointer-events:none">'
+        f'<img src="data:image/png;base64,{b64}" style="width:92%;opacity:0.9">'
         f'</div>',
         unsafe_allow_html=True,
     )

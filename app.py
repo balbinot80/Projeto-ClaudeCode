@@ -253,6 +253,8 @@ with st.sidebar:
     if st.button("🚪 Sair"):
         st.session_state.autenticado = False
         st.session_state.usuario = {}
+        st.session_state.pop("_acomp_nome", None)
+        st.session_state.pop("_acomp_prebaixa", None)
         st.rerun()
 
     # Submarca circular no rodapé do sidebar

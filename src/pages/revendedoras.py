@@ -207,14 +207,14 @@ def _dialog_acompanhamento():
         else:
             semanas = {key: r["Pré-baixa (R$)"] for key, r in zip(chaves, rows_pb)}
             save_acompanhamento(nome, str(data_sel), descricao.strip(), semanas)
-            st.success("✅ Acompanhamento registrado!")
+            st.toast("✅ Acompanhamento registrado!")
             st.session_state.pop("_acomp_nome", None)
             st.session_state.pop("_acomp_prebaixa", None)
-            st.rerun()
+            st.rerun(scope="app")
     if c2.button("Cancelar", use_container_width=True, key="dlg_acomp_cancel"):
         st.session_state.pop("_acomp_nome", None)
         st.session_state.pop("_acomp_prebaixa", None)
-        st.rerun()
+        st.rerun(scope="app")
 
 
 def _build_info_maps(todos_pedidos: list, mes: int, ano: int) -> tuple:
@@ -434,7 +434,7 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
             if cb.button("💬 Abrir", key=f"btn_acomp_{chave}", disabled=not sel_acomp):
                 st.session_state["_acomp_nome"]     = sel_acomp
                 st.session_state["_acomp_prebaixa"] = prebaixa_por_periodo.get(sel_acomp, {})
-                st.rerun()
+                _dialog_acompanhamento()
 
             # Gráfico (abaixo da tabela)
             df_graf = df.sort_values("Pré-baixa", ascending=False).head(40).copy()
@@ -1041,10 +1041,6 @@ def render(filtro_supervisor: str = ""):
     c6.metric("🟡 Abaixo do mínimo", n_abaixo)
     c7.metric("🔴 Sem vendas", n_zero + n_sem_res,
               help="Pedidos abertos com R$0 + revendedoras com total = R$0")
-
-    # ── Dialog de acompanhamento ──────────────────────────────────────────────
-    if st.session_state.get("_acomp_nome"):
-        _dialog_acompanhamento()
 
     # ── Tabs ──────────────────────────────────────────────────────────────────
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([

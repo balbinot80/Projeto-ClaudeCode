@@ -162,7 +162,7 @@ def _tab_alertas(df_zero: pd.DataFrame, df_res: pd.DataFrame):
 @st.dialog("Acompanhamento de Revendedora", width="large")
 def _dialog_acompanhamento():
     import html as _html
-    from src.logic.acompanhamentos import save_acompanhamento, get_ultimos_valores
+    from src.logic.acompanhamentos import save_acompanhamento, get_ultimos_valores, get_historico
 
     # Tradução PT-BR do calendário (observer no DOM pai via srcdoc iframe)
     _js = (

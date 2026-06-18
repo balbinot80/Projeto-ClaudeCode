@@ -102,9 +102,15 @@ def get_categorias() -> dict:
 
 @st.cache_data(ttl=3600)
 def _get_ultima_atualizacao_pedidos() -> str:
-    """Retorna o horário em que os pedidos foram buscados na API. Cache de 1h (sincronizado com _get_lista_pedidos)."""
-    from datetime import datetime
-    return datetime.now().strftime("%d/%m/%Y às %H:%M")
+    """Retorna o horário em que os pedidos foram buscados na API (horário de Brasília). Cache de 1h."""
+    try:
+        from zoneinfo import ZoneInfo
+        from datetime import datetime
+        return datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y às %H:%M")
+    except Exception:
+        from datetime import datetime, timezone, timedelta
+        brt = timezone(timedelta(hours=-3))
+        return datetime.now(brt).strftime("%d/%m/%Y às %H:%M")
 
 
 @st.cache_data(ttl=3600)

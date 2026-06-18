@@ -241,7 +241,7 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
 
             # Tabela detalhada
             cols_exib = ["Risco", "Nome", "Supervisor", "Criado", "Acerto",
-                         "Dias do pedido", "Pré-baixa", "Ritmo ref. (3M)", "% do ritmo", "Valor pedido"]
+                         "Dias do pedido", "Pré-baixa", "Ritmo ref. (3M)", "Valor pedido"]
             st.dataframe(
                 df[cols_exib].style
                     .map(_estilo_risco, subset=["Risco"])

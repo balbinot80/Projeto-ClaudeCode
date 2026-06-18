@@ -101,6 +101,13 @@ def get_categorias() -> dict:
 # ── Pedidos ────────────────────────────────────────────────────────────────
 
 @st.cache_data(ttl=3600)
+def _get_ultima_atualizacao_pedidos() -> str:
+    """Retorna o horário em que os pedidos foram buscados na API. Cache de 1h (sincronizado com _get_lista_pedidos)."""
+    from datetime import datetime
+    return datetime.now().strftime("%d/%m/%Y às %H:%M")
+
+
+@st.cache_data(ttl=3600)
 def _get_lista_pedidos() -> list:
     """
     Busca todos os pedidos (resumo, SEM itens por produto).

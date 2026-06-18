@@ -18,7 +18,7 @@ def _logo_sidebar_bottom(arquivo: str, width: int = 170):
     if not p.exists():
         return
     st.markdown("<div style='margin-top:24px'></div>", unsafe_allow_html=True)
-    st.image(str(p), width=width)
+    st.image(str(p), use_container_width=True)
 
 load_dotenv()
 

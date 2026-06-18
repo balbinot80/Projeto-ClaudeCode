@@ -18,9 +18,49 @@ FORMAS = {
 DIAS_PT = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
 
 
+# ── Supabase ──────────────────────────────────────────────────────────────────
+
+def _get_client():
+    try:
+        from supabase import create_client
+        import streamlit as st
+        try:
+            url = st.secrets["SUPABASE_URL"]
+            key = st.secrets["SUPABASE_KEY"]
+        except (KeyError, FileNotFoundError):
+            url = os.getenv("SUPABASE_URL", "")
+            key = os.getenv("SUPABASE_KEY", "")
+        if url and key:
+            return create_client(url, key)
+    except Exception:
+        pass
+    return None
+
+
+def _fetch_supabase() -> dict:
+    client = _get_client()
+    if client is None:
+        return {}
+    try:
+        res = client.table("agendamentos").select(
+            "pedido_id,data_agendada,forma,obs,hora_agendada"
+        ).execute()
+        return {
+            row["pedido_id"]: {
+                "data_agendada": row.get("data_agendada", ""),
+                "forma":         row.get("forma", ""),
+                "obs":           row.get("obs", ""),
+                "hora_agendada": row.get("hora_agendada", ""),
+            }
+            for row in (res.data or [])
+        }
+    except Exception:
+        return {}
+
+
 # ── Persistência ──────────────────────────────────────────────────────────────
 
-def load_agendamentos() -> dict:
+def _load_local() -> dict:
     try:
         if os.path.exists(_FILE):
             with open(_FILE, "r", encoding="utf-8") as f:
@@ -30,6 +70,15 @@ def load_agendamentos() -> dict:
     return {}
 
 
+def load_agendamentos() -> dict:
+    client = _get_client()
+    if client is not None:
+        dados = _fetch_supabase()
+        if dados:
+            return dados
+    return _load_local()
+
+
 def save_agendamento(
     pedido_id,
     data_agendada: str,
@@ -37,7 +86,28 @@ def save_agendamento(
     obs: str = "",
     hora: str = "",
 ):
-    ag = load_agendamentos()
+    client = _get_client()
+    if client is not None:
+        try:
+            client.table("agendamentos").upsert(
+                {
+                    "pedido_id":     str(pedido_id),
+                    "data_agendada": data_agendada,
+                    "forma":         forma,
+                    "obs":           obs or "",
+                    "hora_agendada": hora or "",
+                },
+                on_conflict="pedido_id",
+            ).execute()
+            return
+        except Exception as e:
+            try:
+                import streamlit as st
+                st.warning(f"⚠️ Erro ao salvar agendamento no Supabase: {e}. Salvando localmente.")
+            except Exception:
+                pass
+    # Fallback local
+    ag = _load_local()
     ag[str(pedido_id)] = {
         "data_agendada": data_agendada,
         "forma":         forma,
@@ -50,7 +120,21 @@ def save_agendamento(
 
 
 def remove_agendamento(pedido_id):
-    ag = load_agendamentos()
+    client = _get_client()
+    if client is not None:
+        try:
+            client.table("agendamentos").delete().eq(
+                "pedido_id", str(pedido_id)
+            ).execute()
+            return
+        except Exception as e:
+            try:
+                import streamlit as st
+                st.warning(f"⚠️ Erro ao remover agendamento no Supabase: {e}.")
+            except Exception:
+                pass
+    # Fallback local
+    ag = _load_local()
     ag.pop(str(pedido_id), None)
     os.makedirs(os.path.dirname(_FILE), exist_ok=True)
     with open(_FILE, "w", encoding="utf-8") as f:

@@ -70,12 +70,39 @@ def _load_local() -> dict:
     return {}
 
 
+def _migrar_local_para_supabase(client, local: dict):
+    """Copia todos os registros do JSON local para o Supabase (executado uma única vez)."""
+    if not local:
+        return
+    try:
+        registros = [
+            {
+                "pedido_id":     str(pid),
+                "data_agendada": v.get("data_agendada", ""),
+                "forma":         v.get("forma", ""),
+                "obs":           v.get("obs", "") or "",
+                "hora_agendada": v.get("hora_agendada", "") or "",
+            }
+            for pid, v in local.items()
+        ]
+        client.table("agendamentos").upsert(
+            registros, on_conflict="pedido_id"
+        ).execute()
+    except Exception:
+        pass
+
+
 def load_agendamentos() -> dict:
     client = _get_client()
     if client is not None:
         dados = _fetch_supabase()
-        if dados:
-            return dados
+        if not dados:
+            # Supabase vazio — migra dados locais se existirem
+            local = _load_local()
+            if local:
+                _migrar_local_para_supabase(client, local)
+            return local or {}
+        return dados
     return _load_local()
 
 

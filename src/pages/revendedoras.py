@@ -974,7 +974,7 @@ def render(filtro_supervisor: str = ""):
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📅 Competência",
         "⚠️ Alertas",
-        "⏱️ Análise por período",
+        "⏱️ Acompanhamento Semanal",
         "📈 Visão gerencial",
         "🏅 Níveis",
         "🏆 Premiações",

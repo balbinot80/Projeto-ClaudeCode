@@ -1071,50 +1071,31 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
 
 def _calcular_desempenho_mes(todos_pedidos: list, mes: int, ano: int) -> list:
     """
-    Retorna lista de dicts com desempenho por pedido para o mês/ano.
-
-    Para AMBOS os status, usa apenas valores monetários (R$):
-      - valor_maleta = valor_total  (valor original do pedido = o que vai na maleta)
-      - valor_vendido = valor_pre_baixa (o que foi efetivamente vendido)
-
-    Para pedidos Baixados sem valor_pre_baixa preenchido (campo zerado pelo sistema
-    após a baixa), o desempenho não pode ser calculado com precisão; nesses casos
-    são excluídos da análise para não distorcer os percentuais.
+    Retorna desempenho apenas de pedidos Baixados no mês/ano.
+    Fórmula: valor_pre_baixa (vendido) / valor_total (valor original da maleta).
     """
     from src.logic.niveis import nivel_por_pecas, _qtd_original
     rows = []
     for p in todos_pedidos:
-        status = p.get("status", "")
-        comprador = p.get("comprador") or {}
-        nome = comprador.get("nome") or f"Rev {p.get('fk_revendedor_id','?')}"
-        supervisor = p.get("supervisor_nome") or "Sem supervisora"
-        nivel = nivel_por_pecas(_qtd_original(p))
-
-        if status == "Baixado":
-            d = parse_date(p.get("data_baixa"))
-            if not (d and d.month == mes and d.year == ano):
-                continue
-            valor_maleta = float(p.get("valor_total") or 0)
-            valor_vendido = float(p.get("valor_pre_baixa") or 0)
-            # Se a API zera valor_pre_baixa após a baixa, usa valor_total como proxy
-            # (pedido totalmente liquidado = 100 % de desempenho)
-            if valor_vendido == 0 and valor_maleta > 0:
-                valor_vendido = valor_maleta
-
-        elif status == "Aberto":
-            d = parse_date(p.get("data_acerto"))
-            if not (d and d.month == mes and d.year == ano):
-                continue
-            valor_maleta  = float(p.get("valor_total") or 0)
-            valor_vendido = float(p.get("valor_pre_baixa") or 0)
-
-        else:
+        if p.get("status") != "Baixado":
             continue
+
+        d = parse_date(p.get("data_baixa"))
+        if not (d and d.month == mes and d.year == ano):
+            continue
+
+        valor_maleta  = float(p.get("valor_total")    or 0)
+        valor_vendido = float(p.get("valor_pre_baixa") or 0)
 
         if valor_maleta == 0:
             continue
 
-        pct = valor_vendido / valor_maleta * 100
+        comprador  = p.get("comprador") or {}
+        nome       = comprador.get("nome") or f"Rev {p.get('fk_revendedor_id','?')}"
+        supervisor = p.get("supervisor_nome") or "Sem supervisora"
+        nivel      = nivel_por_pecas(_qtd_original(p))
+        pct        = valor_vendido / valor_maleta * 100
+
         rows.append({
             "Nome":         nome,
             "Supervisor":   supervisor,
@@ -1122,7 +1103,6 @@ def _calcular_desempenho_mes(todos_pedidos: list, mes: int, ano: int) -> list:
             "Valor Maleta": round(valor_maleta, 2),
             "Valor Baixa":  round(valor_vendido, 2),
             "Desempenho":   round(pct, 1),
-            "Status":       status,
         })
     return rows
 
@@ -1132,9 +1112,8 @@ def _tab_desempenho(todos_pedidos: list, hoje: date):
 
     st.subheader("📊 Desempenho das Revendedoras")
     st.caption(
-        "Desempenho (%) = Valor baixado no mês ÷ Valor total da maleta. "
-        "Para pedidos **Abertos**: maleta = valor do pedido, baixa = pré-baixa acumulada. "
-        "Para pedidos **Baixados**: maleta estimada proporcionalmente pela quantidade de peças."
+        "Desempenho (%) = Valor pré-baixa (vendido) ÷ Valor total original da maleta. "
+        "Calculado apenas sobre pedidos **Baixados** no mês."
     )
 
     MESES_PT  = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
@@ -1204,7 +1183,7 @@ def _tab_desempenho(todos_pedidos: list, hoje: date):
     # Tabela por revendedora ordenada por desempenho
     df_det = pd.DataFrame(rows_mes).sort_values("Desempenho", ascending=False)
     df_det["Nível"] = df_det["Nível"].apply(lambda n: f"{ICONE_NIVEL.get(n,'')} {n}")
-    df_show = df_det[["Nome", "Nível", "Supervisor", "Status",
+    df_show = df_det[["Nome", "Nível", "Supervisor",
                        "Valor Maleta", "Valor Baixa", "Desempenho"]].copy()
     st.dataframe(
         df_show.style

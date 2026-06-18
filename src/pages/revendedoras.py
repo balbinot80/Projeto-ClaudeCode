@@ -1070,7 +1070,17 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
 # ── Render principal ──────────────────────────────────────────────────────────
 
 def _calcular_desempenho_mes(todos_pedidos: list, mes: int, ano: int) -> list:
-    """Retorna lista de dicts com desempenho por pedido para o mês/ano."""
+    """
+    Retorna lista de dicts com desempenho por pedido para o mês/ano.
+
+    Para AMBOS os status, usa apenas valores monetários (R$):
+      - valor_maleta = valor_total  (valor original do pedido = o que vai na maleta)
+      - valor_vendido = valor_pre_baixa (o que foi efetivamente vendido)
+
+    Para pedidos Baixados sem valor_pre_baixa preenchido (campo zerado pelo sistema
+    após a baixa), o desempenho não pode ser calculado com precisão; nesses casos
+    são excluídos da análise para não distorcer os percentuais.
+    """
     from src.logic.niveis import nivel_por_pecas, _qtd_original
     rows = []
     for p in todos_pedidos:
@@ -1078,38 +1088,39 @@ def _calcular_desempenho_mes(todos_pedidos: list, mes: int, ano: int) -> list:
         comprador = p.get("comprador") or {}
         nome = comprador.get("nome") or f"Rev {p.get('fk_revendedor_id','?')}"
         supervisor = p.get("supervisor_nome") or "Sem supervisora"
-        qtd_orig = _qtd_original(p)
-        nivel = nivel_por_pecas(qtd_orig)
+        nivel = nivel_por_pecas(_qtd_original(p))
 
         if status == "Baixado":
             d = parse_date(p.get("data_baixa"))
             if not (d and d.month == mes and d.year == ano):
                 continue
-            valor_baixa = float(p.get("valor_total") or 0)
-            qtd_vend = int(float(p.get("quantidade") or 0))
-            # estima valor original da maleta pela proporção de peças
-            if qtd_vend > 0 and qtd_orig > qtd_vend:
-                valor_maleta = valor_baixa * qtd_orig / qtd_vend
-            else:
-                valor_maleta = valor_baixa
+            valor_maleta = float(p.get("valor_total") or 0)
+            valor_vendido = float(p.get("valor_pre_baixa") or 0)
+            # Se a API zera valor_pre_baixa após a baixa, usa valor_total como proxy
+            # (pedido totalmente liquidado = 100 % de desempenho)
+            if valor_vendido == 0 and valor_maleta > 0:
+                valor_vendido = valor_maleta
 
         elif status == "Aberto":
             d = parse_date(p.get("data_acerto"))
             if not (d and d.month == mes and d.year == ano):
                 continue
-            valor_baixa  = float(p.get("valor_pre_baixa") or 0)
-            valor_maleta = float(p.get("valor_total") or 0)
+            valor_maleta  = float(p.get("valor_total") or 0)
+            valor_vendido = float(p.get("valor_pre_baixa") or 0)
 
         else:
             continue
 
-        pct = valor_baixa / valor_maleta * 100 if valor_maleta > 0 else 0.0
+        if valor_maleta == 0:
+            continue
+
+        pct = valor_vendido / valor_maleta * 100
         rows.append({
             "Nome":         nome,
             "Supervisor":   supervisor,
             "Nível":        nivel,
             "Valor Maleta": round(valor_maleta, 2),
-            "Valor Baixa":  round(valor_baixa, 2),
+            "Valor Baixa":  round(valor_vendido, 2),
             "Desempenho":   round(pct, 1),
             "Status":       status,
         })

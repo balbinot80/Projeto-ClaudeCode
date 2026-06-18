@@ -57,6 +57,21 @@ def _card_agendado(row: pd.Series) -> str:
     )
 
 
+def _card_vencido_agendado(row: pd.Series) -> str:
+    nome   = _nome_curto(row["Nome"])
+    hora_s = row.get("Hora agendada", "") or ""
+    data_s = row["Data agendada"].strftime("%d/%m") if pd.notna(row["Data agendada"]) and row["Data agendada"] else ""
+    hora_t = f" {hora_s}" if hora_s else ""
+    return (
+        f'<div style="background:#fff3cd;border:2px solid #f57c00;'
+        f'border-radius:6px;padding:4px 7px;font-size:0.80em;line-height:1.5">'
+        f'<b>{nome}</b> {FORMAS.get(row["Forma"], "")}<br>'
+        f'<span style="color:#e74c3c;font-weight:bold">🔴 Vencido</span><br>'
+        f'<span style="color:#e65100;font-weight:bold">📅 Reagendado: {data_s}{hora_t}</span><br>'
+        f'<span style="color:#444">{_R(row["Valor"])}</span></div>'
+    )
+
+
 def _card_closed(row: pd.Series) -> str:
     cor  = _cor(row["Situação"])
     nome = _nome_curto(row["Nome"])
@@ -128,9 +143,9 @@ def _dialog_gcal_confirm():
 
 @st.dialog("📅 Agendar Acerto", width="large")
 def _dialog_agendar(row: pd.Series):
-    pid       = row["id"]
-    nome      = row["Nome"]
-    vencido   = row["Situação"] == "🔴 Vencido"
+    pid     = row["id"]
+    nome    = row["Nome"]
+    vencido = row["Data acerto"] < date.today()
 
     st.markdown(f"### {nome}")
     st.caption(
@@ -250,9 +265,20 @@ def _grade_semana(df: pd.DataFrame, seg: date, hoje: date):
             else:
                 for _, row in df_dia.iterrows():
                     if row["Status"] != "Baixado":
-                        is_ag     = "Agendado" in str(row["Situação"])
-                        card_html = _card_agendado(row) if is_ag else _card_open(row)
-                        btn_lbl   = "🔄 Reagendar" if is_ag else "📅 Agendar"
+                        is_vencido = row["Data acerto"] < hoje
+                        tem_agenda = pd.notna(row["Data agendada"]) and bool(row["Data agendada"])
+                        is_ag      = "Agendado" in str(row["Situação"])
+
+                        if is_vencido and tem_agenda:
+                            card_html = _card_vencido_agendado(row)
+                            btn_lbl   = "🔄 Reagendar"
+                        elif is_ag:
+                            card_html = _card_agendado(row)
+                            btn_lbl   = "🔄 Reagendar"
+                        else:
+                            card_html = _card_open(row)
+                            btn_lbl   = "📅 Agendar"
+
                         with st.container(border=True):
                             st.markdown(card_html, unsafe_allow_html=True)
                             if st.button(btn_lbl, key=f"ag_{row['id']}", use_container_width=True):
@@ -367,6 +393,24 @@ def _tab_vencidos(df: pd.DataFrame):
                         nome = _nome_curto(row["Nome"])
                         forma_icon = FORMAS.get(row["Forma"], "")
                         forma_txt  = row["Forma"] or "—"
+                        tem_agenda = pd.notna(row["Data agendada"]) and bool(row["Data agendada"])
+
+                        if tem_agenda:
+                            hora_s = row.get("Hora agendada", "") or ""
+                            hora_t = f" às {hora_s}" if hora_s else ""
+                            agenda_html = (
+                                f'<div style="margin-top:4px;background:#e3f2fd;'
+                                f'border-left:3px solid #1976d2;padding:3px 6px;'
+                                f'border-radius:4px;font-size:0.85em;">'
+                                f'📅 <b>Agendado:</b> '
+                                f'{row["Data agendada"].strftime("%d/%m/%Y")}{hora_t}'
+                                f'</div>'
+                            )
+                            btn_lbl = "🔄 Reagendar"
+                        else:
+                            agenda_html = ""
+                            btn_lbl = "📅 Agendar"
+
                         with st.container(border=True):
                             st.markdown(
                                 f'<div style="font-size:0.85em;line-height:1.6">'
@@ -379,11 +423,12 @@ def _tab_vencidos(df: pd.DataFrame):
                                 f'<span style="color:#888;font-size:0.9em">'
                                 f'Pedido: {row["Código"] or row["id"]}'
                                 f'</span>'
-                                f'</div>',
+                                f'</div>'
+                                f'{agenda_html}',
                                 unsafe_allow_html=True,
                             )
                             if st.button(
-                                "📅 Agendar",
+                                btn_lbl,
                                 key=f"venc_{row['id']}",
                                 use_container_width=True,
                             ):

@@ -13,12 +13,25 @@ def _logo(arquivo: str, **kwargs):
     return False
 
 def _logo_sidebar_bottom(arquivo: str, width: int = 170):
-    """Renderiza logo no rodapé do sidebar."""
+    """Renderiza logo no rodapé do sidebar, removendo bordas transparentes."""
     p = Path("assets") / arquivo
     if not p.exists():
         return
-    st.markdown("<div style='margin-top:24px'></div>", unsafe_allow_html=True)
-    st.image(str(p), use_container_width=True)
+    try:
+        from PIL import Image
+        import io
+        img = Image.open(p).convert("RGBA")
+        bbox = img.getbbox()
+        if bbox:
+            img = img.crop(bbox)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+        st.markdown("<div style='margin-top:24px'></div>", unsafe_allow_html=True)
+        st.image(buf, use_container_width=True)
+    except Exception:
+        st.markdown("<div style='margin-top:24px'></div>", unsafe_allow_html=True)
+        st.image(str(p), use_container_width=True)
 
 load_dotenv()
 

@@ -1148,8 +1148,8 @@ def _tab_desempenho(todos_pedidos: list, hoje: date):
     def _pct_html(pct, n=None, is_total=False):
         if pct is None:
             return '<span style="color:#cbd5e1">—</span>'
-        cor = ("#16a34a" if pct >= 25 else
-               "#ca8a04" if pct >= 15 else
+        cor = ("#16a34a" if pct >= 20 else
+               "#ca8a04" if pct >= 10 else
                "#dc2626")
         txt = f"{pct:.1f}%"
         if n is not None:

@@ -12,8 +12,8 @@ def _logo(arquivo: str, **kwargs):
         return True
     return False
 
-def _logo_sidebar_bottom(arquivo: str, width: int = 170):
-    """Renderiza logo no rodapé do sidebar, removendo bordas transparentes."""
+def _logo_sidebar_bottom(arquivo: str):
+    """Renderiza logo fixada no rodapé do sidebar, sem bordas transparentes."""
     p = Path("assets") / arquivo
     if not p.exists():
         return
@@ -26,12 +26,16 @@ def _logo_sidebar_bottom(arquivo: str, width: int = 170):
             img = img.crop(bbox)
         buf = io.BytesIO()
         img.save(buf, format="PNG")
-        buf.seek(0)
-        st.markdown("<div style='margin-top:24px'></div>", unsafe_allow_html=True)
-        st.image(buf, use_container_width=True)
+        b64 = base64.b64encode(buf.getvalue()).decode()
     except Exception:
-        st.markdown("<div style='margin-top:24px'></div>", unsafe_allow_html=True)
-        st.image(str(p), use_container_width=True)
+        b64 = base64.b64encode(p.read_bytes()).decode()
+    st.markdown(
+        f'<div style="position:fixed;bottom:16px;left:0;width:260px;'
+        f'display:flex;justify-content:center;pointer-events:none">'
+        f'<img src="data:image/png;base64,{b64}" style="width:88%;opacity:0.9">'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 load_dotenv()
 
@@ -212,13 +216,11 @@ _time_cfg = _TIMES.get(usuario.get("login", "")) if role == "supervisora" else N
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    st.title("💍 Aureum Joias")
-
     if _time_cfg:
         st.markdown(
-            f'<div style="text-align:center;padding:6px 0 2px">'
-            f'<span style="font-size:1.6em">{_time_cfg["emoji"]}</span><br>'
-            f'<span style="color:{_time_cfg["cor"]};font-weight:700;font-size:1.05em;'
+            f'<div style="text-align:center;padding:10px 0 4px">'
+            f'<span style="font-size:2.4em">{_time_cfg["emoji"]}</span><br>'
+            f'<span style="color:{_time_cfg["cor"]};font-weight:700;font-size:1.58em;'
             f'letter-spacing:1px">{_time_cfg["nome"].upper()}</span>'
             f'</div>',
             unsafe_allow_html=True,
@@ -258,7 +260,7 @@ with st.sidebar:
         st.rerun()
 
     # Submarca circular no rodapé do sidebar
-    _logo_sidebar_bottom("Submarca rosa.png", width=220)
+    _logo_sidebar_bottom("Submarca rosa.png")
 
 
 # ── Banner de time (supervisoras) ──────────────────────────────────────────────

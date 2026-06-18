@@ -1142,35 +1142,69 @@ def _tab_desempenho(todos_pedidos: list, hoje: date):
     for m in meses_range:
         dados_por_mes[m] = _calcular_desempenho_mes(todos_pedidos, m, ano)
 
+    _HS = ("font-size:0.73em;font-weight:700;color:#64748b;"
+           "text-transform:uppercase;letter-spacing:0.4px")
+
+    def _pct_html(pct, n=None, is_total=False):
+        if pct is None:
+            return '<span style="color:#cbd5e1">—</span>'
+        cor = ("#16a34a" if pct >= 25 else
+               "#ca8a04" if pct >= 15 else
+               "#dc2626")
+        txt = f"{pct:.1f}%"
+        if n is not None:
+            txt += f' <span style="color:#94a3b8;font-size:0.85em">({n})</span>'
+        peso = "800" if is_total else "600"
+        return f'<span style="color:{cor};font-weight:{peso}">{txt}</span>'
+
+    def _celula_vals(rows):
+        if not rows:
+            return None, 0
+        vm = sum(r["Valor Maleta"] for r in rows)
+        vb = sum(r["Valor Baixa"]  for r in rows)
+        return (vb / vm * 100 if vm > 0 else 0.0), len(rows)
+
     # ── Tabela anual: Nível × Mês ─────────────────────────────────────────
     st.markdown("### 📅 Visão anual por nível")
 
-    def _celula(rows):
-        if not rows:
-            return "—"
-        vm = sum(r["Valor Maleta"] for r in rows)
-        vb = sum(r["Valor Baixa"]  for r in rows)
-        pct = vb / vm * 100 if vm > 0 else 0.0
-        return f"{pct:.1f}% ({len(rows)})"
+    _n_meses = len(meses_range)
+    _PC_anual = [2.0] + [1.0] * _n_meses
 
-    tbl = []
+    # Cabeçalho
+    hcols = st.columns(_PC_anual)
+    hcols[0].markdown(f'<span style="{_HS}">Nível</span>', unsafe_allow_html=True)
+    for i, m in enumerate(meses_range):
+        hcols[i + 1].markdown(f'<span style="{_HS}">{MESES_PT[m-1]}</span>', unsafe_allow_html=True)
+    st.markdown('<hr style="margin:4px 0 6px 0;border:none;border-top:2px solid #e2e8f0">',
+                unsafe_allow_html=True)
+
+    # Linhas de nível
     for nivel in NIVEIS_ORD:
-        row = {"Nível": f"{ICONE_NIVEL.get(nivel,'')} {nivel}"}
-        for m in meses_range:
+        rcols = st.columns(_PC_anual)
+        rcols[0].markdown(
+            f'<span style="font-size:0.9em">{ICONE_NIVEL.get(nivel,"")} {nivel}</span>',
+            unsafe_allow_html=True,
+        )
+        for i, m in enumerate(meses_range):
             sub = [r for r in dados_por_mes[m] if r["Nível"] == nivel]
-            row[MESES_PT[m-1]] = _celula(sub)
-        tbl.append(row)
+            pct, n = _celula_vals(sub)
+            rcols[i + 1].markdown(
+                _pct_html(pct, n) if n > 0 else '<span style="color:#cbd5e1">—</span>',
+                unsafe_allow_html=True,
+            )
+        st.markdown('<hr style="margin:2px 0;border:none;border-top:1px solid #f1f5f9">',
+                    unsafe_allow_html=True)
 
     # Linha total
-    row_total = {"Nível": "🔢 Total"}
-    for m in meses_range:
-        row_total[MESES_PT[m-1]] = _celula(dados_por_mes[m])
-    tbl.append(row_total)
-
-    st.dataframe(
-        pd.DataFrame(tbl).set_index("Nível"),
-        use_container_width=True,
-    )
+    tcols = st.columns(_PC_anual)
+    tcols[0].markdown('<span style="font-size:0.9em;font-weight:700">🔢 Total</span>',
+                      unsafe_allow_html=True)
+    for i, m in enumerate(meses_range):
+        pct, n = _celula_vals(dados_por_mes[m])
+        tcols[i + 1].markdown(
+            _pct_html(pct, n, is_total=True) if n > 0 else '<span style="color:#cbd5e1">—</span>',
+            unsafe_allow_html=True,
+        )
 
     # ── Detalhamento por mês ───────────────────────────────────────────────
     st.markdown("### 🔍 Detalhamento por mês")
@@ -1194,23 +1228,41 @@ def _tab_desempenho(todos_pedidos: list, hoje: date):
     c3.metric("Total baixado",   _R(vb_total))
     c4.metric("Desempenho geral", f"{pct_geral:.1f}%")
 
-    st.divider()
+    st.markdown('<hr style="margin:8px 0 4px 0;border:none;border-top:2px solid #e2e8f0">',
+                unsafe_allow_html=True)
 
-    # Tabela por revendedora ordenada por desempenho
-    df_det = pd.DataFrame(rows_mes).sort_values("Desempenho", ascending=False)
-    df_det["Nível"] = df_det["Nível"].apply(lambda n: f"{ICONE_NIVEL.get(n,'')} {n}")
-    df_show = df_det[["Nome", "Nível", "Supervisor",
-                       "Valor Maleta", "Valor Baixa", "Desempenho"]].copy()
-    st.dataframe(
-        df_show.style
-            .format({
-                "Valor Maleta": _R,
-                "Valor Baixa":  _R,
-                "Desempenho":   lambda v: f"{v:.1f}%",
-            }),
-        use_container_width=True,
-        hide_index=True,
-    )
+    # Tabela de detalhe por revendedora
+    rows_ord = sorted(rows_mes, key=lambda r: r["Desempenho"], reverse=True)
+
+    _PC_det = [3.2, 1.6, 2.4, 1.6, 1.6, 1.4]
+    _PH_det = ["Nome", "Nível", "Supervisor", "Maleta", "Baixado", "Desempenho"]
+
+    hd = st.columns(_PC_det)
+    for col, lbl in zip(hd, _PH_det):
+        col.markdown(f'<span style="{_HS}">{lbl}</span>', unsafe_allow_html=True)
+    st.markdown('<hr style="margin:4px 0 6px 0;border:none;border-top:2px solid #e2e8f0">',
+                unsafe_allow_html=True)
+
+    for r in rows_ord:
+        dcols = st.columns(_PC_det)
+        dcols[0].markdown(f'<span style="font-size:0.9em">{r["Nome"]}</span>',
+                          unsafe_allow_html=True)
+        _niv = r["Nível"]
+        dcols[1].markdown(
+            f'<span style="font-size:0.85em">{ICONE_NIVEL.get(_niv,"")} {_niv}</span>',
+            unsafe_allow_html=True,
+        )
+        dcols[2].markdown(
+            f'<span style="font-size:0.85em;color:#475569">{r["Supervisor"]}</span>',
+            unsafe_allow_html=True,
+        )
+        dcols[3].markdown(f'<span style="font-size:0.87em">{_R(r["Valor Maleta"])}</span>',
+                          unsafe_allow_html=True)
+        dcols[4].markdown(f'<span style="font-size:0.87em">{_R(r["Valor Baixa"])}</span>',
+                          unsafe_allow_html=True)
+        dcols[5].markdown(_pct_html(r["Desempenho"]), unsafe_allow_html=True)
+        st.markdown('<hr style="margin:2px 0;border:none;border-top:1px solid #f1f5f9">',
+                    unsafe_allow_html=True)
 
 
 def render(filtro_supervisor: str = ""):

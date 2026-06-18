@@ -162,7 +162,7 @@ def _tab_alertas(df_zero: pd.DataFrame, df_res: pd.DataFrame):
 @st.dialog("Acompanhamento de Revendedora", width="large")
 def _dialog_acompanhamento():
     import html as _html
-    from src.logic.acompanhamentos import save_acompanhamento, get_ultimos_valores, get_historico
+    from src.logic.acompanhamentos import save_acompanhamento, get_ultimos_valores, get_historico, delete_acompanhamento
 
     # Tradução PT-BR do calendário (observer no DOM pai via srcdoc iframe)
     _js = (
@@ -195,8 +195,15 @@ def _dialog_acompanhamento():
         st.error("Revendedora não identificada.")
         return
 
-    pedido_txt = f"&nbsp;&nbsp;·&nbsp;&nbsp;Pedido: **{pedido}**" if pedido else ""
-    st.markdown(f"**Revendedora:** {nome}{pedido_txt}", unsafe_allow_html=True)
+    pedido_html = (
+        f'&nbsp;&nbsp;<span style="color:#999">·</span>&nbsp;&nbsp;'
+        f'Pedido:&nbsp;<strong>{pedido}</strong>'
+    ) if pedido else ""
+    st.markdown(
+        f'<p style="margin-bottom:0;font-size:1.05em">'
+        f'<strong>Revendedora:</strong> {nome}{pedido_html}</p>',
+        unsafe_allow_html=True,
+    )
     st.divider()
 
     data_sel  = st.date_input("Data do acompanhamento", value=date.today(), key="dlg_acomp_data", format="DD/MM/YYYY")
@@ -235,14 +242,25 @@ def _dialog_acompanhamento():
         else:
             from datetime import datetime as _dt
             scroll = st.container(height=280)
-            for reg in reversed(historico):
+            for i, reg in enumerate(reversed(historico)):
                 try:
                     data_fmt = _dt.strptime(reg["data"], "%Y-%m-%d").strftime("%d/%m/%Y")
                 except Exception:
                     data_fmt = reg.get("data", "?")
+                uid = reg.get("_id") or reg.get("_local_idx", i)
                 with scroll.container(border=True):
-                    st.caption(f"🗓️ {data_fmt}")
-                    st.write(reg.get("descricao", ""))
+                    c_txt, c_del = st.columns([7, 1])
+                    with c_txt:
+                        st.caption(f"🗓️ {data_fmt}")
+                        st.write(reg.get("descricao", ""))
+                    with c_del:
+                        if st.button("🗑️", key=f"del_acomp_{uid}", help="Remover este acompanhamento"):
+                            delete_acompanhamento(
+                                nome=nome,
+                                record_id=reg.get("_id"),
+                                local_idx=reg.get("_local_idx"),
+                            )
+                            st.rerun(scope="app")
 
     st.divider()
     c1, c2 = st.columns(2)
@@ -465,7 +483,10 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
                 # Rotaciona a chave para limpar a seleção na próxima renderização
                 st.session_state["_df_acomp_gen"]   = _gen + 1
                 st.session_state["_acomp_nome"]     = sel_nome
-                st.session_state["_acomp_pedido"]   = sel_row.get("Pedido", "")
+                _ped = sel_row.get("Pedido", "")
+                st.session_state["_acomp_pedido"] = (
+                    str(_ped) if _ped and str(_ped) not in ("nan", "None", "") else ""
+                )
                 st.session_state["_acomp_prebaixa"] = prebaixa_por_periodo.get(sel_nome, {})
                 _dialog_acompanhamento()
 

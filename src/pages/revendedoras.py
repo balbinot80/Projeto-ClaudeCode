@@ -1319,11 +1319,7 @@ def render(filtro_supervisor: str = ""):
     with col_info:
         from src.api.jueri_client import _get_ultima_atualizacao_pedidos
         _ultima = _get_ultima_atualizacao_pedidos()
-        st.caption(
-            f"**Regra:** pedidos **Baixados** com data_baixa em {mes_sel} + "
-            f"pedidos **Abertos** com previsão de acerto em {mes_sel} (soma da pré-baixa). "
-            f"&nbsp;&nbsp;🕐 **Última atualização:** {_ultima}"
-        )
+        st.caption(f"🕐 **Última atualização:** {_ultima}")
 
     # ── Calcular dados ────────────────────────────────────────────────────────
     df_res, df_det = calcular_competencia(todos_pedidos, mes_num, ano_num)

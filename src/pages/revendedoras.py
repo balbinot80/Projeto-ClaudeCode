@@ -215,13 +215,31 @@ def _dialog_acompanhamento():
         efetivo = atual if atual > 0 else float(ultimos.get(key, 0.0))
         rows_pb.append({"Período": lbl, "Pré-baixa (R$)": efetivo})
 
-    st.caption("📊 Pré-baixa por período — dados automáticos do Jueri. Semanas sem movimento mantêm o valor anterior.")
-    st.dataframe(
-        pd.DataFrame(rows_pb).style.format({"Pré-baixa (R$)": _R}),
-        use_container_width=False,
-        hide_index=True,
-        width=320,
-    )
+    col_pb, col_hist = st.columns([2, 3])
+
+    with col_pb:
+        st.caption("📊 Pré-baixa por período — dados automáticos do Jueri.")
+        st.dataframe(
+            pd.DataFrame(rows_pb).style.format({"Pré-baixa (R$)": _R}),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    with col_hist:
+        historico = get_historico(nome)
+        st.markdown("**📋 Histórico de acompanhamentos**")
+        if not historico:
+            st.caption("Nenhum acompanhamento registrado ainda.")
+        else:
+            from datetime import datetime as _dt
+            for reg in reversed(historico):
+                try:
+                    data_fmt = _dt.strptime(reg["data"], "%Y-%m-%d").strftime("%d/%m/%Y")
+                except Exception:
+                    data_fmt = reg.get("data", "?")
+                with st.container(border=True):
+                    st.caption(f"🗓️ {data_fmt}")
+                    st.write(reg.get("descricao", ""))
 
     st.divider()
     c1, c2 = st.columns(2)
@@ -349,6 +367,10 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
             comprador = p.get("comprador") or {}
             novas.add(comprador.get("nome") or f"Rev {rid}")
 
+    # Acompanhamentos registrados (para métrica e destaque)
+    from src.logic.acompanhamentos import load_acompanhamentos as _load_acomp
+    _acomp_todos = _load_acomp()
+
     subtabs = st.tabs(_LABELS)
 
     for subtab, (dias, dias_min), chave, df in zip(subtabs, _PERIODOS, _CHAVES, _dfs):
@@ -363,11 +385,15 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
             n_risco  = (df["Risco"].isin(["🔴 Sem vendas", "🟠 Abaixo do mínimo"])).sum()
             total_pb = df["Pré-baixa"].sum()
 
-            c1, c2, c3, c4 = st.columns(4)
+            n_sem_acomp = sum(1 for n in df["Nome"] if n not in _acomp_todos)
+
+            c1, c2, c3, c4, c5 = st.columns(5)
             c1.metric("Pedidos no período", n_total)
             c2.metric("🟢 No ritmo", n_ok)
             c3.metric("🔴🟠 Em risco", n_risco)
             c4.metric("Total pré-baixa", _R(total_pb))
+            c5.metric("📋 Sem acompanhamento", n_sem_acomp,
+                      help="Revendedoras sem nenhum acompanhamento registrado no sistema")
 
             # ── Tabela detalhada ──────────────────────────────────────────────
             df_show = df.copy()

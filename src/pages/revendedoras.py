@@ -325,20 +325,6 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
             comprador = p.get("comprador") or {}
             novas.add(comprador.get("nome") or f"Rev {rid}")
 
-    # CSS tooltip (injetado uma vez)
-    st.markdown(
-        "<style>"
-        ".atip{position:relative;cursor:help;display:inline-block}"
-        ".atip::after{content:attr(data-tip);visibility:hidden;position:absolute;"
-        "top:1.6em;left:0;background:#fff;border:1px solid #bbb;border-radius:6px;"
-        "padding:10px 16px;white-space:pre-wrap;min-width:270px;max-width:360px;"
-        "font-size:0.84em;line-height:1.6;color:#333;"
-        "box-shadow:3px 4px 12px rgba(0,0,0,0.22);z-index:100;pointer-events:none}"
-        ".atip:hover::after{visibility:visible}"
-        "</style>",
-        unsafe_allow_html=True,
-    )
-
     subtabs = st.tabs(_LABELS)
 
     for subtab, (dias, dias_min), chave, df in zip(subtabs, _PERIODOS, _CHAVES, _dfs):
@@ -369,31 +355,20 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
                 .drop(columns="_nova").reset_index(drop=True)
             )
 
-            # Coluna 🔔 — alertas com tooltip CSS
-            def _alerta_html(nome):
-                icons, lines = [], []
+            # Coluna 🔔 — ícones de alerta em texto simples
+            def _alerta_icons(nome):
+                icons = []
                 tem_pos = nome in _sub_map or nome in _prm_map
                 if nome in _sub_map:
-                    icons.append("🔼"); lines.append(_sub_map[nome])
+                    icons.append("🔼")
                 if nome in _reb_map and not tem_pos:
-                    icons.append("🔽"); lines.append(_reb_map[nome])
+                    icons.append("🔽")
                 if nome in _prm_map:
                     icons.append("🏆" if "Ganhadora" in _prm_map[nome] else "🎯")
-                    lines.append(_prm_map[nome])
-                if not icons:
-                    return ""
-                txt = "".join(icons)
-                if not lines:
-                    return txt
-                tip = "\n".join(lines).replace('"', "&quot;").replace("\n", "&#10;")
-                return f'<span class="atip" data-tip="{tip}">{txt}</span>'
+                return "".join(icons)
 
-            # Coluna 💬 — emoji estático (ação via selectbox abaixo da tabela)
-            def _acomp_html(nome):
-                return '<span style="font-size:1.15em;opacity:0.7" title="Registrar acompanhamento">💬</span>'
-
-            df_show["🔔"] = df_show["Nome"].apply(_alerta_html)
-            df_show["💬"] = df_show["Nome"].apply(_acomp_html)
+            df_show["💬"] = "💬"
+            df_show["🔔"] = df_show["Nome"].apply(_alerta_icons)
 
             cols_exib = ["💬", "🔔", "Risco", "Nome", "Supervisor", "Criado", "Acerto",
                          "Dias do pedido", "Pré-baixa", "Ritmo ref. (3M)", "Valor pedido"]
@@ -404,36 +379,37 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
                     return ["background-color:#dbeafe;font-weight:500"] * len(row)
                 return [""] * len(row)
 
-            _tbl_styles = [
-                {"selector": "table", "props": [("width","100%"),("border-collapse","collapse"),("font-size","0.82rem")]},
-                {"selector": "th",    "props": [("background","#f5f5f5"),("padding","6px 10px"),("text-align","left"),("border-bottom","2px solid #ddd"),("white-space","nowrap")]},
-                {"selector": "td",    "props": [("padding","5px 10px"),("border-bottom","1px solid #eee"),("vertical-align","middle")]},
-                {"selector": "tr:hover td", "props": [("background","rgba(0,0,0,0.06)")]},
-            ]
-            styled = (
-                df_show[cols_exib].style
-                .set_table_styles(_tbl_styles)
-                .apply(_hl_nova, axis=1)
-                .map(_estilo_risco, subset=["Risco"])
-                .format(subset=["💬", "🔔"], escape=None)
-                .format({"Pré-baixa": _R, "Ritmo ref. (3M)": _R, "Valor pedido": _R})
-                .hide(axis="index")
-            )
-            st.markdown(styled.to_html(), unsafe_allow_html=True)
+            # Chave rotativa: muda após abrir dialog, limpando a seleção
+            _gen = st.session_state.get("_df_acomp_gen", 0)
+            df_key = f"df_acomp_{chave}_{_gen}"
 
-            # Botão de acompanhamento (nativo Streamlit — evita reload de página)
-            nomes_periodo = df_show["Nome"].tolist()
-            ca, cb, _ = st.columns([3, 1, 3])
-            sel_acomp = ca.selectbox(
-                "💬 Registrar acompanhamento:",
-                [""] + nomes_periodo,
-                format_func=lambda x: "— Selecionar revendedora —" if x == "" else x,
-                key=f"sel_acomp_{chave}",
-                label_visibility="collapsed",
+            st.caption("💬 Clique em uma linha para registrar o acompanhamento.")
+            event = st.dataframe(
+                df_show[cols_exib].style
+                    .apply(_hl_nova, axis=1)
+                    .map(_estilo_risco, subset=["Risco"])
+                    .format({"Pré-baixa": _R, "Ritmo ref. (3M)": _R, "Valor pedido": _R}),
+                use_container_width=True,
+                hide_index=True,
+                on_select="rerun",
+                selection_mode="single-row",
+                key=df_key,
+                column_config={
+                    "💬": st.column_config.TextColumn("💬", width="small"),
+                    "🔔": st.column_config.TextColumn("🔔", width="small"),
+                    "Pré-baixa":       st.column_config.TextColumn("Pré-baixa"),
+                    "Ritmo ref. (3M)": st.column_config.TextColumn("Ritmo ref. (3M)"),
+                    "Valor pedido":    st.column_config.TextColumn("Valor pedido"),
+                },
             )
-            if cb.button("💬 Abrir", key=f"btn_acomp_{chave}", disabled=not sel_acomp):
-                st.session_state["_acomp_nome"]     = sel_acomp
-                st.session_state["_acomp_prebaixa"] = prebaixa_por_periodo.get(sel_acomp, {})
+
+            if event.selection.rows:
+                sel_idx  = event.selection.rows[0]
+                sel_nome = df_show.iloc[sel_idx]["Nome"]
+                # Rotaciona a chave para limpar a seleção na próxima renderização
+                st.session_state["_df_acomp_gen"] = _gen + 1
+                st.session_state["_acomp_nome"]     = sel_nome
+                st.session_state["_acomp_prebaixa"] = prebaixa_por_periodo.get(sel_nome, {})
                 _dialog_acompanhamento()
 
             # Gráfico (abaixo da tabela)

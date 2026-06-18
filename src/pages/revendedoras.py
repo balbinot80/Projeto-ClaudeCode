@@ -439,55 +439,98 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
                     icons.append("🏆" if "Ganhadora" in _prm_map[nome] else "🎯")
                 return "".join(icons)
 
-            df_show["💬"] = "💬"
             df_show["🔔"] = df_show["Nome"].apply(_alerta_icons)
 
-            cols_exib = ["💬", "🔔", "Risco", "Nome", "Supervisor", "Criado", "Acerto",
-                         "Dias do pedido", "Pré-baixa", "Ritmo ref. (3M)", "Valor pedido"]
+            # ✅/❌ — acompanhamento nos últimos 7 dias
+            from datetime import datetime as _dt_ac
+            _corte_ac = date.today() - timedelta(days=7)
 
-            # Destaque azul claro para novas revendedoras
-            def _hl_nova(row):
-                if row["Nome"] in novas:
-                    return ["background-color:#dbeafe;font-weight:500"] * len(row)
-                return [""] * len(row)
+            def _tem_acomp_semana(nome_rev: str) -> bool:
+                for reg in _acomp_todos.get(nome_rev, []):
+                    try:
+                        if _dt_ac.strptime(reg["data"], "%Y-%m-%d").date() >= _corte_ac:
+                            return True
+                    except Exception:
+                        pass
+                return False
 
-            # Chave rotativa: muda após abrir dialog, limpando a seleção
-            _gen = st.session_state.get("_df_acomp_gen", 0)
-            df_key = f"df_acomp_{chave}_{_gen}"
+            # ── Cabeçalho ────────────────────────────────────────────────────
+            _PC = [1.9, 0.55, 1.9, 3.3, 2.8, 1.0, 1.0, 0.8, 1.55, 1.7, 1.7]
+            _PH = ["Ação", "🔔", "Risco", "Nome", "Supervisor",
+                   "Criado", "Acerto", "Dias", "Pré-baixa", "Ritmo (3M)", "Valor pedido"]
+            _HS = ("font-size:0.73em;font-weight:700;color:#64748b;"
+                   "text-transform:uppercase;letter-spacing:0.4px")
 
-            st.caption("💬 Clique em uma linha para registrar o acompanhamento.")
-            event = st.dataframe(
-                df_show[cols_exib].style
-                    .apply(_hl_nova, axis=1)
-                    .map(_estilo_risco, subset=["Risco"])
-                    .format({"Pré-baixa": _R, "Ritmo ref. (3M)": _R, "Valor pedido": _R}),
-                use_container_width=True,
-                hide_index=True,
-                on_select="rerun",
-                selection_mode="single-row",
-                key=df_key,
-                column_config={
-                    "💬": st.column_config.TextColumn("💬", width="small"),
-                    "🔔": st.column_config.TextColumn("🔔", width="small"),
-                    "Pré-baixa":       st.column_config.TextColumn("Pré-baixa"),
-                    "Ritmo ref. (3M)": st.column_config.TextColumn("Ritmo ref. (3M)"),
-                    "Valor pedido":    st.column_config.TextColumn("Valor pedido"),
-                },
+            hcols = st.columns(_PC)
+            for _hc, _lbl in zip(hcols, _PH):
+                _hc.markdown(f'<span style="{_HS}">{_lbl}</span>', unsafe_allow_html=True)
+
+            st.markdown(
+                '<hr style="margin:4px 0 6px 0;border:none;border-top:2px solid #e2e8f0">',
+                unsafe_allow_html=True,
             )
 
-            if event.selection.rows:
-                sel_idx  = event.selection.rows[0]
-                sel_row  = df_show.iloc[sel_idx]
-                sel_nome = sel_row["Nome"]
-                # Rotaciona a chave para limpar a seleção na próxima renderização
-                st.session_state["_df_acomp_gen"]   = _gen + 1
-                st.session_state["_acomp_nome"]     = sel_nome
-                _ped = sel_row.get("Pedido", "")
-                st.session_state["_acomp_pedido"] = (
-                    str(_ped) if _ped and str(_ped) not in ("nan", "None", "") else ""
+            # ── Linhas de dados ───────────────────────────────────────────────
+            for _i, (_, _row) in enumerate(df_show.iterrows()):
+                _nome  = _row.get("Nome", "")
+                _risco = _row.get("Risco", "")
+                _tem   = _tem_acomp_semana(_nome)
+                _nova  = _nome in novas
+
+                dcols = st.columns(_PC)
+
+                with dcols[0]:
+                    _btn_lbl = "✅ Registrado" if _tem else "💬 Acompanhar"
+                    _btn_tp  = "secondary"     if _tem else "primary"
+                    if st.button(_btn_lbl, key=f"acomp_{chave}_{_i}",
+                                 use_container_width=True, type=_btn_tp):
+                        st.session_state["_acomp_nome"] = _nome
+                        _ped = _row.get("Pedido", "")
+                        st.session_state["_acomp_pedido"] = (
+                            str(_ped) if _ped and str(_ped) not in ("nan", "None", "") else ""
+                        )
+                        st.session_state["_acomp_prebaixa"] = prebaixa_por_periodo.get(_nome, {})
+                        _dialog_acompanhamento()
+
+                dcols[1].markdown(_row.get("🔔", "") or "")
+
+                _cor_r = _CORES_RISCO.get(_risco, "#64748b")
+                dcols[2].markdown(
+                    f'<b style="color:{_cor_r};font-size:0.87em">{_risco}</b>',
+                    unsafe_allow_html=True,
                 )
-                st.session_state["_acomp_prebaixa"] = prebaixa_por_periodo.get(sel_nome, {})
-                _dialog_acompanhamento()
+
+                _nome_html = (
+                    f'<b style="color:#1d4ed8">{_nome}</b>' if _nova else
+                    f'<span>{_nome}</span>'
+                )
+                dcols[3].markdown(_nome_html, unsafe_allow_html=True)
+
+                dcols[4].markdown(
+                    f'<span style="font-size:0.87em;color:#475569">'
+                    f'{_row.get("Supervisor","")}</span>',
+                    unsafe_allow_html=True,
+                )
+                dcols[5].markdown(_row.get("Criado", ""))
+                dcols[6].markdown(_row.get("Acerto", ""))
+                dcols[7].markdown(f'**{_row.get("Dias do pedido", "")}**')
+                dcols[8].markdown(
+                    f'<span style="font-size:0.87em">{_R(_row.get("Pré-baixa", 0))}</span>',
+                    unsafe_allow_html=True,
+                )
+                dcols[9].markdown(
+                    f'<span style="font-size:0.87em">{_R(_row.get("Ritmo ref. (3M)", 0))}</span>',
+                    unsafe_allow_html=True,
+                )
+                dcols[10].markdown(
+                    f'<span style="font-size:0.87em">{_R(_row.get("Valor pedido", 0))}</span>',
+                    unsafe_allow_html=True,
+                )
+
+                st.markdown(
+                    '<hr style="margin:2px 0;border:none;border-top:1px solid #f1f5f9">',
+                    unsafe_allow_html=True,
+                )
 
             # Gráfico (abaixo da tabela)
             df_graf = df.sort_values("Pré-baixa", ascending=False).head(40).copy()

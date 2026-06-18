@@ -180,28 +180,24 @@ def _dialog_acompanhamento():
         key="dlg_acomp_desc",
     )
 
-    st.markdown("**Pré-baixa por período**")
-    st.caption("Valores atuais da revendedora. Semanas sem movimento mantêm o valor da semana anterior.")
-
-    ultimos     = get_ultimos_valores(nome)
-    chaves      = ["0-7",      "8-15",      "16-20",      "21-30"]
-    lbl_semanas = ["0–7 dias", "8–15 dias", "16–20 dias", "21–30 dias"]
+    # Pré-baixa por período — dados automáticos do Jueri
+    ultimos  = get_ultimos_valores(nome)
+    chaves   = ["0-7",      "8-15",      "16-20",      "21-30"]
+    labels   = ["0–7 dias", "8–15 dias", "16–20 dias", "21–30 dias"]
 
     rows_pb = []
-    for lbl, key in zip(lbl_semanas, chaves):
+    for lbl, key in zip(labels, chaves):
         atual   = float(prebaixa.get(key, 0.0))
-        ultimo  = float(ultimos.get(key, 0.0))
-        efetivo = atual if atual > 0 else ultimo
-        rows_pb.append({"Período": lbl, "Pré-baixa atual": atual, "Valor a registrar": efetivo})
+        efetivo = atual if atual > 0 else float(ultimos.get(key, 0.0))
+        rows_pb.append({"Período": lbl, "Pré-baixa (R$)": efetivo})
 
-    df_pb = pd.DataFrame(rows_pb)
+    st.caption("📊 Pré-baixa por período — dados automáticos do Jueri. Semanas sem movimento mantêm o valor anterior.")
     st.dataframe(
-        df_pb.style.format({"Pré-baixa atual": _R, "Valor a registrar": _R}),
-        use_container_width=True, hide_index=True,
+        pd.DataFrame(rows_pb).style.format({"Pré-baixa (R$)": _R}),
+        use_container_width=False,
+        hide_index=True,
+        width=320,
     )
-
-    total = sum(r["Valor a registrar"] for r in rows_pb)
-    st.metric("Total pré-baixa a registrar", _R(total))
 
     st.divider()
     c1, c2 = st.columns(2)
@@ -209,7 +205,7 @@ def _dialog_acompanhamento():
         if not descricao.strip():
             st.error("⚠️ Informe como foi feito o acompanhamento.")
         else:
-            semanas = {key: r["Valor a registrar"] for key, r in zip(chaves, rows_pb)}
+            semanas = {key: r["Pré-baixa (R$)"] for key, r in zip(chaves, rows_pb)}
             save_acompanhamento(nome, str(data_sel), descricao.strip(), semanas)
             st.success("✅ Acompanhamento registrado!")
             st.session_state.pop("_acomp_nome", None)
@@ -282,8 +278,6 @@ def _build_info_maps(todos_pedidos: list, mes: int, ano: int) -> tuple:
 
 
 def _tab_periodo(todos_pedidos: list, hoje: date):
-    from urllib.parse import quote_plus
-
     st.subheader("Pré-baixa por idade do pedido")
     st.caption(
         "Para cada janela de tempo, mostra os pedidos **abertos** criados naquele período "
@@ -426,11 +420,9 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
                 tip = "\n".join(lines).replace('"', "&quot;").replace("\n", "&#10;")
                 return f'<span class="atip" data-tip="{tip}">{txt}</span>'
 
-            # Coluna 💬 — link que abre dialog via query param
+            # Coluna 💬 — emoji estático (ação via selectbox abaixo da tabela)
             def _acomp_html(nome):
-                enc = quote_plus(nome)
-                return (f'<a href="?acomp={enc}" style="text-decoration:none;'
-                        f'font-size:1.2em;cursor:pointer" title="Registrar acompanhamento">💬</a>')
+                return '<span style="font-size:1.15em;opacity:0.7" title="Registrar acompanhamento">💬</span>'
 
             df_show["🔔"] = df_show["Nome"].apply(_alerta_html)
             df_show["💬"] = df_show["Nome"].apply(_acomp_html)
@@ -460,6 +452,21 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
                 .hide(axis="index")
             )
             st.markdown(styled.to_html(), unsafe_allow_html=True)
+
+            # Botão de acompanhamento (nativo Streamlit — evita reload de página)
+            nomes_periodo = df_show["Nome"].tolist()
+            ca, cb, _ = st.columns([3, 1, 3])
+            sel_acomp = ca.selectbox(
+                "💬 Registrar acompanhamento:",
+                [""] + nomes_periodo,
+                format_func=lambda x: "— Selecionar revendedora —" if x == "" else x,
+                key=f"sel_acomp_{chave}",
+                label_visibility="collapsed",
+            )
+            if cb.button("💬 Abrir", key=f"btn_acomp_{chave}", disabled=not sel_acomp):
+                st.session_state["_acomp_nome"]     = sel_acomp
+                st.session_state["_acomp_prebaixa"] = prebaixa_por_periodo.get(sel_acomp, {})
+                st.rerun()
 
             # Por supervisora
             if "Supervisor" in df.columns:
@@ -1054,29 +1061,8 @@ def render(filtro_supervisor: str = ""):
     c7.metric("🔴 Sem vendas", n_zero + n_sem_res,
               help="Pedidos abertos com R$0 + revendedoras com total = R$0")
 
-    # ── Dialog de acompanhamento (ativado via query param ?acomp=Nome) ──────────
-    _qp = st.query_params.get("acomp", "")
-    if _qp and not st.session_state.get("_acomp_nome"):
-        from urllib.parse import unquote_plus
-        st.session_state["_acomp_nome"]     = unquote_plus(_qp)
-        st.session_state["_acomp_prebaixa"] = {}
-        try:
-            st.query_params.pop("acomp")
-        except Exception:
-            pass
+    # ── Dialog de acompanhamento ──────────────────────────────────────────────
     if st.session_state.get("_acomp_nome"):
-        # Popula pré-baixa atual antes de abrir o dialog
-        if not st.session_state.get("_acomp_prebaixa"):
-            _chaves = ["0-7", "8-15", "16-20", "21-30"]
-            _pb: dict = {k: 0.0 for k in _chaves}
-            for (dias, dmin), key in zip([(7,0),(15,7),(20,15),(30,20)], _chaves):
-                from src.logic.revendedoras import analise_periodo as _ap
-                _df_tmp = _ap(todos_pedidos, dias, hoje, dias_min=dmin)
-                if not _df_tmp.empty:
-                    _row = _df_tmp[_df_tmp["Nome"] == st.session_state["_acomp_nome"]]
-                    if not _row.empty:
-                        _pb[key] = float(_row.iloc[0]["Pré-baixa"])
-            st.session_state["_acomp_prebaixa"] = _pb
         _dialog_acompanhamento()
 
     # ── Tabs ──────────────────────────────────────────────────────────────────

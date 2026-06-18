@@ -170,8 +170,14 @@ def _build_info_maps(todos_pedidos: list, mes: int, ano: int) -> tuple:
         df_sub = alertas_subida(todos_pedidos, mes, ano)
         if not df_sub.empty:
             for _, r in df_sub.iterrows():
-                sit = "Já atingiu" if "Já" in str(r["Situação"]) else "Próxima de subir"
-                subida_map[r["Nome"]] = f"🔼 {sit} para {r['Próx. nível']}"
+                if "Já" in str(r["Situação"]):
+                    txt = f"🔼 Nível: já atingiu a meta para subir para {r['Próx. nível']}"
+                else:
+                    falta = r.get("Falta", "")
+                    txt = f"🔼 Nível: próxima de subir para {r['Próx. nível']}"
+                    if falta:
+                        txt += f"\n     Falta R$ {falta:,.2f} para atingir"
+                subida_map[r["Nome"]] = txt
     except Exception:
         pass
 
@@ -181,7 +187,11 @@ def _build_info_maps(todos_pedidos: list, mes: int, ano: int) -> tuple:
             proj_col = next((c for c in df_reb.columns if "Projeção" in c), None)
             if proj_col:
                 for _, r in df_reb.iterrows():
-                    rebaixa_map[r["Nome"]] = f"🔽 {r[proj_col]}"
+                    rebaixa = r.get("Rebaixa para", "—")
+                    rebaixa_map[r["Nome"]] = (
+                        f"🔽 {r[proj_col]}\n"
+                        f"     Nível atual: {r['Nível atual']} → risco: {rebaixa}"
+                    )
     except Exception:
         pass
 
@@ -192,9 +202,17 @@ def _build_info_maps(todos_pedidos: list, mes: int, ano: int) -> tuple:
             prem_nome = cfg.get("premio", "Prêmio do mês")
             for r in calcular_ranking(todos_pedidos, mes, ano, meta):
                 if r["Categoria"] == "ganhadora":
-                    premio_map[r["Nome"]] = f"🏆 Ganhadora — {prem_nome}"
+                    premio_map[r["Nome"]] = (
+                        f"🏆 Premiação: GANHADORA\n"
+                        f"     Prêmio: {prem_nome}\n"
+                        f"     Total baixado: R$ {r['Baixado']:,.2f}"
+                    )
                 elif r["Categoria"] == "potencial":
-                    premio_map[r["Nome"]] = f"🎯 Potencial ganhadora — {prem_nome}"
+                    premio_map[r["Nome"]] = (
+                        f"🎯 Premiação: potencial ganhadora\n"
+                        f"     Prêmio: {prem_nome}\n"
+                        f"     Falta baixar: R$ {r['Falta']:,.2f}"
+                    )
     except Exception:
         pass
 
@@ -321,13 +339,15 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
                 "z-index:20;"
                 "background-color:#fff;"
                 "border:1px solid #ccc;"
-                "border-radius:4px;"
-                "padding:6px 12px;"
-                "white-space:pre;"
-                "font-size:0.82em;"
+                "border-radius:6px;"
+                "padding:10px 16px;"
+                "white-space:pre-wrap;"
+                "font-size:0.85em;"
+                "line-height:1.6;"
                 "color:#333;"
-                "box-shadow:2px 2px 8px rgba(0,0,0,0.18);"
-                "min-width:180px;"
+                "box-shadow:3px 3px 10px rgba(0,0,0,0.2);"
+                "min-width:260px;"
+                "max-width:340px;"
             )
             _tbl_styles = [
                 {"selector": "table", "props": [("width", "100%"), ("border-collapse", "collapse"), ("font-size", "0.82rem")]},

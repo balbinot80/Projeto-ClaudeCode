@@ -125,12 +125,18 @@ def render():
         st.write("**Todos os campos do pedido baixado (resumo da lista):**")
         st.json(pedido_baixado)
 
-        # Destaca campos de quantidade (inclui "inicial" na busca)
-        termos = ["qtd", "quant", "pec", "item", "total", "inicial", "origin", "consign", "maleta"]
+        # Destaca campos de quantidade e valor
+        termos_qtd = ["qtd", "quant", "pec", "item", "inicial", "origin", "consign", "maleta"]
         campos_qtd = {k: v for k, v in pedido_baixado.items()
-                      if any(x in k.lower() for x in termos)}
-        st.write("**Campos relacionados a quantidade/total/inicial:**")
-        st.json(campos_qtd if campos_qtd else {"(nenhum encontrado com esse padrão)": None})
+                      if any(x in k.lower() for x in termos_qtd)}
+        st.write("**Campos relacionados a quantidade:**")
+        st.json(campos_qtd if campos_qtd else {"(nenhum encontrado)": None})
+
+        termos_val = ["valor", "preco", "total", "baixa", "pago", "cobrado", "acerto"]
+        campos_val = {k: v for k, v in pedido_baixado.items()
+                      if any(x in k.lower() for x in termos_val)}
+        st.write("**Campos relacionados a valor monetário:**")
+        st.json(campos_val if campos_val else {"(nenhum encontrado)": None})
 
         # Campos completos no endpoint individual
         st.write("---")
@@ -142,9 +148,13 @@ def render():
                 reg = reg[0]
             if isinstance(reg, dict):
                 campos_qtd_ind = {k: v for k, v in reg.items()
-                                  if any(x in k.lower() for x in ["qtd", "quant", "pec", "item", "total"])}
-                st.write("**Campos de quantidade/total (endpoint individual):**")
+                                  if any(x in k.lower() for x in ["qtd", "quant", "pec", "item"])}
+                st.write("**Campos de quantidade (endpoint individual):**")
                 st.json(campos_qtd_ind)
+                campos_val_ind = {k: v for k, v in reg.items()
+                                  if any(x in k.lower() for x in ["valor", "preco", "total", "baixa", "pago", "cobrado", "acerto"])}
+                st.write("**Campos de valor monetário (endpoint individual):**")
+                st.json(campos_val_ind)
                 st.write("**Registro completo:**")
                 st.json(reg)
         elif code_bx == 429:

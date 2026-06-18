@@ -485,6 +485,16 @@ def _tab_periodo(todos_pedidos: list, hoje: date, is_admin: bool = True):
                 unsafe_allow_html=True,
             )
 
+            # ── CSS: fundo azul para linhas de nova revendedora ──────────────
+            st.markdown("""
+            <style>
+            div[data-testid="stHorizontalBlock"]:has(.nova-rev-row) {
+                background: #eff6ff;
+                border-radius: 6px;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+
             # ── Linhas de dados ───────────────────────────────────────────────
             for _i, (_, _row) in enumerate(df_show.iterrows()):
                 _nome  = _row.get("Nome", "")
@@ -508,7 +518,12 @@ def _tab_periodo(todos_pedidos: list, hoje: date, is_admin: bool = True):
                         st.session_state["_acomp_prebaixa"] = prebaixa_por_periodo.get(_nome, {})
                         _dialog_acompanhamento()
 
-                dcols[1].markdown(_alerta_html(_nome), unsafe_allow_html=True)
+                # Marcador invisível para CSS :has() — ativa fundo azul na linha nova
+                dcols[1].markdown(
+                    ('<span class="nova-rev-row" style="display:none"></span>' if _nova else '')
+                    + _alerta_html(_nome),
+                    unsafe_allow_html=True,
+                )
 
                 _cor_r = _CORES_RISCO.get(_risco, "#64748b")
                 dcols[2].markdown(

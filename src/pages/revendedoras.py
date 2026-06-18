@@ -163,8 +163,14 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
     st.subheader("Pré-baixa por idade do pedido")
     st.caption(
         "Para cada janela de tempo, mostra os pedidos **abertos** criados naquele período "
-        "e o valor já vendido (pré-baixa). O ritmo esperado é calculado proporcionalmente "
-        "ao tempo decorrido desde a criação até a data de acerto."
+        "e o valor já vendido (pré-baixa)."
+    )
+    st.info(
+        "📊 **Ritmo de referência (3M):** média mensal das vendas realizadas (baixadas) "
+        "pela revendedora nos **3 meses anteriores** ao mês atual. "
+        "Representa o que ela costuma vender por mês — e é o parâmetro usado para avaliar "
+        "se o pedido está **🟢 No ritmo**, **🟡 Abaixo do ritmo** ou em risco. "
+        "Para novas revendedoras sem histórico, usa R\\$ 300 como referência mínima."
     )
 
     # Intervalos exclusivos: quem está na janela menor não aparece nas maiores
@@ -209,11 +215,11 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
                 fig.add_bar(
                     x=df_r["Nome"], y=df_r["Pré-baixa"],
                     name=risco, marker_color=cor,
-                    customdata=df_r[["Ritmo esperado", "% do ritmo", "Dias do pedido"]].values,
+                    customdata=df_r[["Ritmo ref. (3M)", "% do ritmo", "Dias do pedido"]].values,
                     hovertemplate=(
                         "<b>%{x}</b><br>"
                         "Pré-baixa: R$ %{y:,.0f}<br>"
-                        "Ritmo esperado: R$ %{customdata[0]:,.0f}<br>"
+                        "Ritmo ref. (média 3M): R$ %{customdata[0]:,.0f}<br>"
                         "% do ritmo: %{customdata[1]:.1f}%<br>"
                         "Dias do pedido: %{customdata[2]}<br>"
                         "<extra></extra>"
@@ -235,11 +241,11 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
 
             # Tabela detalhada
             cols_exib = ["Risco", "Nome", "Supervisor", "Criado", "Acerto",
-                         "Dias do pedido", "Pré-baixa", "Valor pedido"]
+                         "Dias do pedido", "Pré-baixa", "Ritmo ref. (3M)", "% do ritmo", "Valor pedido"]
             st.dataframe(
                 df[cols_exib].style
                     .map(_estilo_risco, subset=["Risco"])
-                    .format({"Pré-baixa": _R, "Valor pedido": _R}),
+                    .format({"Pré-baixa": _R, "Ritmo ref. (3M)": _R, "Valor pedido": _R}),
                 use_container_width=True, hide_index=True,
             )
 

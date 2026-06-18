@@ -144,17 +144,54 @@ def pedidos_abertos_sem_prebaixa(pedidos: list, mes: int, ano: int) -> pd.DataFr
     return pd.DataFrame(rows) if rows else pd.DataFrame()
 
 
+def _media_vendas_3meses(pedidos: list, hoje: date) -> dict:
+    """
+    Média mensal de vendas (baixados) dos 3 meses anteriores ao mês atual,
+    por revendedora. Meses sem venda contam como R$0 na média.
+    Retorna {fk_revendedor_id: media_mensal}.
+    """
+    # Determina os 3 meses anteriores
+    mes, ano = hoje.month, hoje.year
+    meses_ref = []
+    for _ in range(3):
+        mes -= 1
+        if mes == 0:
+            mes, ano = 12, ano - 1
+        meses_ref.append((ano, mes))
+
+    corte_de  = date(meses_ref[-1][0], meses_ref[-1][1], 1)
+    corte_ate = date(hoje.year, hoje.month, 1)  # exclui mês atual
+
+    from collections import defaultdict
+    totais: dict = defaultdict(float)
+
+    for p in pedidos:
+        if p.get("status") != "Baixado":
+            continue
+        rid = p.get("fk_revendedor_id")
+        if not rid:
+            continue
+        d = parse_date(p.get("data_baixa"))
+        if not d or d < corte_de or d >= corte_ate:
+            continue
+        totais[rid] += float(p.get("valor_total") or 0)
+
+    return {rid: round(total / 3, 2) for rid, total in totais.items()}
+
+
 def analise_periodo(pedidos: list, dias: int, hoje: date = None, dias_min: int = 0) -> pd.DataFrame:
     """
     Pedidos abertos criados num intervalo exclusivo de dias:
       d_criacao entre (hoje - dias) e (hoje - dias_min).
-    dias_min=0 (padrão) inclui até hoje — compatível com chamadas existentes.
+    Ritmo de referência = média mensal de vendas dos últimos 3 meses da revendedora.
+    Para novas revendedoras sem histórico, usa MINIMO_REV como referência.
     """
     if hoje is None:
         hoje = date.today()
 
-    corte_ate  = hoje - timedelta(days=dias_min)   # limite mais recente (exclusive)
-    corte_de   = hoje - timedelta(days=dias)        # limite mais antigo (inclusive)
+    media_3m  = _media_vendas_3meses(pedidos, hoje)
+    corte_ate = hoje - timedelta(days=dias_min)
+    corte_de  = hoje - timedelta(days=dias)
     rows = []
 
     for p in pedidos:
@@ -165,22 +202,19 @@ def analise_periodo(pedidos: list, dias: int, hoje: date = None, dias_min: int =
         if not d_criacao or d_criacao < corte_de or d_criacao > corte_ate:
             continue
 
+        rid      = p.get("fk_revendedor_id")
         d_acerto = parse_date(p.get("data_acerto"))
         comprador = p.get("comprador") or {}
-        nome = comprador.get("nome") or f"Rev {p.get('fk_revendedor_id')}"
+        nome      = comprador.get("nome") or f"Rev {rid}"
         supervisor = p.get("supervisor_nome") or "Sem supervisora"
 
-        valor_pedido = float(p.get("valor_total") or 0)
-        pre_baixa = float(p.get("valor_pre_baixa") or 0)
-
+        valor_pedido   = float(p.get("valor_total") or 0)
+        pre_baixa      = float(p.get("valor_pre_baixa") or 0)
         dias_decorridos = max((hoje - d_criacao).days, 1)
-        if d_acerto and d_acerto > d_criacao:
-            dias_total = max((d_acerto - d_criacao).days, 1)
-        else:
-            dias_total = 30
 
-        ritmo_esperado = valor_pedido * (dias_decorridos / dias_total)
-        pct_ritmo = round(pre_baixa / max(ritmo_esperado, 0.01) * 100, 1)
+        # Ritmo = média mensal dos últimos 3 meses; fallback para MINIMO_REV se sem histórico
+        ritmo_esperado = media_3m.get(rid) or MINIMO_REV
+        pct_ritmo      = round(pre_baixa / max(ritmo_esperado, 0.01) * 100, 1)
 
         if pre_baixa == 0:
             risco = "🔴 Sem vendas"
@@ -192,16 +226,16 @@ def analise_periodo(pedidos: list, dias: int, hoje: date = None, dias_min: int =
             risco = "🟢 No ritmo"
 
         rows.append({
-            "Nome": nome,
-            "Supervisor": supervisor,
-            "Criado": d_criacao.strftime("%d/%m/%y"),
-            "Acerto": d_acerto.strftime("%d/%m/%y") if d_acerto else "-",
-            "Dias do pedido": dias_decorridos,
-            "Pré-baixa": round(pre_baixa, 2),
-            "Ritmo esperado": round(ritmo_esperado, 2),
-            "% do ritmo": pct_ritmo,
-            "Valor pedido": valor_pedido,
-            "Risco": risco,
+            "Nome":             nome,
+            "Supervisor":       supervisor,
+            "Criado":           d_criacao.strftime("%d/%m/%y"),
+            "Acerto":           d_acerto.strftime("%d/%m/%y") if d_acerto else "-",
+            "Dias do pedido":   dias_decorridos,
+            "Pré-baixa":        round(pre_baixa, 2),
+            "Ritmo ref. (3M)":  round(ritmo_esperado, 2),
+            "% do ritmo":       pct_ritmo,
+            "Valor pedido":     valor_pedido,
+            "Risco":            risco,
         })
 
     if not rows:

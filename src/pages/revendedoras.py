@@ -325,41 +325,53 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
                 if nome in _prm_map:  lines.append(_prm_map[nome])
                 return "\n".join(lines)
 
-            df_show["🔔"] = df_show["Nome"].apply(_cell_icon)
-
-            ttips_data = {c: [""] * len(df_show) for c in cols_exib}
-            ttips_data["🔔"] = [_cell_tip(n) for n in df_show["Nome"]]
-            ttips = pd.DataFrame(ttips_data, index=df_show.index)
-
-            _tip_props = (
+            st.markdown(
+                "<style>"
+                ".atip{position:relative;cursor:help;display:inline-block}"
+                ".atip::after{"
+                "content:attr(data-tip);"
                 "visibility:hidden;"
                 "position:absolute;"
-                "top:100%;"
-                "left:0;"
-                "z-index:20;"
-                "background-color:#fff;"
-                "border:1px solid #ccc;"
+                "top:1.6em;left:0;"
+                "background:#fff;"
+                "border:1px solid #bbb;"
                 "border-radius:6px;"
                 "padding:10px 16px;"
                 "white-space:pre-wrap;"
-                "font-size:0.85em;"
-                "line-height:1.6;"
+                "min-width:270px;max-width:360px;"
+                "font-size:0.84em;line-height:1.6;"
                 "color:#333;"
-                "box-shadow:3px 3px 10px rgba(0,0,0,0.2);"
-                "min-width:260px;"
-                "max-width:340px;"
+                "box-shadow:3px 4px 12px rgba(0,0,0,0.22);"
+                "z-index:100;"
+                "pointer-events:none}"
+                ".atip:hover::after{visibility:visible}"
+                "</style>",
+                unsafe_allow_html=True,
             )
+
+            def _cell_html(nome):
+                icons = _cell_icon(nome)
+                tip   = _cell_tip(nome)
+                if not icons:
+                    return ""
+                if not tip:
+                    return icons
+                tip_safe = tip.replace('"', "&quot;").replace("\n", "&#10;")
+                return f'<span class="atip" data-tip="{tip_safe}">{icons}</span>'
+
+            df_show["🔔"] = df_show["Nome"].apply(_cell_html)
+
             _tbl_styles = [
                 {"selector": "table", "props": [("width", "100%"), ("border-collapse", "collapse"), ("font-size", "0.82rem")]},
                 {"selector": "th",    "props": [("background", "#f5f5f5"), ("padding", "6px 10px"), ("text-align", "left"), ("border-bottom", "2px solid #ddd"), ("white-space", "nowrap")]},
-                {"selector": "td",    "props": [("padding", "5px 10px"), ("border-bottom", "1px solid #eee"), ("vertical-align", "middle"), ("position", "relative")]},
+                {"selector": "td",    "props": [("padding", "5px 10px"), ("border-bottom", "1px solid #eee"), ("vertical-align", "middle")]},
                 {"selector": "tr:hover td", "props": [("background", "rgba(0,0,0,0.04)")]},
             ]
             styled = (
                 df_show[cols_exib].style
                 .set_table_styles(_tbl_styles)
-                .set_tooltips(ttips, props=_tip_props)
                 .map(_estilo_risco, subset=["Risco"])
+                .format(subset=["🔔"], escape=None)
                 .format({"Pré-baixa": _R, "Ritmo ref. (3M)": _R, "Valor pedido": _R})
                 .hide(axis="index")
             )

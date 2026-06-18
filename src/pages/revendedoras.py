@@ -1069,11 +1069,150 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
 
 # ── Render principal ──────────────────────────────────────────────────────────
 
+def _calcular_desempenho_mes(todos_pedidos: list, mes: int, ano: int) -> list:
+    """Retorna lista de dicts com desempenho por pedido para o mês/ano."""
+    from src.logic.niveis import nivel_por_pecas, _qtd_original
+    rows = []
+    for p in todos_pedidos:
+        status = p.get("status", "")
+        comprador = p.get("comprador") or {}
+        nome = comprador.get("nome") or f"Rev {p.get('fk_revendedor_id','?')}"
+        supervisor = p.get("supervisor_nome") or "Sem supervisora"
+        qtd_orig = _qtd_original(p)
+        nivel = nivel_por_pecas(qtd_orig)
+
+        if status == "Baixado":
+            d = parse_date(p.get("data_baixa"))
+            if not (d and d.month == mes and d.year == ano):
+                continue
+            valor_baixa = float(p.get("valor_total") or 0)
+            qtd_vend = int(float(p.get("quantidade") or 0))
+            # estima valor original da maleta pela proporção de peças
+            if qtd_vend > 0 and qtd_orig > qtd_vend:
+                valor_maleta = valor_baixa * qtd_orig / qtd_vend
+            else:
+                valor_maleta = valor_baixa
+
+        elif status == "Aberto":
+            d = parse_date(p.get("data_acerto"))
+            if not (d and d.month == mes and d.year == ano):
+                continue
+            valor_baixa  = float(p.get("valor_pre_baixa") or 0)
+            valor_maleta = float(p.get("valor_total") or 0)
+
+        else:
+            continue
+
+        pct = valor_baixa / valor_maleta * 100 if valor_maleta > 0 else 0.0
+        rows.append({
+            "Nome":         nome,
+            "Supervisor":   supervisor,
+            "Nível":        nivel,
+            "Valor Maleta": round(valor_maleta, 2),
+            "Valor Baixa":  round(valor_baixa, 2),
+            "Desempenho":   round(pct, 1),
+            "Status":       status,
+        })
+    return rows
+
+
+def _tab_desempenho(todos_pedidos: list, hoje: date):
+    from src.logic.niveis import ICONE_NIVEL
+
+    st.subheader("📊 Desempenho das Revendedoras")
+    st.caption(
+        "Desempenho (%) = Valor baixado no mês ÷ Valor total da maleta. "
+        "Para pedidos **Abertos**: maleta = valor do pedido, baixa = pré-baixa acumulada. "
+        "Para pedidos **Baixados**: maleta estimada proporcionalmente pela quantidade de peças."
+    )
+
+    MESES_PT  = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
+    NIVEIS_ORD = ["Diamante", "Ouro", "Pérola", "Sem nível"]
+    ano = hoje.year
+    meses_range = list(range(1, hoje.month + 1))
+
+    # ── Pré-calcular todos os meses de uma vez ────────────────────────────
+    dados_por_mes: dict = {}
+    for m in meses_range:
+        dados_por_mes[m] = _calcular_desempenho_mes(todos_pedidos, m, ano)
+
+    # ── Tabela anual: Nível × Mês ─────────────────────────────────────────
+    st.markdown("### 📅 Visão anual por nível")
+
+    def _celula(rows):
+        if not rows:
+            return "—"
+        vm = sum(r["Valor Maleta"] for r in rows)
+        vb = sum(r["Valor Baixa"]  for r in rows)
+        pct = vb / vm * 100 if vm > 0 else 0.0
+        return f"{pct:.1f}% ({len(rows)})"
+
+    tbl = []
+    for nivel in NIVEIS_ORD:
+        row = {"Nível": f"{ICONE_NIVEL.get(nivel,'')} {nivel}"}
+        for m in meses_range:
+            sub = [r for r in dados_por_mes[m] if r["Nível"] == nivel]
+            row[MESES_PT[m-1]] = _celula(sub)
+        tbl.append(row)
+
+    # Linha total
+    row_total = {"Nível": "🔢 Total"}
+    for m in meses_range:
+        row_total[MESES_PT[m-1]] = _celula(dados_por_mes[m])
+    tbl.append(row_total)
+
+    st.dataframe(
+        pd.DataFrame(tbl).set_index("Nível"),
+        use_container_width=True,
+    )
+
+    # ── Detalhamento por mês ───────────────────────────────────────────────
+    st.markdown("### 🔍 Detalhamento por mês")
+
+    opcoes = [(m, f"{MESES_PT[m-1]}/{ano}") for m in reversed(meses_range)]
+    mes_lbl = st.selectbox("Mês", [lb for _, lb in opcoes], key="desemp_mes_sel")
+    mes_sel = next(m for m, lb in opcoes if lb == mes_lbl)
+
+    rows_mes = dados_por_mes.get(mes_sel, [])
+    if not rows_mes:
+        st.info("Sem dados para este mês.")
+        return
+
+    vm_total = sum(r["Valor Maleta"] for r in rows_mes)
+    vb_total = sum(r["Valor Baixa"]  for r in rows_mes)
+    pct_geral = vb_total / vm_total * 100 if vm_total > 0 else 0.0
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Pedidos", len(rows_mes))
+    c2.metric("Total da maleta", _R(vm_total))
+    c3.metric("Total baixado",   _R(vb_total))
+    c4.metric("Desempenho geral", f"{pct_geral:.1f}%")
+
+    st.divider()
+
+    # Tabela por revendedora ordenada por desempenho
+    df_det = pd.DataFrame(rows_mes).sort_values("Desempenho", ascending=False)
+    df_det["Nível"] = df_det["Nível"].apply(lambda n: f"{ICONE_NIVEL.get(n,'')} {n}")
+    df_show = df_det[["Nome", "Nível", "Supervisor", "Status",
+                       "Valor Maleta", "Valor Baixa", "Desempenho"]].copy()
+    st.dataframe(
+        df_show.style
+            .format({
+                "Valor Maleta": _R,
+                "Valor Baixa":  _R,
+                "Desempenho":   lambda v: f"{v:.1f}%",
+            }),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
 def render(filtro_supervisor: str = ""):
     """
     filtro_supervisor: se preenchido, restringe todos os dados à equipe desta supervisora.
     Passado automaticamente pelo app.py quando o usuário logado tem role='supervisora'.
     """
+    _is_admin = not bool(filtro_supervisor)
     if filtro_supervisor:
         st.header(f"👥 Minha Equipe — {filtro_supervisor}")
     else:
@@ -1153,14 +1292,19 @@ def render(filtro_supervisor: str = ""):
               help="Pedidos abertos com R$0 + revendedoras com total = R$0")
 
     # ── Tabs ──────────────────────────────────────────────────────────────────
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    _tab_labels = [
         "📅 Competência",
         "⚠️ Alertas",
         "⏱️ Acompanhamento Semanal",
         "📈 Visão gerencial",
         "🏅 Níveis",
         "🏆 Premiações",
-    ])
+    ]
+    if _is_admin:
+        _tab_labels.append("📊 Desempenho")
+
+    _tabs = st.tabs(_tab_labels)
+    tab1, tab2, tab3, tab4, tab5, tab6 = _tabs[:6]
 
     with tab1:
         _tab_competencia(df_res, mes_sel)
@@ -1169,7 +1313,7 @@ def render(filtro_supervisor: str = ""):
         _tab_alertas(df_zero, df_res)
 
     with tab3:
-        _tab_periodo(todos_pedidos, hoje, is_admin=not bool(filtro_supervisor))
+        _tab_periodo(todos_pedidos, hoje, is_admin=_is_admin)
 
     with tab4:
         _tab_gerencial(df_res, todos_pedidos, hoje)
@@ -1179,3 +1323,7 @@ def render(filtro_supervisor: str = ""):
 
     with tab6:
         _tab_premiacoes(todos_pedidos, mes_num, ano_num, mes_sel)
+
+    if _is_admin:
+        with _tabs[6]:
+            _tab_desempenho(todos_pedidos, hoje)

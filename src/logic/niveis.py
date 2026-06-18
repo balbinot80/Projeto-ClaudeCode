@@ -123,17 +123,13 @@ def _status_nivel(nivel: str, vendas: float) -> str:
 
 def classificar_revendedoras(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
     """
-    Retorna uma linha por pedido relevante no mês, com coluna 'Tipo':
-    - '🔒 Baixado (fechado)': pedido encerrado com data_baixa no mês → usa valor_total
-    - '🔓 Em aberto':         pedido aberto com data_acerto no mês   → usa valor_pre_baixa
-
-    ORIGEM DO NÍVEL:
-    - Pedidos ABERTOS:  `quantidade` do próprio pedido = peças consignadas → nível por peças
-    - Pedidos BAIXADOS: a API não preserva a quantidade original após o fechamento
-                        (`quantidade` passa a refletir apenas o que foi vendido).
-                        Usamos o VALOR VENDIDO para inferir o nível alcançado.
+    Retorna UMA linha por revendedora por tipo (Baixado / Em aberto) no mês.
+    Quando há múltiplos pedidos do mesmo tipo para a mesma revendedora:
+      - Nível definido pelo pedido com MAIS PEÇAS
+      - Vendas somadas de todos os pedidos
     """
-    rows = []
+    # agg_map[(rid, tipo)] → linha agregada
+    agg_map: dict = {}
 
     for p in pedidos:
         rid    = p.get("fk_revendedor_id")
@@ -151,32 +147,48 @@ def classificar_revendedoras(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
                 continue
             vendas = float(p.get("valor_total") or 0)
             tipo   = "🔒 Baixado (fechado)"
-            qtd    = _qtd_original(p)   # usa quantidade_antes_baixa (total original da maleta)
-            nivel  = nivel_por_pecas(qtd)
-
-        else:  # Aberto
+            qtd    = _qtd_original(p)
+        else:
             d = parse_date(p.get("data_acerto"))
             if not (d and d.month == mes and d.year == ano):
                 continue
             vendas = float(p.get("valor_pre_baixa") or 0)
             tipo   = "🔓 Em aberto"
             qtd    = int(float(p.get("quantidade") or 0))
-            nivel  = nivel_por_pecas(qtd)
 
-        rows.append({
-            "fk_revendedor_id": rid,
-            "Nome":             nome,
-            "Supervisor":       supervisor,
-            "Tipo":             tipo,
-            "Nível":            nivel,
-            "Peças pedido":     qtd,
-            "Vendas mês":       round(vendas, 2),
-            "Mínimo nível":     MINIMO_VENDAS.get(nivel, 0),
-            "Status":           _status_nivel(nivel, vendas),
-        })
+        key = (rid, tipo)
+        if key not in agg_map:
+            nivel = nivel_por_pecas(qtd)
+            agg_map[key] = {
+                "fk_revendedor_id": rid,
+                "Nome":             nome,
+                "Supervisor":       supervisor,
+                "Tipo":             tipo,
+                "Nível":            nivel,
+                "Peças pedido":     qtd,
+                "Vendas mês":       round(vendas, 2),
+            }
+        else:
+            entry = agg_map[key]
+            # Nível sempre definido pelo pedido com mais peças
+            if qtd > entry["Peças pedido"]:
+                entry["Peças pedido"] = qtd
+                entry["Nível"]        = nivel_por_pecas(qtd)
+            # Vendas somadas
+            entry["Vendas mês"] = round(entry["Vendas mês"] + vendas, 2)
 
-    if not rows:
+    if not agg_map:
         return pd.DataFrame()
+
+    rows = []
+    for entry in agg_map.values():
+        nivel  = entry["Nível"]
+        vendas = entry["Vendas mês"]
+        rows.append({
+            **entry,
+            "Mínimo nível": MINIMO_VENDAS.get(nivel, 0),
+            "Status":       _status_nivel(nivel, vendas),
+        })
 
     _ord_tipo  = {"🔒 Baixado (fechado)": 0, "🔓 Em aberto": 1}
     _ord_nivel = {"Diamante": 0, "Ouro": 1, "Pérola": 2, "Sem nível": 3}

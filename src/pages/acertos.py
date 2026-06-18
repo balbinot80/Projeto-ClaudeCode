@@ -468,11 +468,17 @@ def render(filtro_supervisor: str = ""):
     # Dialog de agendamento
     ag_id = st.session_state.get("_ag_id")
     if ag_id is not None:
+        # Limpa a chave de data quando o dialog abre para um pedido diferente do anterior,
+        # garantindo que o date_input sempre inicie com a data de hoje
+        if st.session_state.get("_ag_id_prev") != ag_id:
+            st.session_state.pop(f"dlg_data_{ag_id}", None)
+            st.session_state["_ag_id_prev"] = ag_id
         rows = df[df["id"] == ag_id]
         if not rows.empty:
             _dialog_agendar(rows.iloc[0])
         else:
             st.session_state.pop("_ag_id", None)
+            st.session_state.pop("_ag_id_prev", None)
 
     # ── Guias ─────────────────────────────────────────────────────────────────
     n_venc = int((df["Situação"] == "🔴 Vencido").sum()) if not df.empty else 0

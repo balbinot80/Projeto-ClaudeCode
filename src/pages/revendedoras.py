@@ -218,23 +218,6 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
     # Info maps para tooltips (subida de nível, rebaixamento, premiação)
     _sub_map, _reb_map, _prm_map = _build_info_maps(todos_pedidos, hoje.month, hoje.year)
 
-    # CSS para a tabela com tooltips hover (injetado uma vez por aba)
-    st.markdown(
-        "<style>"
-        ".aureum-ptable{width:100%;border-collapse:collapse;font-size:0.82rem}"
-        ".aureum-ptable th{background:#f5f5f5;padding:6px 10px;text-align:left;"
-        "  border-bottom:2px solid #ddd;white-space:nowrap}"
-        ".aureum-ptable td{padding:5px 10px;border-bottom:1px solid #eee;vertical-align:middle}"
-        ".aureum-ptable tr:hover td{background:rgba(0,0,0,0.04)}"
-        ".aureum-ptable .pd-t{visibility:hidden;position:absolute;z-index:20;"
-        "  background:#fff;border:1px solid #ccc;border-radius:4px;padding:6px 12px;"
-        "  white-space:pre;font-size:0.82em;color:#333;"
-        "  box-shadow:2px 2px 8px rgba(0,0,0,0.18);min-width:180px}"
-        ".aureum-ptable td:hover .pd-t{visibility:visible}"
-        "</style>",
-        unsafe_allow_html=True,
-    )
-
     # Intervalos exclusivos: quem está na janela menor não aparece nas maiores
     periodos = [(7, 0), (15, 7), (20, 15), (30, 20)]
     labels   = ["⏱ 0–7 dias", "⏱ 8–15 dias", "⏱ 16–20 dias", "⏱ 21–30 dias"]
@@ -327,10 +310,32 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
             ttips_data["🔔"] = [_cell_tip(n) for n in df_show["Nome"]]
             ttips = pd.DataFrame(ttips_data, index=df_show.index)
 
+            _tip_props = (
+                "visibility:hidden;"
+                "position:absolute;"
+                "top:100%;"
+                "left:0;"
+                "z-index:20;"
+                "background-color:#fff;"
+                "border:1px solid #ccc;"
+                "border-radius:4px;"
+                "padding:6px 12px;"
+                "white-space:pre;"
+                "font-size:0.82em;"
+                "color:#333;"
+                "box-shadow:2px 2px 8px rgba(0,0,0,0.18);"
+                "min-width:180px;"
+            )
+            _tbl_styles = [
+                {"selector": "table", "props": [("width", "100%"), ("border-collapse", "collapse"), ("font-size", "0.82rem")]},
+                {"selector": "th",    "props": [("background", "#f5f5f5"), ("padding", "6px 10px"), ("text-align", "left"), ("border-bottom", "2px solid #ddd"), ("white-space", "nowrap")]},
+                {"selector": "td",    "props": [("padding", "5px 10px"), ("border-bottom", "1px solid #eee"), ("vertical-align", "middle"), ("position", "relative")]},
+                {"selector": "tr:hover td", "props": [("background", "rgba(0,0,0,0.04)")]},
+            ]
             styled = (
                 df_show[cols_exib].style
-                .set_table_attributes('class="aureum-ptable"')
-                .set_tooltips(ttips)
+                .set_table_styles(_tbl_styles)
+                .set_tooltips(ttips, props=_tip_props)
                 .map(_estilo_risco, subset=["Risco"])
                 .format({"Pré-baixa": _R, "Ritmo ref. (3M)": _R, "Valor pedido": _R})
             )

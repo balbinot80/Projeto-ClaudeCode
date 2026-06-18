@@ -1121,6 +1121,18 @@ def _tab_desempenho(todos_pedidos: list, hoje: date):
     ano = hoje.year
     meses_range = list(range(1, hoje.month + 1))
 
+    # ── Debug: mostra campos de valor do primeiro Baixado ─────────────────
+    _baixados = [p for p in todos_pedidos if p.get("status") == "Baixado"]
+    if _baixados:
+        with st.expander("🔍 Debug — campos de valor do 1º pedido baixado (remover após confirmar)"):
+            _ex = _baixados[0]
+            _val_campos = {k: v for k, v in _ex.items()
+                           if any(x in k.lower() for x in ["valor", "preco", "total", "baixa", "pago", "cobrado", "original"])}
+            st.write("**Campos com 'valor/total/baixa/original':**")
+            st.json(_val_campos)
+            st.write("**Todos os campos do pedido:**")
+            st.json({k: v for k, v in _ex.items() if not isinstance(v, (dict, list))})
+
     # ── Pré-calcular todos os meses de uma vez ────────────────────────────
     dados_por_mes: dict = {}
     for m in meses_range:

@@ -167,15 +167,17 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
         "ao tempo decorrido desde a criação até a data de acerto."
     )
 
-    periodos = [7, 15, 20, 30]
-    subtabs = st.tabs([f"⏱ {d} dias" for d in periodos])
+    # Intervalos exclusivos: quem está na janela menor não aparece nas maiores
+    periodos = [(7, 0), (15, 7), (20, 15), (30, 20)]
+    labels   = ["⏱ 0–7 dias", "⏱ 8–15 dias", "⏱ 16–20 dias", "⏱ 21–30 dias"]
+    subtabs  = st.tabs(labels)
 
-    for subtab, dias in zip(subtabs, periodos):
+    for subtab, (dias, dias_min) in zip(subtabs, periodos):
         with subtab:
-            df = analise_periodo(todos_pedidos, dias, hoje)
+            df = analise_periodo(todos_pedidos, dias, hoje, dias_min=dias_min)
 
             if df.empty:
-                st.info(f"Nenhum pedido aberto criado nos últimos {dias} dias.")
+                st.info(f"Nenhum pedido aberto criado neste intervalo.")
                 continue
 
             # Métricas do período
@@ -220,9 +222,10 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
 
             fig.add_hline(y=MINIMO_REV, line_dash="dash", line_color="#e74c3c",
                           annotation_text=f"Mínimo R${MINIMO_REV:.0f}")
+            lbl_intervalo = f"{dias_min+1}–{dias} dias" if dias_min else f"0–{dias} dias"
             fig.update_layout(
                 barmode="group",
-                title=f"Pré-baixa — pedidos abertos (últimos {dias} dias)",
+                title=f"Pré-baixa — pedidos abertos ({lbl_intervalo})",
                 xaxis_tickangle=-45,
                 height=400,
                 margin=dict(b=120),

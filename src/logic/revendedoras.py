@@ -144,20 +144,17 @@ def pedidos_abertos_sem_prebaixa(pedidos: list, mes: int, ano: int) -> pd.DataFr
     return pd.DataFrame(rows) if rows else pd.DataFrame()
 
 
-def analise_periodo(pedidos: list, dias: int, hoje: date = None) -> pd.DataFrame:
+def analise_periodo(pedidos: list, dias: int, hoje: date = None, dias_min: int = 0) -> pd.DataFrame:
     """
-    Pedidos abertos criados nos últimos `dias` dias.
-    Compara pré-baixa real com ritmo esperado (proporcional ao tempo decorrido).
-    Risco:
-      🟢 No ritmo   — pré-baixa >= ritmo_esperado e >= R$300
-      🟡 Abaixo do ritmo — pré-baixa >= R$300 mas < ritmo_esperado
-      🟠 Abaixo do mínimo — 0 < pré-baixa < R$300
-      🔴 Sem vendas — pré-baixa = 0
+    Pedidos abertos criados num intervalo exclusivo de dias:
+      d_criacao entre (hoje - dias) e (hoje - dias_min).
+    dias_min=0 (padrão) inclui até hoje — compatível com chamadas existentes.
     """
     if hoje is None:
         hoje = date.today()
 
-    corte = hoje - timedelta(days=dias)
+    corte_ate  = hoje - timedelta(days=dias_min)   # limite mais recente (exclusive)
+    corte_de   = hoje - timedelta(days=dias)        # limite mais antigo (inclusive)
     rows = []
 
     for p in pedidos:
@@ -165,7 +162,7 @@ def analise_periodo(pedidos: list, dias: int, hoje: date = None) -> pd.DataFrame
             continue
 
         d_criacao = parse_date(p.get("data_criacao"))
-        if not d_criacao or d_criacao < corte:
+        if not d_criacao or d_criacao < corte_de or d_criacao > corte_ate:
             continue
 
         d_acerto = parse_date(p.get("data_acerto"))

@@ -157,7 +157,69 @@ def _tab_alertas(df_zero: pd.DataFrame, df_res: pd.DataFrame):
 
 
 
-# ── Tab 3: Análise por período ────────────────────────────────────────────────
+# ── Tab 3: Acompanhamento Semanal ─────────────────────────────────────────────
+
+@st.dialog("Acompanhamento de Revendedora", width="large")
+def _dialog_acompanhamento():
+    from src.logic.acompanhamentos import save_acompanhamento, get_ultimos_valores
+
+    nome     = st.session_state.get("_acomp_nome", "")
+    prebaixa = st.session_state.get("_acomp_prebaixa", {})
+
+    if not nome:
+        st.error("Revendedora não identificada.")
+        return
+
+    st.markdown(f"**Revendedora:** {nome}")
+    st.divider()
+
+    data_sel  = st.date_input("Data do acompanhamento", value=date.today(), key="dlg_acomp_data")
+    descricao = st.text_area(
+        "Como foi feito o acompanhamento *",
+        placeholder="Ex: Ligação realizada, acordo de entrega até dia X...",
+        key="dlg_acomp_desc",
+    )
+
+    st.markdown("**Pré-baixa por período**")
+    st.caption("Valores atuais da revendedora. Semanas sem movimento mantêm o valor da semana anterior.")
+
+    ultimos     = get_ultimos_valores(nome)
+    chaves      = ["0-7",      "8-15",      "16-20",      "21-30"]
+    lbl_semanas = ["0–7 dias", "8–15 dias", "16–20 dias", "21–30 dias"]
+
+    rows_pb = []
+    for lbl, key in zip(lbl_semanas, chaves):
+        atual   = float(prebaixa.get(key, 0.0))
+        ultimo  = float(ultimos.get(key, 0.0))
+        efetivo = atual if atual > 0 else ultimo
+        rows_pb.append({"Período": lbl, "Pré-baixa atual": atual, "Valor a registrar": efetivo})
+
+    df_pb = pd.DataFrame(rows_pb)
+    st.dataframe(
+        df_pb.style.format({"Pré-baixa atual": _R, "Valor a registrar": _R}),
+        use_container_width=True, hide_index=True,
+    )
+
+    total = sum(r["Valor a registrar"] for r in rows_pb)
+    st.metric("Total pré-baixa a registrar", _R(total))
+
+    st.divider()
+    c1, c2 = st.columns(2)
+    if c1.button("💾 Salvar", type="primary", use_container_width=True, key="dlg_acomp_save"):
+        if not descricao.strip():
+            st.error("⚠️ Informe como foi feito o acompanhamento.")
+        else:
+            semanas = {key: r["Valor a registrar"] for key, r in zip(chaves, rows_pb)}
+            save_acompanhamento(nome, str(data_sel), descricao.strip(), semanas)
+            st.success("✅ Acompanhamento registrado!")
+            st.session_state.pop("_acomp_nome", None)
+            st.session_state.pop("_acomp_prebaixa", None)
+            st.rerun()
+    if c2.button("Cancelar", use_container_width=True, key="dlg_acomp_cancel"):
+        st.session_state.pop("_acomp_nome", None)
+        st.session_state.pop("_acomp_prebaixa", None)
+        st.rerun()
+
 
 def _build_info_maps(todos_pedidos: list, mes: int, ano: int) -> tuple:
     """Retorna (subida_map, rebaixa_map, premio_map) {nome → texto tooltip}."""
@@ -220,10 +282,13 @@ def _build_info_maps(todos_pedidos: list, mes: int, ano: int) -> tuple:
 
 
 def _tab_periodo(todos_pedidos: list, hoje: date):
+    from urllib.parse import quote_plus
+
     st.subheader("Pré-baixa por idade do pedido")
     st.caption(
         "Para cada janela de tempo, mostra os pedidos **abertos** criados naquele período "
-        "e o valor já vendido (pré-baixa)."
+        "e o valor já vendido (pré-baixa). "
+        "🔵 Linhas em azul: revendedoras com o **primeiro pedido na história**."
     )
     st.info(
         "📊 **Ritmo de referência (3M):** média mensal das vendas realizadas (baixadas) "
@@ -233,26 +298,65 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
         "Para novas revendedoras sem histórico, usa R\\$ 300 como referência mínima."
     )
 
-    # Info maps para tooltips (subida de nível, rebaixamento, premiação)
+    # Info maps para tooltips
     _sub_map, _reb_map, _prm_map = _build_info_maps(todos_pedidos, hoje.month, hoje.year)
 
-    # Intervalos exclusivos: quem está na janela menor não aparece nas maiores
-    periodos = [(7, 0), (15, 7), (20, 15), (30, 20)]
-    labels   = ["⏱ 0–7 dias", "⏱ 8–15 dias", "⏱ 16–20 dias", "⏱ 21–30 dias"]
-    subtabs  = st.tabs(labels)
+    # Pré-computar todos os períodos (intervalos exclusivos)
+    _PERIODOS = [(7, 0), (15, 7), (20, 15), (30, 20)]
+    _CHAVES   = ["0-7", "8-15", "16-20", "21-30"]
+    _LABELS   = ["⏱ 0–7 dias", "⏱ 8–15 dias", "⏱ 16–20 dias", "⏱ 21–30 dias"]
+    _dfs      = [analise_periodo(todos_pedidos, dias, hoje, dias_min=dmin)
+                 for (dias, dmin) in _PERIODOS]
 
-    for subtab, (dias, dias_min) in zip(subtabs, periodos):
+    # Pré-baixa atual por revendedora × período (alimenta o dialog)
+    prebaixa_por_periodo: dict = {}
+    for chave, df_p in zip(_CHAVES, _dfs):
+        if not df_p.empty:
+            for _, row in df_p.iterrows():
+                nome = row["Nome"]
+                if nome not in prebaixa_por_periodo:
+                    prebaixa_por_periodo[nome] = {k: 0.0 for k in _CHAVES}
+                prebaixa_por_periodo[nome][chave] = float(row["Pré-baixa"])
+
+    # Detectar novas revendedoras (apenas 1 pedido em toda a história)
+    pedidos_count: dict = {}
+    for p in todos_pedidos:
+        rid = p.get("fk_revendedor_id")
+        if rid:
+            pedidos_count[rid] = pedidos_count.get(rid, 0) + 1
+    novas: set = set()
+    for p in todos_pedidos:
+        rid = p.get("fk_revendedor_id")
+        if pedidos_count.get(rid, 0) == 1:
+            comprador = p.get("comprador") or {}
+            novas.add(comprador.get("nome") or f"Rev {rid}")
+
+    # CSS tooltip (injetado uma vez)
+    st.markdown(
+        "<style>"
+        ".atip{position:relative;cursor:help;display:inline-block}"
+        ".atip::after{content:attr(data-tip);visibility:hidden;position:absolute;"
+        "top:1.6em;left:0;background:#fff;border:1px solid #bbb;border-radius:6px;"
+        "padding:10px 16px;white-space:pre-wrap;min-width:270px;max-width:360px;"
+        "font-size:0.84em;line-height:1.6;color:#333;"
+        "box-shadow:3px 4px 12px rgba(0,0,0,0.22);z-index:100;pointer-events:none}"
+        ".atip:hover::after{visibility:visible}"
+        "</style>",
+        unsafe_allow_html=True,
+    )
+
+    subtabs = st.tabs(_LABELS)
+
+    for subtab, (dias, dias_min), chave, df in zip(subtabs, _PERIODOS, _CHAVES, _dfs):
         with subtab:
-            df = analise_periodo(todos_pedidos, dias, hoje, dias_min=dias_min)
-
             if df.empty:
-                st.info(f"Nenhum pedido aberto criado neste intervalo.")
+                st.info("Nenhum pedido aberto criado neste intervalo.")
                 continue
 
-            # Métricas do período
-            n_total = len(df)
-            n_ok    = (df["Risco"] == "🟢 No ritmo").sum()
-            n_risco = (df["Risco"].isin(["🔴 Sem vendas", "🟠 Abaixo do mínimo"])).sum()
+            # Métricas
+            n_total  = len(df)
+            n_ok     = (df["Risco"] == "🟢 No ritmo").sum()
+            n_risco  = (df["Risco"].isin(["🔴 Sem vendas", "🟠 Abaixo do mínimo"])).sum()
             total_pb = df["Pré-baixa"].sum()
 
             c1, c2, c3, c4 = st.columns(4)
@@ -261,117 +365,97 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
             c3.metric("🔴🟠 Em risco", n_risco)
             c4.metric("Total pré-baixa", _R(total_pb))
 
-            # Gráfico barras coloridas por risco
+            # Gráfico
             df_graf = df.sort_values("Pré-baixa", ascending=False).head(40).copy()
-            df_graf["Cor"] = df_graf["Risco"].map(_CORES_RISCO)
-
             fig = go.Figure()
             for risco, cor in [
-                ("🟢 No ritmo",          "#2ecc71"),
-                ("🟡 Abaixo do ritmo",   "#f1c40f"),
-                ("🟠 Abaixo do mínimo",  "#e67e22"),
-                ("🔴 Sem vendas",         "#e74c3c"),
+                ("🟢 No ritmo",         "#2ecc71"),
+                ("🟡 Abaixo do ritmo",  "#f1c40f"),
+                ("🟠 Abaixo do mínimo", "#e67e22"),
+                ("🔴 Sem vendas",        "#e74c3c"),
             ]:
                 df_r = df_graf[df_graf["Risco"] == risco]
                 if df_r.empty:
                     continue
                 fig.add_bar(
-                    x=df_r["Nome"], y=df_r["Pré-baixa"],
-                    name=risco, marker_color=cor,
+                    x=df_r["Nome"], y=df_r["Pré-baixa"], name=risco, marker_color=cor,
                     customdata=df_r[["Ritmo ref. (3M)", "% do ritmo", "Dias do pedido"]].values,
                     hovertemplate=(
-                        "<b>%{x}</b><br>"
-                        "Pré-baixa: R$ %{y:,.0f}<br>"
+                        "<b>%{x}</b><br>Pré-baixa: R$ %{y:,.0f}<br>"
                         "Ritmo ref. (média 3M): R$ %{customdata[0]:,.0f}<br>"
                         "% do ritmo: %{customdata[1]:.1f}%<br>"
-                        "Dias do pedido: %{customdata[2]}<br>"
-                        "<extra></extra>"
+                        "Dias do pedido: %{customdata[2]}<br><extra></extra>"
                     ),
                 )
-
             fig.add_hline(y=MINIMO_REV, line_dash="dash", line_color="#e74c3c",
                           annotation_text=f"Mínimo R${MINIMO_REV:.0f}")
             lbl_intervalo = f"{dias_min+1}–{dias} dias" if dias_min else f"0–{dias} dias"
             fig.update_layout(
-                barmode="group",
-                title=f"Pré-baixa — pedidos abertos ({lbl_intervalo})",
-                xaxis_tickangle=-45,
-                height=400,
-                margin=dict(b=120),
+                barmode="group", title=f"Pré-baixa — pedidos abertos ({lbl_intervalo})",
+                xaxis_tickangle=-45, height=400, margin=dict(b=120),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02),
             )
             st.plotly_chart(fig, use_container_width=True)
 
-            # Tabela detalhada com tooltips de nível/premiação na coluna 🔔
-            cols_exib = ["🔔", "Risco", "Nome", "Supervisor", "Criado", "Acerto",
-                         "Dias do pedido", "Pré-baixa", "Ritmo ref. (3M)", "Valor pedido"]
+            # ── Tabela detalhada ──────────────────────────────────────────────
             df_show = df.copy()
 
-            def _cell_icon(nome):
-                icons = []
-                tem_positivo = nome in _sub_map or nome in _prm_map
-                if nome in _sub_map:  icons.append("🔼")
-                # rebaixamento só aparece se não há indicador positivo (evita contradição)
-                if nome in _reb_map and not tem_positivo:  icons.append("🔽")
-                if nome in _prm_map:
-                    icons.append("🏆" if "Ganhadora" in _prm_map[nome] else "🎯")
-                return "".join(icons)
-
-            def _cell_tip(nome):
-                lines = []
-                tem_positivo = nome in _sub_map or nome in _prm_map
-                if nome in _sub_map:  lines.append(_sub_map[nome])
-                if nome in _reb_map and not tem_positivo:  lines.append(_reb_map[nome])
-                if nome in _prm_map:  lines.append(_prm_map[nome])
-                return "\n".join(lines)
-
-            st.markdown(
-                "<style>"
-                ".atip{position:relative;cursor:help;display:inline-block}"
-                ".atip::after{"
-                "content:attr(data-tip);"
-                "visibility:hidden;"
-                "position:absolute;"
-                "top:1.6em;left:0;"
-                "background:#fff;"
-                "border:1px solid #bbb;"
-                "border-radius:6px;"
-                "padding:10px 16px;"
-                "white-space:pre-wrap;"
-                "min-width:270px;max-width:360px;"
-                "font-size:0.84em;line-height:1.6;"
-                "color:#333;"
-                "box-shadow:3px 4px 12px rgba(0,0,0,0.22);"
-                "z-index:100;"
-                "pointer-events:none}"
-                ".atip:hover::after{visibility:visible}"
-                "</style>",
-                unsafe_allow_html=True,
+            # Novas revendedoras vêm primeiro
+            df_show["_nova"] = df_show["Nome"].isin(novas).astype(int)
+            df_show = (
+                df_show.sort_values(["_nova", "Risco"], ascending=[False, True])
+                .drop(columns="_nova").reset_index(drop=True)
             )
 
-            def _cell_html(nome):
-                icons = _cell_icon(nome)
-                tip   = _cell_tip(nome)
+            # Coluna 🔔 — alertas com tooltip CSS
+            def _alerta_html(nome):
+                icons, lines = [], []
+                tem_pos = nome in _sub_map or nome in _prm_map
+                if nome in _sub_map:
+                    icons.append("🔼"); lines.append(_sub_map[nome])
+                if nome in _reb_map and not tem_pos:
+                    icons.append("🔽"); lines.append(_reb_map[nome])
+                if nome in _prm_map:
+                    icons.append("🏆" if "Ganhadora" in _prm_map[nome] else "🎯")
+                    lines.append(_prm_map[nome])
                 if not icons:
                     return ""
-                if not tip:
-                    return icons
-                tip_safe = tip.replace('"', "&quot;").replace("\n", "&#10;")
-                return f'<span class="atip" data-tip="{tip_safe}">{icons}</span>'
+                txt = "".join(icons)
+                if not lines:
+                    return txt
+                tip = "\n".join(lines).replace('"', "&quot;").replace("\n", "&#10;")
+                return f'<span class="atip" data-tip="{tip}">{txt}</span>'
 
-            df_show["🔔"] = df_show["Nome"].apply(_cell_html)
+            # Coluna 💬 — link que abre dialog via query param
+            def _acomp_html(nome):
+                enc = quote_plus(nome)
+                return (f'<a href="?acomp={enc}" style="text-decoration:none;'
+                        f'font-size:1.2em;cursor:pointer" title="Registrar acompanhamento">💬</a>')
+
+            df_show["🔔"] = df_show["Nome"].apply(_alerta_html)
+            df_show["💬"] = df_show["Nome"].apply(_acomp_html)
+
+            cols_exib = ["💬", "🔔", "Risco", "Nome", "Supervisor", "Criado", "Acerto",
+                         "Dias do pedido", "Pré-baixa", "Ritmo ref. (3M)", "Valor pedido"]
+
+            # Destaque azul claro para novas revendedoras
+            def _hl_nova(row):
+                if row["Nome"] in novas:
+                    return ["background-color:#dbeafe;font-weight:500"] * len(row)
+                return [""] * len(row)
 
             _tbl_styles = [
-                {"selector": "table", "props": [("width", "100%"), ("border-collapse", "collapse"), ("font-size", "0.82rem")]},
-                {"selector": "th",    "props": [("background", "#f5f5f5"), ("padding", "6px 10px"), ("text-align", "left"), ("border-bottom", "2px solid #ddd"), ("white-space", "nowrap")]},
-                {"selector": "td",    "props": [("padding", "5px 10px"), ("border-bottom", "1px solid #eee"), ("vertical-align", "middle")]},
-                {"selector": "tr:hover td", "props": [("background", "rgba(0,0,0,0.04)")]},
+                {"selector": "table", "props": [("width","100%"),("border-collapse","collapse"),("font-size","0.82rem")]},
+                {"selector": "th",    "props": [("background","#f5f5f5"),("padding","6px 10px"),("text-align","left"),("border-bottom","2px solid #ddd"),("white-space","nowrap")]},
+                {"selector": "td",    "props": [("padding","5px 10px"),("border-bottom","1px solid #eee"),("vertical-align","middle")]},
+                {"selector": "tr:hover td", "props": [("background","rgba(0,0,0,0.06)")]},
             ]
             styled = (
                 df_show[cols_exib].style
                 .set_table_styles(_tbl_styles)
+                .apply(_hl_nova, axis=1)
                 .map(_estilo_risco, subset=["Risco"])
-                .format(subset=["🔔"], escape=None)
+                .format(subset=["💬", "🔔"], escape=None)
                 .format({"Pré-baixa": _R, "Ritmo ref. (3M)": _R, "Valor pedido": _R})
                 .hide(axis="index")
             )
@@ -969,6 +1053,31 @@ def render(filtro_supervisor: str = ""):
     c6.metric("🟡 Abaixo do mínimo", n_abaixo)
     c7.metric("🔴 Sem vendas", n_zero + n_sem_res,
               help="Pedidos abertos com R$0 + revendedoras com total = R$0")
+
+    # ── Dialog de acompanhamento (ativado via query param ?acomp=Nome) ──────────
+    _qp = st.query_params.get("acomp", "")
+    if _qp and not st.session_state.get("_acomp_nome"):
+        from urllib.parse import unquote_plus
+        st.session_state["_acomp_nome"]     = unquote_plus(_qp)
+        st.session_state["_acomp_prebaixa"] = {}
+        try:
+            st.query_params.pop("acomp")
+        except Exception:
+            pass
+    if st.session_state.get("_acomp_nome"):
+        # Popula pré-baixa atual antes de abrir o dialog
+        if not st.session_state.get("_acomp_prebaixa"):
+            _chaves = ["0-7", "8-15", "16-20", "21-30"]
+            _pb: dict = {k: 0.0 for k in _chaves}
+            for (dias, dmin), key in zip([(7,0),(15,7),(20,15),(30,20)], _chaves):
+                from src.logic.revendedoras import analise_periodo as _ap
+                _df_tmp = _ap(todos_pedidos, dias, hoje, dias_min=dmin)
+                if not _df_tmp.empty:
+                    _row = _df_tmp[_df_tmp["Nome"] == st.session_state["_acomp_nome"]]
+                    if not _row.empty:
+                        _pb[key] = float(_row.iloc[0]["Pré-baixa"])
+            st.session_state["_acomp_prebaixa"] = _pb
+        _dialog_acompanhamento()
 
     # ── Tabs ──────────────────────────────────────────────────────────────────
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([

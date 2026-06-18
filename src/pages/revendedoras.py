@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import date
+from datetime import date, timedelta
 from src.api.jueri_client import _get_lista_pedidos
 from src.logic.revendedoras import (
     MINIMO_REV, parse_date,

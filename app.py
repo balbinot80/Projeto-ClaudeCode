@@ -252,7 +252,7 @@ with st.sidebar:
         st.rerun()
 
     # Submarca circular no rodapé do sidebar
-    _logo_sidebar_bottom("Submarca rosa.png", width=170)
+    _logo_sidebar_bottom("Submarca rosa.png", width=210)
 
 
 # ── Banner de time (supervisoras) ──────────────────────────────────────────────

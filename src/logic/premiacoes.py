@@ -33,11 +33,12 @@ def calcular_ranking(todos_pedidos: list, mes: int, ano: int, meta: float) -> li
     Categorias:
       ganhadora  — baixado >= meta (definitivo)
       potencial  — baixado < meta mas baixado + pré-baixa >= meta
-      proxima    — total >= 70% da meta mas < meta
-      outras     — abaixo de 70%
+      proxima    — SEM pedido baixado no mês, pré-baixa >= 70% da meta e < meta
+      outras     — demais
     """
     baixado_map: dict = defaultdict(float)
     prebaixa_map: dict = defaultdict(float)
+    tem_baixado: set  = set()
     nome_map: dict = {}
     sup_map: dict = {}
 
@@ -54,6 +55,7 @@ def calcular_ranking(todos_pedidos: list, mes: int, ano: int, meta: float) -> li
             d = parse_date(p.get("data_baixa"))
             if d and d.month == mes and d.year == ano:
                 baixado_map[rid] += float(p.get("valor_total") or 0)
+                tem_baixado.add(rid)
         elif status == "Aberto":
             d = parse_date(p.get("data_acerto"))
             if d and d.month == mes and d.year == ano:
@@ -66,26 +68,29 @@ def calcular_ranking(todos_pedidos: list, mes: int, ano: int, meta: float) -> li
         pre     = prebaixa_map[rid]
         total   = baixado + pre
         pct     = round(total / meta * 100, 1) if meta > 0 else 0.0
+        pct_pre = round(pre / meta * 100, 1) if meta > 0 else 0.0
 
         if baixado >= meta:
             cat = "ganhadora"
         elif total >= meta:
             cat = "potencial"
-        elif total >= meta * 0.70:
+        elif rid not in tem_baixado and pre >= meta * 0.70:
+            # Só entra em "próxima" quem não tem pedido baixado e a pré-baixa já >= 70%
             cat = "proxima"
         else:
             cat = "outras"
 
         rows.append({
-            "id":        rid,
-            "Nome":      nome_map.get(rid, f"Rev {rid}"),
-            "Supervisor": sup_map.get(rid, ""),
-            "Baixado":   round(baixado, 2),
-            "Pré-baixa": round(pre, 2),
-            "Total":     round(total, 2),
-            "% da meta": pct,
-            "Falta":     round(max(meta - total, 0), 2),
-            "Categoria": cat,
+            "id":          rid,
+            "Nome":        nome_map.get(rid, f"Rev {rid}"),
+            "Supervisor":  sup_map.get(rid, ""),
+            "Baixado":     round(baixado, 2),
+            "Pré-baixa":   round(pre, 2),
+            "Total":       round(total, 2),
+            "% da meta":   pct,
+            "% pré-baixa": pct_pre,
+            "Falta":       round(max(meta - pre, 0), 2),
+            "Categoria":   cat,
         })
 
     return sorted(rows, key=lambda x: x["Total"], reverse=True)

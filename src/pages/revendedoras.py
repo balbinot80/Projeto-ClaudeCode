@@ -697,7 +697,7 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
 
     # ── Seção 3: Próximas da meta ─────────────────────────────────────────────
     st.markdown("### 📈 Próximas da meta")
-    st.caption("Entre 70% e 99% da meta — ainda têm chance de alcançar.")
+    st.caption("Pedidos em aberto com pré-baixa entre 70% e 99% da meta (sem pedido baixado no mês).")
     if proximas:
         cols = st.columns(min(len(proximas), 4))
         for i, r in enumerate(proximas):
@@ -707,9 +707,9 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
                     f'border-radius:10px;padding:10px 12px;margin-bottom:8px">'
                     f'<div style="font-weight:700;font-size:0.95em">📈 {r["Nome"]}</div>'
                     f'<div style="color:#888;font-size:0.78em;margin-bottom:4px">{r["Supervisor"]}</div>'
-                    f'<div style="font-size:1em;font-weight:700">{_R(r["Total"])}</div>'
+                    f'<div style="font-size:1em;font-weight:700">{_R(r["Pré-baixa"])}</div>'
                     f'<div style="color:#1565c0;font-size:0.82em;font-weight:700">'
-                    f'{r["% da meta"]:.1f}% — faltam {_R(r["Falta"])}</div>'
+                    f'{r["% pré-baixa"]:.1f}% — faltam {_R(r["Falta"])}</div>'
                     f'</div>',
                     unsafe_allow_html=True,
                 )

@@ -427,7 +427,7 @@ def _tab_periodo(todos_pedidos: list, hoje: date, is_admin: bool = True):
                 .drop(columns="_nova").reset_index(drop=True)
             )
 
-            # Coluna 🔔 — ícones de alerta em texto simples
+            # Coluna 🔔 — ícones de alerta com tooltip ao passar o mouse
             def _alerta_icons(nome):
                 icons = []
                 tem_pos = nome in _sub_map or nome in _prm_map
@@ -438,6 +438,21 @@ def _tab_periodo(todos_pedidos: list, hoje: date, is_admin: bool = True):
                 if nome in _prm_map:
                     icons.append("🏆" if "Ganhadora" in _prm_map[nome] else "🎯")
                 return "".join(icons)
+
+            def _alerta_html(nome):
+                parts = []
+                tem_pos = nome in _sub_map or nome in _prm_map
+                if nome in _sub_map:
+                    _tip = _sub_map[nome].replace('"', "&quot;").replace("\n", "&#10;")
+                    parts.append(f'<span title="{_tip}" style="cursor:help">🔼</span>')
+                if nome in _reb_map and not tem_pos:
+                    _tip = _reb_map[nome].replace('"', "&quot;").replace("\n", "&#10;")
+                    parts.append(f'<span title="{_tip}" style="cursor:help">🔽</span>')
+                if nome in _prm_map:
+                    _icon = "🏆" if "Ganhadora" in _prm_map[nome] else "🎯"
+                    _tip  = _prm_map[nome].replace('"', "&quot;").replace("\n", "&#10;")
+                    parts.append(f'<span title="{_tip}" style="cursor:help">{_icon}</span>')
+                return "".join(parts) or ""
 
             df_show["🔔"] = df_show["Nome"].apply(_alerta_icons)
 
@@ -497,7 +512,7 @@ def _tab_periodo(todos_pedidos: list, hoje: date, is_admin: bool = True):
                         st.session_state["_acomp_prebaixa"] = prebaixa_por_periodo.get(_nome, {})
                         _dialog_acompanhamento()
 
-                dcols[1].markdown(_row.get("🔔", "") or "")
+                dcols[1].markdown(_alerta_html(_nome), unsafe_allow_html=True)
 
                 _cor_r = _CORES_RISCO.get(_risco, "#64748b")
                 dcols[2].markdown(

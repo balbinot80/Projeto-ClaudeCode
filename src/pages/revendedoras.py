@@ -1072,7 +1072,8 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
 def _calcular_desempenho_mes(todos_pedidos: list, mes: int, ano: int) -> list:
     """
     Retorna desempenho apenas de pedidos Baixados no mês/ano.
-    Fórmula: valor_pre_baixa (vendido) / valor_total (valor original da maleta).
+    Fórmula: valor_total (valor baixado) / valor_total_antes_baixa (maleta original).
+    Pedidos sem valor_total_antes_baixa preenchido são ignorados.
     """
     from src.logic.niveis import nivel_por_pecas, _qtd_original
     rows = []
@@ -1084,8 +1085,8 @@ def _calcular_desempenho_mes(todos_pedidos: list, mes: int, ano: int) -> list:
         if not (d and d.month == mes and d.year == ano):
             continue
 
-        valor_maleta  = float(p.get("valor_total")    or 0)
-        valor_vendido = float(p.get("valor_pre_baixa") or 0)
+        valor_maleta  = float(p.get("valor_total_antes_baixa") or 0)
+        valor_vendido = float(p.get("valor_total")             or 0)
 
         if valor_maleta == 0:
             continue
@@ -1112,26 +1113,14 @@ def _tab_desempenho(todos_pedidos: list, hoje: date):
 
     st.subheader("📊 Desempenho das Revendedoras")
     st.caption(
-        "Desempenho (%) = Valor pré-baixa (vendido) ÷ Valor total original da maleta. "
-        "Calculado apenas sobre pedidos **Baixados** no mês."
+        "Desempenho (%) = Valor baixado ÷ Valor original da maleta. "
+        "Calculado apenas sobre pedidos **Baixados** no mês que possuem valor original preenchido."
     )
 
     MESES_PT  = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
     NIVEIS_ORD = ["Diamante", "Ouro", "Pérola", "Sem nível"]
     ano = hoje.year
     meses_range = list(range(1, hoje.month + 1))
-
-    # ── Debug: mostra campos de valor do primeiro Baixado ─────────────────
-    _baixados = [p for p in todos_pedidos if p.get("status") == "Baixado"]
-    if _baixados:
-        with st.expander("🔍 Debug — campos de valor do 1º pedido baixado (remover após confirmar)"):
-            _ex = _baixados[0]
-            _val_campos = {k: v for k, v in _ex.items()
-                           if any(x in k.lower() for x in ["valor", "preco", "total", "baixa", "pago", "cobrado", "original"])}
-            st.write("**Campos com 'valor/total/baixa/original':**")
-            st.json(_val_campos)
-            st.write("**Todos os campos do pedido:**")
-            st.json({k: v for k, v in _ex.items() if not isinstance(v, (dict, list))})
 
     # ── Pré-calcular todos os meses de uma vez ────────────────────────────
     dados_por_mes: dict = {}

@@ -159,6 +159,48 @@ def _tab_alertas(df_zero: pd.DataFrame, df_res: pd.DataFrame):
 
 # ── Tab 3: Análise por período ────────────────────────────────────────────────
 
+def _build_info_maps(todos_pedidos: list, mes: int, ano: int) -> tuple:
+    """Retorna (subida_map, rebaixa_map, premio_map) {nome → texto tooltip}."""
+    from src.logic.niveis import alertas_subida, alertas_rebaixamento
+    from src.logic.premiacoes import load_premiacoes, calcular_ranking
+
+    subida_map, rebaixa_map, premio_map = {}, {}, {}
+
+    try:
+        df_sub = alertas_subida(todos_pedidos, mes, ano)
+        if not df_sub.empty:
+            for _, r in df_sub.iterrows():
+                sit = "Já atingiu" if "Já" in str(r["Situação"]) else "Próxima de subir"
+                subida_map[r["Nome"]] = f"🔼 {sit} para {r['Próx. nível']}"
+    except Exception:
+        pass
+
+    try:
+        df_reb = alertas_rebaixamento(todos_pedidos, mes, ano)
+        if not df_reb.empty:
+            proj_col = next((c for c in df_reb.columns if "Projeção" in c), None)
+            if proj_col:
+                for _, r in df_reb.iterrows():
+                    rebaixa_map[r["Nome"]] = f"🔽 {r[proj_col]}"
+    except Exception:
+        pass
+
+    try:
+        cfg   = load_premiacoes().get(f"{mes:02d}/{ano}", {})
+        meta  = float(cfg.get("meta", 0.0))
+        if meta > 0:
+            prem_nome = cfg.get("premio", "Prêmio do mês")
+            for r in calcular_ranking(todos_pedidos, mes, ano, meta):
+                if r["Categoria"] == "ganhadora":
+                    premio_map[r["Nome"]] = f"🏆 Ganhadora — {prem_nome}"
+                elif r["Categoria"] == "potencial":
+                    premio_map[r["Nome"]] = f"🎯 Potencial ganhadora — {prem_nome}"
+    except Exception:
+        pass
+
+    return subida_map, rebaixa_map, premio_map
+
+
 def _tab_periodo(todos_pedidos: list, hoje: date):
     st.subheader("Pré-baixa por idade do pedido")
     st.caption(
@@ -171,6 +213,26 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
         "Representa o que ela costuma vender por mês — e é o parâmetro usado para avaliar "
         "se o pedido está **🟢 No ritmo**, **🟡 Abaixo do ritmo** ou em risco. "
         "Para novas revendedoras sem histórico, usa R\\$ 300 como referência mínima."
+    )
+
+    # Info maps para tooltips (subida de nível, rebaixamento, premiação)
+    _sub_map, _reb_map, _prm_map = _build_info_maps(todos_pedidos, hoje.month, hoje.year)
+
+    # CSS para a tabela com tooltips hover (injetado uma vez por aba)
+    st.markdown(
+        "<style>"
+        ".aureum-ptable{width:100%;border-collapse:collapse;font-size:0.82rem}"
+        ".aureum-ptable th{background:#f5f5f5;padding:6px 10px;text-align:left;"
+        "  border-bottom:2px solid #ddd;white-space:nowrap}"
+        ".aureum-ptable td{padding:5px 10px;border-bottom:1px solid #eee;vertical-align:middle}"
+        ".aureum-ptable tr:hover td{background:rgba(0,0,0,0.04)}"
+        ".aureum-ptable .pd-t{visibility:hidden;position:absolute;z-index:20;"
+        "  background:#fff;border:1px solid #ccc;border-radius:4px;padding:6px 12px;"
+        "  white-space:pre;font-size:0.82em;color:#333;"
+        "  box-shadow:2px 2px 8px rgba(0,0,0,0.18);min-width:180px}"
+        ".aureum-ptable td:hover .pd-t{visibility:visible}"
+        "</style>",
+        unsafe_allow_html=True,
     )
 
     # Intervalos exclusivos: quem está na janela menor não aparece nas maiores
@@ -239,15 +301,40 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
             )
             st.plotly_chart(fig, use_container_width=True)
 
-            # Tabela detalhada
-            cols_exib = ["Risco", "Nome", "Supervisor", "Criado", "Acerto",
+            # Tabela detalhada com tooltips de nível/premiação na coluna 🔔
+            cols_exib = ["🔔", "Risco", "Nome", "Supervisor", "Criado", "Acerto",
                          "Dias do pedido", "Pré-baixa", "Ritmo ref. (3M)", "Valor pedido"]
-            st.dataframe(
-                df[cols_exib].style
-                    .map(_estilo_risco, subset=["Risco"])
-                    .format({"Pré-baixa": _R, "Ritmo ref. (3M)": _R, "Valor pedido": _R}),
-                use_container_width=True, hide_index=True,
+            df_show = df.copy()
+
+            def _cell_icon(nome):
+                icons = []
+                if nome in _sub_map:  icons.append("🔼")
+                if nome in _reb_map:  icons.append("🔽")
+                if nome in _prm_map:
+                    icons.append("🏆" if "Ganhadora" in _prm_map[nome] else "🎯")
+                return "".join(icons)
+
+            def _cell_tip(nome):
+                lines = []
+                if nome in _sub_map:  lines.append(_sub_map[nome])
+                if nome in _reb_map:  lines.append(_reb_map[nome])
+                if nome in _prm_map:  lines.append(_prm_map[nome])
+                return "\n".join(lines)
+
+            df_show["🔔"] = df_show["Nome"].apply(_cell_icon)
+
+            ttips_data = {c: [""] * len(df_show) for c in cols_exib}
+            ttips_data["🔔"] = [_cell_tip(n) for n in df_show["Nome"]]
+            ttips = pd.DataFrame(ttips_data, index=df_show.index)
+
+            styled = (
+                df_show[cols_exib].style
+                .set_table_attributes('class="aureum-ptable"')
+                .set_tooltips(ttips)
+                .map(_estilo_risco, subset=["Risco"])
+                .format({"Pré-baixa": _R, "Ritmo ref. (3M)": _R, "Valor pedido": _R})
             )
+            st.markdown(styled.to_html(), unsafe_allow_html=True)
 
             # Por supervisora
             if "Supervisor" in df.columns:

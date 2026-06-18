@@ -189,19 +189,21 @@ def _dialog_acompanhamento():
 
     nome     = st.session_state.get("_acomp_nome", "")
     pedido   = st.session_state.get("_acomp_pedido", "")
+    valor    = st.session_state.get("_acomp_valor", 0.0)
     prebaixa = st.session_state.get("_acomp_prebaixa", {})
 
     if not nome:
         st.error("Revendedora não identificada.")
         return
 
-    pedido_html = (
-        f'&nbsp;&nbsp;<span style="color:#999">·</span>&nbsp;&nbsp;'
-        f'Pedido:&nbsp;<strong>{pedido}</strong>'
-    ) if pedido else ""
+    _sep = '&nbsp;&nbsp;<span style="color:#cbd5e1">·</span>&nbsp;&nbsp;'
+    _info = f'<strong>Revendedora:</strong> {nome}'
+    if pedido:
+        _info += f'{_sep}Pedido:&nbsp;<strong>{pedido}</strong>'
+    if valor:
+        _info += f'{_sep}Valor:&nbsp;<strong>{_R(valor)}</strong>'
     st.markdown(
-        f'<p style="margin-bottom:0;font-size:1.05em">'
-        f'<strong>Revendedora:</strong> {nome}{pedido_html}</p>',
+        f'<p style="margin-bottom:0;font-size:1.05em">{_info}</p>',
         unsafe_allow_html=True,
     )
     st.divider()
@@ -270,14 +272,12 @@ def _dialog_acompanhamento():
             semanas = {key: r["Pré-baixa (R$)"] for key, r in zip(chaves, rows_pb)}
             save_acompanhamento(nome, str(data_sel), descricao.strip(), semanas)
             st.toast("✅ Acompanhamento registrado!")
-            st.session_state.pop("_acomp_nome",     None)
-            st.session_state.pop("_acomp_pedido",   None)
-            st.session_state.pop("_acomp_prebaixa", None)
+            for _k in ("_acomp_nome", "_acomp_pedido", "_acomp_valor", "_acomp_prebaixa"):
+                st.session_state.pop(_k, None)
             st.rerun(scope="app")
     if c2.button("Cancelar", use_container_width=True, key="dlg_acomp_cancel"):
-        st.session_state.pop("_acomp_nome",     None)
-        st.session_state.pop("_acomp_pedido",   None)
-        st.session_state.pop("_acomp_prebaixa", None)
+        for _k in ("_acomp_nome", "_acomp_pedido", "_acomp_valor", "_acomp_prebaixa"):
+            st.session_state.pop(_k, None)
         st.rerun(scope="app")
 
 
@@ -341,7 +341,7 @@ def _build_info_maps(todos_pedidos: list, mes: int, ano: int) -> tuple:
     return subida_map, rebaixa_map, premio_map
 
 
-def _tab_periodo(todos_pedidos: list, hoje: date):
+def _tab_periodo(todos_pedidos: list, hoje: date, is_admin: bool = True):
     st.subheader("Pré-baixa por idade do pedido")
     st.caption(
         "Para cada janela de tempo, mostra os pedidos **abertos** criados naquele período "
@@ -455,9 +455,13 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
                 return False
 
             # ── Cabeçalho ────────────────────────────────────────────────────
-            _PC = [1.9, 0.55, 1.9, 3.3, 2.8, 1.0, 1.0, 0.8, 1.55, 1.7, 1.7]
-            _PH = ["Ação", "🔔", "Risco", "Nome", "Supervisor",
-                   "Criado", "Acerto", "Dias", "Pré-baixa", "Ritmo (3M)", "Valor pedido"]
+            _sup_off = 1 if is_admin else 0
+            _PC = ([1.9, 0.55, 1.9, 3.3]
+                   + ([2.8] if is_admin else [])
+                   + [1.0, 1.0, 0.8, 1.55, 1.9])
+            _PH = (["Ação", "🔔", "Risco", "Nome"]
+                   + (["Supervisor"] if is_admin else [])
+                   + ["Criado", "Acerto", "Dias", "Pré-baixa", "Ritmo (3M)"])
             _HS = ("font-size:0.73em;font-weight:700;color:#64748b;"
                    "text-transform:uppercase;letter-spacing:0.4px")
 
@@ -489,6 +493,7 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
                         st.session_state["_acomp_pedido"] = (
                             str(_ped) if _ped and str(_ped) not in ("nan", "None", "") else ""
                         )
+                        st.session_state["_acomp_valor"]   = float(_row.get("Valor pedido", 0) or 0)
                         st.session_state["_acomp_prebaixa"] = prebaixa_por_periodo.get(_nome, {})
                         _dialog_acompanhamento()
 
@@ -506,24 +511,22 @@ def _tab_periodo(todos_pedidos: list, hoje: date):
                 )
                 dcols[3].markdown(_nome_html, unsafe_allow_html=True)
 
-                dcols[4].markdown(
-                    f'<span style="font-size:0.87em;color:#475569">'
-                    f'{_row.get("Supervisor","")}</span>',
-                    unsafe_allow_html=True,
-                )
-                dcols[5].markdown(_row.get("Criado", ""))
-                dcols[6].markdown(_row.get("Acerto", ""))
-                dcols[7].markdown(f'**{_row.get("Dias do pedido", "")}**')
-                dcols[8].markdown(
+                if is_admin:
+                    dcols[4].markdown(
+                        f'<span style="font-size:0.87em;color:#475569">'
+                        f'{_row.get("Supervisor","")}</span>',
+                        unsafe_allow_html=True,
+                    )
+
+                dcols[4 + _sup_off].markdown(_row.get("Criado", ""))
+                dcols[5 + _sup_off].markdown(_row.get("Acerto", ""))
+                dcols[6 + _sup_off].markdown(f'**{_row.get("Dias do pedido", "")}**')
+                dcols[7 + _sup_off].markdown(
                     f'<span style="font-size:0.87em">{_R(_row.get("Pré-baixa", 0))}</span>',
                     unsafe_allow_html=True,
                 )
-                dcols[9].markdown(
+                dcols[8 + _sup_off].markdown(
                     f'<span style="font-size:0.87em">{_R(_row.get("Ritmo ref. (3M)", 0))}</span>',
-                    unsafe_allow_html=True,
-                )
-                dcols[10].markdown(
-                    f'<span style="font-size:0.87em">{_R(_row.get("Valor pedido", 0))}</span>',
                     unsafe_allow_html=True,
                 )
 
@@ -1155,7 +1158,7 @@ def render(filtro_supervisor: str = ""):
         _tab_alertas(df_zero, df_res)
 
     with tab3:
-        _tab_periodo(todos_pedidos, hoje)
+        _tab_periodo(todos_pedidos, hoje, is_admin=not bool(filtro_supervisor))
 
     with tab4:
         _tab_gerencial(df_res, todos_pedidos, hoje)

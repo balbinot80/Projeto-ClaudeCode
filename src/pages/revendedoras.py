@@ -353,7 +353,7 @@ def _tab_periodo(todos_pedidos: list, hoje: date, is_admin: bool = True):
     _sub_map, _reb_map, _prm_map = _build_info_maps(todos_pedidos, hoje.month, hoje.year)
 
     # Pré-computar todos os períodos (intervalos exclusivos)
-    _PERIODOS = [(7, 0), (15, 7), (20, 15), (30, 20)]
+    _PERIODOS = [(7, 0), (15, 8), (20, 16), (30, 21)]
     _CHAVES   = ["0-7", "8-15", "16-20", "21-30"]
     _LABELS   = ["⏱ 0–7 dias", "⏱ 8–15 dias", "⏱ 16–20 dias", "⏱ 21–30 dias"]
     _dfs      = [analise_periodo(todos_pedidos, dias, hoje, dias_min=dmin)

@@ -42,6 +42,18 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+st.markdown("""
+<style>
+[data-testid="stSidebar"] [data-testid="stRadio"] label p {
+    font-size: 1.05rem !important;
+    line-height: 1.4 !important;
+}
+[data-testid="stSidebar"] [data-testid="stRadio"] label {
+    padding: 2px 0 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 
 def _get_secret(key: str, default: str = "") -> str:
     try:

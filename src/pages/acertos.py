@@ -128,8 +128,9 @@ def _dialog_gcal_confirm():
 
 @st.dialog("📅 Agendar Acerto", width="large")
 def _dialog_agendar(row: pd.Series):
-    pid  = row["id"]
-    nome = row["Nome"]
+    pid       = row["id"]
+    nome      = row["Nome"]
+    vencido   = row["Situação"] == "🔴 Vencido"
 
     st.markdown(f"### {nome}")
     st.caption(
@@ -137,6 +138,11 @@ def _dialog_agendar(row: pd.Series):
         f"Acerto previsto: **{row['Data acerto'].strftime('%d/%m/%Y')}**  ·  "
         f"Pré-baixa: **{_R(row['Valor'])}**"
     )
+
+    if vencido:
+        dias_atraso = (date.today() - row["Data acerto"]).days
+        st.error(f"⚠️ Acerto vencido há **{dias_atraso} dia(s)**. O motivo do atraso é obrigatório.")
+
     st.divider()
 
     col_f, col_d, col_h = st.columns(3)
@@ -172,10 +178,13 @@ def _dialog_agendar(row: pd.Series):
             hora_padrao = time_cls(9, 0)
         hora_ag = st.time_input("Horário", value=hora_padrao, key=f"dlg_hora_{pid}")
 
-    obs = st.text_input(
-        "Observação (opcional)",
+    obs_label = "Motivo do atraso no agendamento *" if vencido else "Observação (opcional)"
+    obs = st.text_area(
+        obs_label,
         value=row["Obs"] or "",
+        placeholder="Informe o motivo do atraso..." if vencido else "",
         key=f"dlg_obs_{pid}",
+        height=80,
     )
 
     st.divider()
@@ -184,18 +193,20 @@ def _dialog_agendar(row: pd.Series):
     with col_s:
         if st.button("💾 Salvar agendamento", type="primary",
                      use_container_width=True, key=f"dlg_salvar_{pid}"):
-            hora_str = hora_ag.strftime("%H:%M") if hora_ag else ""
-            save_agendamento(pid, str(data_ag), forma, obs, hora_str)
-            gcal = {
-                "nome":     nome,
-                "data_str": data_ag.strftime("%d/%m/%Y"),
-                "hora_str": hora_str,
-                "link":     _gcal_url(nome, data_ag, hora_str, forma, obs, row["Valor"]),
-            }
-            # _gcal_dict será consumido via pop() em render() → abre dialog de confirmação
-            st.session_state["_gcal_dict"] = gcal
-            st.session_state.pop("_ag_id", None)
-            st.rerun()
+            if vencido and not obs.strip():
+                st.error("⚠️ Informe o motivo do atraso antes de salvar.")
+            else:
+                hora_str = hora_ag.strftime("%H:%M") if hora_ag else ""
+                save_agendamento(pid, str(data_ag), forma, obs, hora_str)
+                gcal = {
+                    "nome":     nome,
+                    "data_str": data_ag.strftime("%d/%m/%Y"),
+                    "hora_str": hora_str,
+                    "link":     _gcal_url(nome, data_ag, hora_str, forma, obs, row["Valor"]),
+                }
+                st.session_state["_gcal_dict"] = gcal
+                st.session_state.pop("_ag_id", None)
+                st.rerun()
 
     with col_r:
         if row["Data agendada"] and st.button(

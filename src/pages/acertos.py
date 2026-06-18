@@ -173,10 +173,9 @@ def _dialog_agendar(row: pd.Series):
         )
 
     with col_d:
-        data_padrao = row["Data agendada"] or row["Data acerto"]
         data_ag = st.date_input(
             "Data agendada",
-            value=data_padrao,
+            value=date.today(),
             format="DD/MM/YYYY",
             key=f"dlg_data_{pid}",
         )

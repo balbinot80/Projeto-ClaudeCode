@@ -13,19 +13,12 @@ def _logo(arquivo: str, **kwargs):
     return False
 
 def _logo_sidebar_bottom(arquivo: str, width: int = 170):
-    """Renderiza logo fixada no rodapé do sidebar via CSS."""
+    """Renderiza logo no rodapé do sidebar."""
     p = Path("assets") / arquivo
     if not p.exists():
         return
-    b64 = base64.b64encode(p.read_bytes()).decode()
-    ext = p.suffix.lstrip(".")
-    st.markdown(
-        f'<div style="position:fixed;bottom:20px;left:0;width:260px;'
-        f'display:flex;justify-content:center;pointer-events:none">'
-        f'<img src="data:image/{ext};base64,{b64}" width="{width}" style="opacity:0.85">'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown("<div style='margin-top:24px'></div>", unsafe_allow_html=True)
+    st.image(str(p), width=width)
 
 load_dotenv()
 
@@ -252,7 +245,7 @@ with st.sidebar:
         st.rerun()
 
     # Submarca circular no rodapé do sidebar
-    _logo_sidebar_bottom("Submarca rosa.png", width=210)
+    _logo_sidebar_bottom("Submarca rosa.png", width=220)
 
 
 # ── Banner de time (supervisoras) ──────────────────────────────────────────────

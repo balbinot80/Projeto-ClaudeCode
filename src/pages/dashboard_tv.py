@@ -58,7 +58,7 @@ def _css():
 
 
 def _header_bar(titulo: str, subtitulo: str = "", ultima: str = ""):
-    logo_b64 = _logo_b64("Logo rosa.png") or _logo_b64("Submarca rosa.png")
+    logo_b64 = _logo_b64("Logo branco.png") or _logo_b64("Logo rosa.png")
     logo_html = (
         f'<img src="data:image/png;base64,{logo_b64}" '
         f'style="height:42px;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.2))">'

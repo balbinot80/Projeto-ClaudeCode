@@ -97,7 +97,8 @@ def _sep():
 
 
 def _nav(slide_idx: int):
-    c_prev, c_dots, c_next = st.columns([1, 8, 1])
+    paused = st.session_state.get("tv_paused", False)
+    c_prev, c_dots, c_pause, c_next = st.columns([1, 7, 1, 1])
     with c_prev:
         if st.button("◀", key="tv_prev", use_container_width=True):
             st.session_state.tv_slide = (slide_idx - 1) % _N
@@ -119,6 +120,11 @@ def _nav(slide_idx: int):
             f'<div style="text-align:center;padding:5px 0">{"".join(partes)}</div>',
             unsafe_allow_html=True,
         )
+    with c_pause:
+        label = "▶ Continuar" if paused else "⏸ Pausar"
+        if st.button(label, key="tv_pause", use_container_width=True):
+            st.session_state.tv_paused = not paused
+            st.rerun()
     with c_next:
         if st.button("▶", key="tv_next", use_container_width=True):
             st.session_state.tv_slide = (slide_idx + 1) % _N
@@ -244,7 +250,7 @@ def _slide_premiacoes(todos_pedidos: list, hoje: date, ultima: str):
 
     _sep()
 
-    col_g, col_p, col_pr = st.columns(3)
+    col_g, col_p, col_pr, col_c = st.columns(4)
 
     def _item_html(icone, nome, detalhe, bg):
         return (
@@ -289,17 +295,32 @@ def _slide_premiacoes(todos_pedidos: list, hoje: date, ultima: str):
             st.caption("Nenhuma")
 
     with col_pr:
-        st.markdown("**🔜 Próximas · 💎 Colar**")
-        itens = [(r, False) for r in proximas] + [(c, True) for c in colar]
-        if itens:
+        st.markdown("**🔜 Próximas**")
+        if proximas:
             html = "".join(
                 _item_html(
-                    "💎" if eh_colar else "🔜",
+                    "🔜",
                     r["Nome"],
                     _R(r.get("Pré-baixa", r.get("Total", 0))),
-                    "#fdf4ff" if eh_colar else "#eff6ff",
+                    "#eff6ff",
                 )
-                for r, eh_colar in itens
+                for r in proximas
+            )
+            st.markdown(html, unsafe_allow_html=True)
+        else:
+            st.caption("Nenhuma")
+
+    with col_c:
+        st.markdown("**💎 Colar**")
+        if colar:
+            html = "".join(
+                _item_html(
+                    "💎",
+                    r["Nome"],
+                    _R(r.get("Pré-baixa", r.get("Total", 0))),
+                    "#fdf4ff",
+                )
+                for r in colar
             )
             st.markdown(html, unsafe_allow_html=True)
         else:
@@ -409,9 +430,10 @@ def render():
     if "tv_count_prev" not in st.session_state:
         st.session_state.tv_count_prev = count
 
-    # Avança automaticamente quando o autorefresh dispara
+    # Avança automaticamente quando o autorefresh dispara (exceto se pausado)
     if count != st.session_state.tv_count_prev:
-        st.session_state.tv_slide = (st.session_state.tv_slide + 1) % _N
+        if not st.session_state.get("tv_paused", False):
+            st.session_state.tv_slide = (st.session_state.tv_slide + 1) % _N
         st.session_state.tv_count_prev = count
 
     slide_idx = st.session_state.tv_slide

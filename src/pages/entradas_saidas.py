@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 import streamlit as st
@@ -12,10 +12,41 @@ _MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio",
 _ANO_TESTE  = 2026
 _MES_INICIO = 1
 _MES_FIM    = 5
-_MESES_GAP  = 4  # meses sem pedido para considerar retorno
+_MESES_GAP  = 4   # meses sem novo pedido para considerar retorno
+_DIAS_PRAZO = 30  # dias que a supervisora soma na data_baixa
 
 
-# ── Lógica ─────────────────────────────────────────────────────────────────────
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _cancelado_mesmo_mes(p: dict) -> bool:
+    """Pedido criado e cancelado no mesmo mês — não conta como entrada."""
+    d_cancel = parse_date(p.get("data_cancelamento"))
+    if not d_cancel:
+        return False
+    d_cria = parse_date(p.get("data_criacao"))
+    if not d_cria:
+        return False
+    return d_cria.year == d_cancel.year and d_cria.month == d_cancel.month
+
+
+def _data_entrega(p: dict):
+    """
+    Data real de entrega da maleta à revendedora.
+    Baixado: data_baixa - 30 dias  (a supervisora coloca data_baixa = entrega + 30 dias)
+    Aberto:  data_criacao           (ainda com ela, entrega desconhecida)
+    Cancelado: None                 (nunca entregue)
+    """
+    status = p.get("status", "")
+    if p.get("data_cancelamento"):
+        return None  # cancelado → sem entrega
+    if status == "Baixado":
+        d_baixa = parse_date(p.get("data_baixa"))
+        if d_baixa:
+            return d_baixa - timedelta(days=_DIAS_PRAZO)
+    return parse_date(p.get("data_criacao"))
+
+
+# ── Lógica principal ───────────────────────────────────────────────────────────
 
 def _historico_por_rev(todos_pedidos: list) -> dict:
     """Retorna {rev_id: [(data_criacao, pedido), ...]} ordenado por data_criacao."""
@@ -38,25 +69,40 @@ def _calcular(todos_pedidos: list):
     entradas = defaultdict(list)  # {mes: [row]}
     saidas   = defaultdict(list)
 
-    # ── Entradas ──────────────────────────────────────────────────────────
+    # ── Entradas ──────────────────────────────────────────────────────────────
     for rid, itens in hist.items():
-        contados = set()
+        contados = set()  # meses já contados para esta revendedora
 
         for i, (d_cria, p) in enumerate(itens):
-            if d_cria.year != _ANO_TESTE:
-                continue
-            if not (_MES_INICIO <= d_cria.month <= _MES_FIM):
+            # Criado e cancelado no mesmo mês → ignora para efeito de entrada
+            if _cancelado_mesmo_mes(p):
                 continue
 
-            mes = d_cria.month
+            # Data de entrega real da maleta
+            d_entrega = _data_entrega(p)
+            if not d_entrega:
+                continue  # cancelado sem data ou sem data válida
+
+            # Apenas dentro do período de teste
+            if d_entrega.year != _ANO_TESTE:
+                continue
+            if not (_MES_INICIO <= d_entrega.month <= _MES_FIM):
+                continue
+
+            mes = d_entrega.month
             if mes in contados:
-                continue  # já contou esta revendedora neste mês
+                continue  # revendedora já contada neste mês
 
-            anteriores = itens[:i]  # todos os pedidos ANTES deste (qualquer ano)
+            # Histórico anterior — exclui pedidos cancelados no mesmo mês de criação
+            anteriores = [
+                (d, pp) for d, pp in itens[:i]
+                if not _cancelado_mesmo_mes(pp)
+            ]
 
             if not anteriores:
                 tipo = "🆕 Nova"
             else:
+                # Gap comparado usando data_criacao do pedido anterior
                 d_ant = anteriores[-1][0]
                 gap = (d_cria.year - d_ant.year) * 12 + (d_cria.month - d_ant.month)
                 if gap >= _MESES_GAP:
@@ -64,32 +110,36 @@ def _calcular(todos_pedidos: list):
                 else:
                     continue  # revendedora ativa, não é entrada
 
-            comprador = p.get("comprador") or {}
-            nome      = comprador.get("nome") or f"Rev {rid}"
+            comprador  = p.get("comprador") or {}
+            nome       = comprador.get("nome") or f"Rev {rid}"
             supervisor = p.get("supervisor_nome") or "Sem supervisora"
 
             entradas[mes].append({
                 "rev_id":    rid,
                 "Nome":      nome,
                 "Supervisor": supervisor,
-                "Data":      d_cria.strftime("%d/%m/%Y"),
+                "Data":      d_entrega.strftime("%d/%m/%Y"),
                 "Tipo":      tipo,
             })
             contados.add(mes)
 
-    # ── Saídas ────────────────────────────────────────────────────────────
+    # ── Saídas ────────────────────────────────────────────────────────────────
     for rid, itens in hist.items():
         if not itens:
             continue
 
-        # Último pedido criado para esta revendedora (de toda a história)
-        d_ultimo_cria, p_ultimo = itens[-1]
+        # Último pedido criado (desconsiderando cancelados mesmo mês)
+        itens_validos = [(d, p) for d, p in itens if not _cancelado_mesmo_mes(p)]
+        if not itens_validos:
+            continue
 
-        # Precisa estar Baixado
+        d_ultimo_cria, p_ultimo = itens_validos[-1]
+
+        # Precisa estar Baixado (cancelado não é saída, apenas baixado sem continuidade)
         if p_ultimo.get("status") != "Baixado":
             continue
 
-        # A data de baixa precisa estar dentro do período de teste
+        # A "saída" ocorre no mês da data_baixa (mês do acerto final)
         d_baixa = parse_date(p_ultimo.get("data_baixa"))
         if not d_baixa:
             continue
@@ -100,30 +150,34 @@ def _calcular(todos_pedidos: list):
         nome       = comprador.get("nome") or f"Rev {rid}"
         supervisor = p_ultimo.get("supervisor_nome") or "Sem supervisora"
 
-        # Data de criação do primeiro pedido (para calcular tempo de time)
-        d_entrada = itens[0][0]
-        meses_no_time = (d_ultimo_cria.year - d_entrada.year) * 12 + \
-                        (d_ultimo_cria.month - d_entrada.month)
+        # Tempo no time (da 1ª criação ao último baixo)
+        d_primeira = itens_validos[0][0]
+        meses_no_time = (
+            (d_ultimo_cria.year - d_primeira.year) * 12
+            + (d_ultimo_cria.month - d_primeira.month)
+        )
+        tempo_str = f"{meses_no_time} mes{'es' if meses_no_time != 1 else ''}"
 
         saidas[d_baixa.month].append({
             "rev_id":        rid,
             "Nome":          nome,
             "Supervisor":    supervisor,
             "Último baixa":  d_baixa.strftime("%d/%m/%Y"),
-            "Tempo no time": f"{meses_no_time} mes{'es' if meses_no_time != 1 else ''}",
+            "Tempo no time": tempo_str,
         })
 
     return entradas, saidas
 
 
-# ── Render ──────────────────────────────────────────────────────────────────────
+# ── Render ─────────────────────────────────────────────────────────────────────
 
 def render():
     st.title("📊 Entradas e Saídas de Revendedoras")
     st.caption(
-        f"Teste — Janeiro a Maio de {_ANO_TESTE}. "
-        f"Nova = 1º pedido da revendedora. "
-        f"Retorno = pedido após {_MESES_GAP}+ meses sem atividade."
+        f"Teste — Janeiro a Maio de {_ANO_TESTE} · "
+        f"Entrada = mês da data de baixa − {_DIAS_PRAZO} dias · "
+        f"Retorno = novo pedido após {_MESES_GAP}+ meses sem atividade · "
+        f"Pedidos criados e cancelados no mesmo mês são desconsiderados."
     )
 
     from src.api.jueri_client import _get_lista_pedidos
@@ -137,25 +191,26 @@ def render():
 
     entradas, saidas = _calcular(todos_pedidos)
 
-    # ── Filtro de supervisora ──────────────────────────────────────────────
+    # ── Filtro ────────────────────────────────────────────────────────────────
     supervisoras = sorted({
         p.get("supervisor_nome")
         for p in todos_pedidos
         if p.get("supervisor_nome")
     })
-    col_f, col_r = st.columns([2, 4])
+
+    col_f, _ = st.columns([2, 4])
     with col_f:
         filtro_sup = st.selectbox("Supervisora", ["Todas"] + supervisoras, key="es_sup")
 
-    st.divider()
-
-    # ── Resumo acumulado ───────────────────────────────────────────────────
     def _filtrar(rows):
         if filtro_sup == "Todas":
             return rows
         return [r for r in rows if r.get("Supervisor") == filtro_sup]
 
-    tot_novas    = sum(len([r for r in _filtrar(entradas[m]) if r["Tipo"] == "🆕 Nova"])   for m in range(1, 6))
+    st.divider()
+
+    # ── Resumo acumulado ──────────────────────────────────────────────────────
+    tot_novas    = sum(len([r for r in _filtrar(entradas[m]) if r["Tipo"] == "🆕 Nova"])    for m in range(1, 6))
     tot_retornos = sum(len([r for r in _filtrar(entradas[m]) if r["Tipo"] == "🔄 Retorno"]) for m in range(1, 6))
     tot_saidas   = sum(len(_filtrar(saidas[m])) for m in range(1, 6))
     tot_ent      = tot_novas + tot_retornos
@@ -170,7 +225,7 @@ def render():
 
     st.divider()
 
-    # ── Mês a mês ─────────────────────────────────────────────────────────
+    # ── Mês a mês (abas) ──────────────────────────────────────────────────────
     tabs = st.tabs([_MESES[m - 1] for m in range(_MES_INICIO, _MES_FIM + 1)])
 
     for tab, mes in zip(tabs, range(_MES_INICIO, _MES_FIM + 1)):
@@ -181,22 +236,19 @@ def render():
             novas    = [r for r in ents if r["Tipo"] == "🆕 Nova"]
             retornos = [r for r in ents if r["Tipo"] == "🔄 Retorno"]
 
-            n_ent  = len(ents)
-            n_sai  = len(sais)
+            n_ent   = len(ents)
+            n_sai   = len(sais)
             saldo_m = n_ent - n_sai
 
             cm1, cm2, cm3, cm4 = st.columns(4)
             cm1.metric("🆕 Novas",    len(novas))
             cm2.metric("🔄 Retornos", len(retornos))
             cm3.metric("📤 Saídas",   n_sai)
-            cm4.metric("📊 Saldo",    f"{saldo_m:+d}",
-                       delta=None,
-                       help="Entradas menos saídas no mês")
+            cm4.metric("📊 Saldo",    f"{saldo_m:+d}")
 
             st.markdown("")
             col_e, col_s = st.columns(2)
 
-            # ── Entradas ──────────────────────────────────────────────────
             with col_e:
                 st.markdown(f"**📥 Entradas — {n_ent}**")
 
@@ -205,9 +257,9 @@ def render():
                     df_n = pd.DataFrame(novas)[["Nome", "Supervisor", "Data"]]
                     st.dataframe(df_n, hide_index=True, use_container_width=True,
                                  column_config={
-                                     "Nome": st.column_config.TextColumn("Revendedora"),
+                                     "Nome":       st.column_config.TextColumn("Revendedora"),
                                      "Supervisor": st.column_config.TextColumn("Supervisora"),
-                                     "Data": st.column_config.TextColumn("Data 1º pedido"),
+                                     "Data":       st.column_config.TextColumn("Data entrega"),
                                  })
 
                 if retornos:
@@ -215,15 +267,14 @@ def render():
                     df_r = pd.DataFrame(retornos)[["Nome", "Supervisor", "Data"]]
                     st.dataframe(df_r, hide_index=True, use_container_width=True,
                                  column_config={
-                                     "Nome": st.column_config.TextColumn("Revendedora"),
+                                     "Nome":       st.column_config.TextColumn("Revendedora"),
                                      "Supervisor": st.column_config.TextColumn("Supervisora"),
-                                     "Data": st.column_config.TextColumn("Data retorno"),
+                                     "Data":       st.column_config.TextColumn("Data retorno"),
                                  })
 
                 if not ents:
                     st.caption("Nenhuma entrada neste mês.")
 
-            # ── Saídas ────────────────────────────────────────────────────
             with col_s:
                 st.markdown(f"**📤 Saídas — {n_sai}**")
 
@@ -231,10 +282,10 @@ def render():
                     df_s = pd.DataFrame(sais)[["Nome", "Supervisor", "Último baixa", "Tempo no time"]]
                     st.dataframe(df_s, hide_index=True, use_container_width=True,
                                  column_config={
-                                     "Nome": st.column_config.TextColumn("Revendedora"),
-                                     "Supervisor": st.column_config.TextColumn("Supervisora"),
-                                     "Último baixa": st.column_config.TextColumn("Última baixa"),
-                                     "Tempo no time": st.column_config.TextColumn("Tempo no time"),
+                                     "Nome":           st.column_config.TextColumn("Revendedora"),
+                                     "Supervisor":     st.column_config.TextColumn("Supervisora"),
+                                     "Último baixa":   st.column_config.TextColumn("Última baixa"),
+                                     "Tempo no time":  st.column_config.TextColumn("Tempo no time"),
                                  })
                 else:
                     st.caption("Nenhuma saída neste mês.")

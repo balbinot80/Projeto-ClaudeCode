@@ -8,7 +8,7 @@ _R = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", "
 _MESES_PT  = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho",
               "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
 _MESES_ABR = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
-_SLIDES    = ["🛍️ Vendas", "📦 Estoque", "🏆 Premiações", "📊 Desempenho"]
+_SLIDES    = ["🛍️ Vendas", "🏆 Premiações", "📊 Desempenho"]
 _N         = len(_SLIDES)
 
 
@@ -107,12 +107,12 @@ def _nav(slide_idx: int):
         for i, nome in enumerate(_SLIDES):
             if i == slide_idx:
                 partes.append(
-                    f'<span style="color:#AB6776;font-weight:700;font-size:1.1em;margin:0 10px">'
+                    f'<span style="color:#AB6776;font-weight:700;font-size:1.1em;margin:0 14px">'
                     f'● {nome}</span>'
                 )
             else:
                 partes.append(
-                    f'<span style="color:#cbd5e1;font-size:0.9em;margin:0 10px">'
+                    f'<span style="color:#cbd5e1;font-size:0.9em;margin:0 14px">'
                     f'○ {nome}</span>'
                 )
         st.markdown(
@@ -127,6 +127,33 @@ def _nav(slide_idx: int):
 
 # ── Slide 0: Vendas ────────────────────────────────────────────────────────────
 
+def _nivel_por_rev(todos_pedidos: list, mes: int, ano: int) -> dict:
+    """Retorna {fk_revendedor_id: ícone_do_nível} com base nos pedidos do mês."""
+    from src.logic.niveis import nivel_por_pecas, _qtd_original, ICONE_NIVEL
+    from src.logic.revendedoras import parse_date
+
+    nivel_map = {}
+    for p in todos_pedidos:
+        rid = p.get("fk_revendedor_id")
+        if not rid:
+            continue
+        status = p.get("status", "")
+        if status == "Baixado":
+            d = parse_date(p.get("data_baixa"))
+            if not (d and d.month == mes and d.year == ano):
+                continue
+        elif status == "Aberto":
+            d = parse_date(p.get("data_acerto"))
+            if not (d and d.month == mes and d.year == ano):
+                continue
+        else:
+            continue
+        nivel = nivel_por_pecas(_qtd_original(p))
+        if nivel != "Sem nível":
+            nivel_map[rid] = ICONE_NIVEL.get(nivel, "")
+    return nivel_map
+
+
 def _slide_vendas(todos_pedidos: list, hoje: date, ultima: str):
     from src.logic.revendedoras import calcular_competencia
     from src.logic.premiacoes import calcular_ranking, load_premiacoes
@@ -136,12 +163,12 @@ def _slide_vendas(todos_pedidos: list, hoje: date, ultima: str):
 
     df_res, _ = calcular_competencia(todos_pedidos, mes, ano)
 
-    n_revs    = len(df_res) if not df_res.empty else 0
-    tot_vend  = df_res["Total"].sum() if not df_res.empty else 0.0
-    tot_bx    = df_res["Baixado"].sum() if not df_res.empty else 0.0
-    tot_pb    = df_res["Pré-baixa"].sum() if not df_res.empty else 0.0
-    ticket    = tot_vend / n_revs if n_revs > 0 else 0.0
-    n_risco   = 0
+    n_revs   = len(df_res) if not df_res.empty else 0
+    tot_vend = df_res["Total"].sum() if not df_res.empty else 0.0
+    tot_bx   = df_res["Baixado"].sum() if not df_res.empty else 0.0
+    tot_pb   = df_res["Pré-baixa"].sum() if not df_res.empty else 0.0
+    ticket   = tot_vend / n_revs if n_revs > 0 else 0.0
+    n_risco  = 0
     if not df_res.empty and "Risco" in df_res.columns:
         n_risco = int(df_res["Risco"].isin(["🔴 Sem vendas", "🟡 Abaixo do mínimo"]).sum())
 
@@ -160,6 +187,9 @@ def _slide_vendas(todos_pedidos: list, hoje: date, ultima: str):
     meta    = prems.get(mes_key, {}).get("meta", 0.0)
     ranking = calcular_ranking(todos_pedidos, mes, ano, meta)[:30]
 
+    # Mapa de nível para cada revendedora
+    nivel_map = _nivel_por_rev(todos_pedidos, mes, ano)
+
     st.markdown("**🏅 Top 30 do mês** — baixas + pré-baixa")
 
     col1, col2, col3 = st.columns(3)
@@ -167,92 +197,22 @@ def _slide_vendas(todos_pedidos: list, hoje: date, ultima: str):
 
     for i, r in enumerate(ranking):
         col = cols30[i // 10]
-        pos = i + 1
+        pos   = i + 1
         medal = "🥇" if pos == 1 else "🥈" if pos == 2 else "🥉" if pos == 3 else f"{pos}."
         bg    = "#fef9c3" if pos <= 3 else ("#f8fafc" if i % 2 == 0 else "white")
+        icone = nivel_map.get(r["id"], "")
         col.markdown(
             f'<div style="display:flex;justify-content:space-between;align-items:center;'
             f'padding:3px 8px;border-radius:4px;font-size:0.88em;background:{bg};margin-bottom:2px">'
             f'<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:72%">'
-            f'{medal} {r["Nome"]}</span>'
+            f'{medal} {r["Nome"]} {icone}</span>'
             f'<span style="font-weight:700;color:#1d4ed8;white-space:nowrap">{_R(r["Total"])}</span>'
             f'</div>',
             unsafe_allow_html=True,
         )
 
 
-# ── Slide 1: Estoque ───────────────────────────────────────────────────────────
-
-def _slide_estoque(ultima: str):
-    from src.api.jueri_client import get_produtos, get_categorias
-
-    _header_bar("📦 ESTOQUE", "Visão geral do inventário", ultima)
-
-    try:
-        produtos = get_produtos(status="1")
-        cats     = get_categorias()
-    except Exception as e:
-        st.error(f"Erro ao carregar produtos: {e}")
-        return
-
-    if not produtos:
-        st.warning("Nenhum produto encontrado.")
-        return
-
-    import pandas as pd
-
-    df = pd.DataFrame([{
-        "Nome":       p.get("descricao") or p.get("nome") or f"Prod {p.get('id')}",
-        "Categoria":  cats.get(str(p.get("fk_categoria_produto_id", "")), ""),
-        "Quantidade": int(float(p.get("quantidade") or 0)),
-        "Mínimo":     int(float(p.get("estoque_minimo") or 0)),
-    } for p in produtos])
-    df["Diferença"] = df["Quantidade"] - df["Mínimo"]
-
-    n_total   = len(df)
-    n_critico = int((df["Quantidade"] < df["Mínimo"]).sum())
-    n_zerado  = int((df["Quantidade"] == 0).sum())
-    n_ok      = n_total - n_critico
-    pct_crit  = n_critico / n_total * 100 if n_total > 0 else 0.0
-
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Total de produtos", n_total)
-    c2.metric("✅ Acima do mínimo", n_ok)
-    c3.metric("🔴 Abaixo do mínimo", n_critico)
-    c4.metric("⛔ Zerados", n_zerado)
-    c5.metric("% críticos", f"{pct_crit:.1f}%")
-
-    _sep()
-
-    df_crit = df[df["Quantidade"] < df["Mínimo"]].sort_values("Diferença").head(24)
-
-    if df_crit.empty:
-        st.success("✅ Nenhum produto abaixo do estoque mínimo!")
-        return
-
-    st.markdown(f"**🔴 Produtos abaixo do mínimo** — {len(df_crit)} mais críticos")
-
-    col1, col2, col3 = st.columns(3)
-    cols_est = [col1, col2, col3]
-    n = len(df_crit)
-    bloco = (n + 2) // 3
-
-    for i, (_, row) in enumerate(df_crit.iterrows()):
-        col = cols_est[min(i // bloco, 2)]
-        bg  = "#fff1f2" if row["Quantidade"] == 0 else "#fef3c7"
-        col.markdown(
-            f'<div style="display:flex;justify-content:space-between;align-items:center;'
-            f'padding:3px 8px;border-radius:4px;font-size:0.86em;background:{bg};margin-bottom:2px">'
-            f'<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:68%">'
-            f'{row["Nome"]}</span>'
-            f'<span style="font-weight:700;color:#dc2626;white-space:nowrap">'
-            f'{row["Quantidade"]} / {row["Mínimo"]}</span>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-
-
-# ── Slide 2: Premiações ────────────────────────────────────────────────────────
+# ── Slide 1: Premiações ────────────────────────────────────────────────────────
 
 def _slide_premiacoes(todos_pedidos: list, hoje: date, ultima: str):
     from src.logic.premiacoes import calcular_ranking, load_premiacoes, verificar_colar
@@ -286,55 +246,67 @@ def _slide_premiacoes(todos_pedidos: list, hoje: date, ultima: str):
 
     col_g, col_p, col_pr = st.columns(3)
 
+    def _item_html(icone, nome, detalhe, bg):
+        return (
+            f'<div style="display:flex;justify-content:space-between;align-items:center;'
+            f'padding:4px 10px;background:{bg};border-radius:5px;font-size:0.87em;margin-bottom:3px">'
+            f'<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65%">'
+            f'{icone} <b>{nome}</b></span>'
+            f'<span style="white-space:nowrap;font-weight:600;font-size:0.9em">{detalhe}</span>'
+            f'</div>'
+        )
+
     with col_g:
         st.markdown("**✅ Ganhadoras**")
         if ganhadoras:
-            for r in ganhadoras:
-                st.markdown(
-                    f'<div style="padding:4px 10px;background:#d1fae5;border-radius:5px;'
-                    f'font-size:0.88em;margin-bottom:3px">'
-                    f'🥇 <b>{r["Nome"]}</b><br>'
-                    f'<span style="color:#065f46">{_R(r.get("Baixado", r.get("Total", 0)))}</span>'
-                    f'</div>',
-                    unsafe_allow_html=True,
+            html = "".join(
+                _item_html(
+                    "🥇" if i == 0 else "✅",
+                    r["Nome"],
+                    _R(r.get("Baixado", 0)),
+                    "#d1fae5",
                 )
+                for i, r in enumerate(ganhadoras)
+            )
+            st.markdown(html, unsafe_allow_html=True)
         else:
             st.caption("Nenhuma ainda")
 
     with col_p:
         st.markdown("**🎯 Potenciais**")
         if potenciais:
-            for r in potenciais:
-                falta = _R(r.get("Falta", 0))
-                st.markdown(
-                    f'<div style="padding:4px 10px;background:#fef9c3;border-radius:5px;'
-                    f'font-size:0.88em;margin-bottom:3px">'
-                    f'🎯 <b>{r["Nome"]}</b><br>'
-                    f'<span style="color:#92400e">Falta: {falta}</span>'
-                    f'</div>',
-                    unsafe_allow_html=True,
+            html = "".join(
+                _item_html(
+                    "🎯",
+                    r["Nome"],
+                    f'falta {_R(r.get("Falta", 0))}',
+                    "#fef9c3",
                 )
+                for r in potenciais
+            )
+            st.markdown(html, unsafe_allow_html=True)
         else:
             st.caption("Nenhuma")
 
     with col_pr:
-        st.markdown("**🔜 Próximas** · **💎 Colar**")
+        st.markdown("**🔜 Próximas · 💎 Colar**")
         itens = [(r, False) for r in proximas] + [(c, True) for c in colar]
         if itens:
-            for r, eh_colar in itens:
-                ico = "💎" if eh_colar else "🔜"
-                bg  = "#fdf4ff" if eh_colar else "#eff6ff"
-                st.markdown(
-                    f'<div style="padding:4px 10px;background:{bg};border-radius:5px;'
-                    f'font-size:0.88em;margin-bottom:3px">'
-                    f'{ico} <b>{r["Nome"]}</b></div>',
-                    unsafe_allow_html=True,
+            html = "".join(
+                _item_html(
+                    "💎" if eh_colar else "🔜",
+                    r["Nome"],
+                    _R(r.get("Pré-baixa", r.get("Total", 0))),
+                    "#fdf4ff" if eh_colar else "#eff6ff",
                 )
+                for r, eh_colar in itens
+            )
+            st.markdown(html, unsafe_allow_html=True)
         else:
             st.caption("Nenhuma")
 
 
-# ── Slide 3: Desempenho ────────────────────────────────────────────────────────
+# ── Slide 2: Desempenho ────────────────────────────────────────────────────────
 
 def _calcular_desemp_mes(todos_pedidos: list, mes: int, ano: int) -> list:
     from src.logic.niveis import nivel_por_pecas, _qtd_original
@@ -382,8 +354,8 @@ def _slide_desempenho(todos_pedidos: list, hoje: date, ultima: str):
     dados = {m: _calcular_desemp_mes(todos_pedidos, m, ano) for m in meses_range}
 
     rows_atual = dados[mes]
-    vm_t = sum(r["Maleta"] for r in rows_atual)
-    vb_t = sum(r["Baixa"]  for r in rows_atual)
+    vm_t  = sum(r["Maleta"] for r in rows_atual)
+    vb_t  = sum(r["Baixa"]  for r in rows_atual)
     pct_g = vb_t / vm_t * 100 if vm_t > 0 else 0.0
 
     c1, c2, c3, c4 = st.columns(4)
@@ -446,7 +418,7 @@ def render():
 
     # Carrega dados comuns (cacheados por 1 h)
     from src.api.jueri_client import _get_lista_pedidos, _get_ultima_atualizacao_pedidos
-    hoje  = date.today()
+    hoje   = date.today()
     ultima = _get_ultima_atualizacao_pedidos()
 
     try:
@@ -459,8 +431,6 @@ def render():
     if slide_idx == 0:
         _slide_vendas(todos_pedidos, hoje, ultima)
     elif slide_idx == 1:
-        _slide_estoque(ultima)
-    elif slide_idx == 2:
         _slide_premiacoes(todos_pedidos, hoje, ultima)
     else:
         _slide_desempenho(todos_pedidos, hoje, ultima)

@@ -82,6 +82,12 @@ _USUARIOS = {
         "supervisor_nome": "Julia Andreza de Souza",
         "secret_key": "JULIA_SENHA",
     },
+    "dashboard": {
+        "nome": "Dashboard TV",
+        "role": "dashboard",
+        "supervisor_nome": "",
+        "secret_key": "DASHBOARD_SENHA",
+    },
 }
 
 
@@ -220,6 +226,11 @@ _TIMES = {
 
 _time_cfg = _TIMES.get(usuario.get("login", "")) if role == "supervisora" else None
 
+# ── Dashboard TV (role exclusivo, sem sidebar) ─────────────────────────────────
+if role == "dashboard":
+    from src.pages import dashboard_tv
+    dashboard_tv.render()
+    st.stop()
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 

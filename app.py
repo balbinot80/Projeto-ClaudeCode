@@ -256,6 +256,7 @@ with st.sidebar:
             "🛒 Programação de Compras",
             "👥 Revendedoras",
             "📅 Controle de Acertos",
+            "📊 Entradas e Saídas",
             "🔍 Diagnóstico",
         ]
     else:
@@ -444,6 +445,10 @@ elif pagina == "👥 Revendedoras":
 elif pagina == "📅 Controle de Acertos":
     from src.pages.acertos import render
     render(filtro_supervisor=sup_filtro)
+
+elif pagina == "📊 Entradas e Saídas":
+    from src.pages.entradas_saidas import render
+    render()
 
 elif pagina == "🔍 Diagnóstico":
     from src.pages.diagnostico import render

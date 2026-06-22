@@ -1040,7 +1040,7 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
         for i, r in enumerate(potenciais):
             with cols[i % 4]:
                 st.markdown(
-                    f'<div style="background:#e8f5e9;border:2px solid #66bb6a;'
+                    f'<div style="background:#e3f2fd;border:2px solid #90caf9;'
                     f'border-radius:10px;padding:10px 12px;margin-bottom:8px">'
                     f'<div style="font-weight:700;font-size:0.95em">🎯 {r["Nome"]}</div>'
                     f'<div style="color:#888;font-size:0.78em;margin-bottom:4px">{r["Supervisor"]}</div>'

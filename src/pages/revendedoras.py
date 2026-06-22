@@ -960,25 +960,43 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
     # Carrega status de entrega dos prêmios para o mês
     entregas = load_entregas(mes_key)
 
-    # CSS para cards de premiação com checkbox interno
+    # CSS para cards de premiação — aplica cor no wrapper E no div interno
     st.markdown("""
     <style>
+    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-ganhadora),
+    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-ganhadora) > div[data-testid="stVerticalBlock"] {
+        background-color: #fff8e1 !important;
+    }
     [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-ganhadora) {
-        background-color: #fff8e1; border-color: #f9a825; border-radius: 10px;
+        border-color: #f9a825 !important; border-radius: 10px !important;
+    }
+    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-ganhadora-ok),
+    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-ganhadora-ok) > div[data-testid="stVerticalBlock"] {
+        background-color: #f0fdf4 !important;
     }
     [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-ganhadora-ok) {
-        background-color: #f0fdf4; border-color: #16a34a; border-radius: 10px;
+        border-color: #16a34a !important; border-radius: 10px !important;
+    }
+    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-colar),
+    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-colar) > div[data-testid="stVerticalBlock"] {
+        background: linear-gradient(135deg,#f3e5f5,#e1bee7) !important;
     }
     [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-colar) {
-        background: linear-gradient(135deg,#f3e5f5,#e1bee7);
-        border-color: #9c27b0; border-radius: 10px;
+        border-color: #9c27b0 !important; border-radius: 10px !important;
+    }
+    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-colar-ok),
+    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-colar-ok) > div[data-testid="stVerticalBlock"] {
+        background: linear-gradient(135deg,#f0fdf4,#dcfce7) !important;
     }
     [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-colar-ok) {
-        background: linear-gradient(135deg,#f0fdf4,#dcfce7);
-        border-color: #16a34a; border-radius: 10px;
+        border-color: #16a34a !important; border-radius: 10px !important;
+    }
+    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-colar-aberto),
+    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-colar-aberto) > div[data-testid="stVerticalBlock"] {
+        background-color: #e3f2fd !important;
     }
     [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-colar-aberto) {
-        background-color: #e3f2fd; border-color: #90caf9; border-radius: 10px;
+        border-color: #90caf9 !important; border-radius: 10px !important;
     }
     </style>
     """, unsafe_allow_html=True)

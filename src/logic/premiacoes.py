@@ -182,6 +182,7 @@ def verificar_colar(todos_pedidos: list, mes: int, ano: int) -> list:
             if valor <= 1000:
                 continue
             winners.append({
+                "id":              rid,
                 "Nome":            nome,
                 "Supervisor":      supervisor,
                 "Valor 1º pedido": round(valor, 2),
@@ -196,6 +197,7 @@ def verificar_colar(todos_pedidos: list, mes: int, ano: int) -> list:
             if valor <= 1000:
                 continue
             winners.append({
+                "id":              rid,
                 "Nome":            nome,
                 "Supervisor":      supervisor,
                 "Valor 1º pedido": round(valor, 2),

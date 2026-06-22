@@ -6,8 +6,10 @@ from src.api.jueri_client import _get_lista_pedidos
 from src.logic.acertos import (
     FORMAS, DIAS_PT,
     montar_acertos, semana_de, proxima_semana_resumo,
-    save_agendamento, remove_agendamento,
+    save_agendamento, save_envio_maleta, remove_agendamento,
 )
+
+_FORMAS_ENVIO = {"Correios", "Disk Tenha"}
 
 _R = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
@@ -48,11 +50,21 @@ def _card_agendado(row: pd.Series) -> str:
     hora_s = row.get("Hora agendada", "") or ""
     data_s = row["Data agendada"].strftime("%d/%m") if row["Data agendada"] else ""
     hora_t = f" {hora_s}" if hora_s else ""
+
+    envio_html = ""
+    d_envio = row.get("Data envio maleta")
+    h_envio = row.get("Hora envio maleta", "") or ""
+    if pd.notna(d_envio) and d_envio:
+        envio_s = d_envio.strftime("%d/%m") if hasattr(d_envio, "strftime") else str(d_envio)
+        hora_env_t = f" {h_envio}" if h_envio else ""
+        envio_html = f'<br><span style="color:#6a1b9a;font-size:0.9em">📦 Envio: {envio_s}{hora_env_t}</span>'
+
     return (
         f'<div style="background:#1976d218;border:2px solid #1976d2;'
         f'border-radius:6px;padding:4px 7px;font-size:0.80em;line-height:1.5">'
         f'<b>{nome}</b> {FORMAS.get(row["Forma"], "")}<br>'
-        f'<span style="color:#1976d2;font-weight:bold">📅 {data_s}{hora_t}</span><br>'
+        f'<span style="color:#1976d2;font-weight:bold">📅 {data_s}{hora_t}</span>'
+        f'{envio_html}<br>'
         f'<span style="color:#444">{_R(row["Valor"])}</span></div>'
     )
 
@@ -218,8 +230,18 @@ def _dialog_agendar(row: pd.Series):
                     "hora_str": hora_str,
                     "link":     _gcal_url(nome, data_ag, hora_str, forma, obs, row["Valor"]),
                 }
-                st.session_state["_gcal_dict"] = gcal
                 st.session_state.pop("_ag_id", None)
+                if forma in _FORMAS_ENVIO:
+                    # Fluxo especial: perguntar se a troca é no mesmo dia
+                    st.session_state["_troca_check"] = {
+                        "pid":   pid,
+                        "nome":  nome,
+                        "valor": row["Valor"],
+                        "forma": forma,
+                        "gcal":  gcal,
+                    }
+                else:
+                    st.session_state["_gcal_dict"] = gcal
                 st.rerun()
 
     with col_r:
@@ -233,6 +255,84 @@ def _dialog_agendar(row: pd.Series):
     with col_c:
         if st.button("✖ Cancelar", use_container_width=True, key=f"dlg_cancel_{pid}"):
             st.session_state.pop("_ag_id", None)
+            st.rerun()
+
+
+# ── Dialog: troca no mesmo dia? ──────────────────────────────────────────────
+
+@st.dialog("📦 Troca da maleta", width="small")
+def _dialog_troca_mesmo_dia():
+    check = st.session_state.get("_troca_check", {})
+    forma = check.get("forma", "")
+    nome  = check.get("nome", "")
+
+    st.markdown(f"**{FORMAS.get(forma, '')} {forma}** · {nome}")
+    st.divider()
+    st.markdown("### A troca da maleta será no mesmo dia?")
+    st.caption("Se a nova maleta será entregue junto com o acerto, responda Sim. Caso contrário, agende o envio separadamente.")
+
+    col_s, col_n = st.columns(2)
+    with col_s:
+        if st.button("✅ Sim", type="primary", use_container_width=True, key="troca_sim"):
+            st.session_state["_gcal_dict"] = check.get("gcal")
+            st.session_state.pop("_troca_check", None)
+            st.rerun()
+    with col_n:
+        if st.button("❌ Não", use_container_width=True, key="troca_nao"):
+            st.session_state["_envio_maleta"] = check
+            st.session_state.pop("_troca_check", None)
+            st.rerun()
+
+
+# ── Dialog: agendar envio da maleta ──────────────────────────────────────────
+
+@st.dialog("📦 Agendar Envio da Maleta", width="large")
+def _dialog_agendar_envio_maleta():
+    info  = st.session_state.get("_envio_maleta", {})
+    pid   = info.get("pid")
+    nome  = info.get("nome", "")
+    forma = info.get("forma", "")
+
+    st.markdown(f"### {FORMAS.get(forma, '')} {forma} · {nome}")
+    st.caption(
+        "O acerto já foi agendado. Agora defina quando a maleta será enviada/retirada."
+    )
+    st.divider()
+
+    col_d, col_h = st.columns(2)
+    with col_d:
+        data_envio = st.date_input(
+            "Data de envio da maleta",
+            value=date.today(),
+            format="DD/MM/YYYY",
+            key=f"dlg_envio_data_{pid}",
+        )
+    with col_h:
+        hora_envio = st.time_input(
+            "Horário", value=time_cls(9, 0), key=f"dlg_envio_hora_{pid}"
+        )
+
+    obs_envio = st.text_area(
+        "Observação (opcional)", key=f"dlg_envio_obs_{pid}", height=70
+    )
+
+    st.divider()
+    col_s, col_c = st.columns([3, 1])
+
+    with col_s:
+        if st.button("💾 Salvar envio", type="primary", use_container_width=True, key=f"dlg_envio_salvar_{pid}"):
+            hora_str = hora_envio.strftime("%H:%M") if hora_envio else ""
+            save_envio_maleta(pid, str(data_envio), hora_str)
+            # Após salvar envio, segue para o dialog de Google Agenda do acerto original
+            st.session_state["_gcal_dict"] = info.get("gcal")
+            st.session_state.pop("_envio_maleta", None)
+            st.rerun()
+
+    with col_c:
+        if st.button("✖ Cancelar", use_container_width=True, key=f"dlg_envio_cancel_{pid}"):
+            # Pula agendamento do envio e vai direto para o Google Agenda do acerto
+            st.session_state["_gcal_dict"] = info.get("gcal")
+            st.session_state.pop("_envio_maleta", None)
             st.rerun()
 
 
@@ -462,11 +562,20 @@ def render(filtro_supervisor: str = ""):
 
     # ── Dialogs chamados aqui (nível de render, fora de qualquer tab/coluna) ──
 
+    # Dialog: troca no mesmo dia? (Correios / Disk Tenha)
+    if "_troca_check" in st.session_state:
+        _dialog_troca_mesmo_dia()
+
+    # Dialog: agendar envio da maleta
+    elif "_envio_maleta" in st.session_state:
+        _dialog_agendar_envio_maleta()
+
     # Confirmação Google Agenda: usa pop() para não reabrir ao fechar por Esc
-    gcal = st.session_state.pop("_gcal_dict", None)
-    if gcal:
-        st.session_state["_gcal_active"] = gcal
-        _dialog_gcal_confirm()
+    else:
+        gcal = st.session_state.pop("_gcal_dict", None)
+        if gcal:
+            st.session_state["_gcal_active"] = gcal
+            _dialog_gcal_confirm()
 
     # Dialog de agendamento
     ag_id = st.session_state.get("_ag_id")

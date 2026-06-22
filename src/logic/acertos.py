@@ -49,15 +49,17 @@ def _fetch_supabase() -> tuple[dict, bool]:
         return {}, False
     try:
         res = client.table("agendamentos").select(
-            "pedido_id,data_agendada,forma,obs,hora_agendada"
+            "pedido_id,data_agendada,forma,obs,hora_agendada,data_envio_maleta,hora_envio_maleta"
         ).execute()
         _SUPABASE_OK = True
         return {
             row["pedido_id"]: {
-                "data_agendada": row.get("data_agendada", ""),
-                "forma":         row.get("forma", ""),
-                "obs":           row.get("obs", ""),
-                "hora_agendada": row.get("hora_agendada", ""),
+                "data_agendada":     row.get("data_agendada", ""),
+                "forma":             row.get("forma", ""),
+                "obs":               row.get("obs", ""),
+                "hora_agendada":     row.get("hora_agendada", ""),
+                "data_envio_maleta": row.get("data_envio_maleta") or "",
+                "hora_envio_maleta": row.get("hora_envio_maleta") or "",
             }
             for row in (res.data or [])
         }, True
@@ -169,6 +171,27 @@ def save_agendamento(
         json.dump(ag, f, ensure_ascii=False, indent=2)
 
 
+def save_envio_maleta(pedido_id, data_envio: str, hora_envio: str = "") -> None:
+    """Salva/atualiza a data de envio da maleta em um agendamento já existente."""
+    client = _get_client()
+    if client is not None:
+        try:
+            client.table("agendamentos").update({
+                "data_envio_maleta": data_envio,
+                "hora_envio_maleta": hora_envio or "",
+            }).eq("pedido_id", str(pedido_id)).execute()
+            return
+        except Exception as e:
+            import streamlit as st
+            st.error(
+                f"❌ Falha ao salvar envio de maleta no Supabase: {e}. "
+                "Verifique se as colunas existem na tabela 'agendamentos'."
+            )
+            return
+    import streamlit as st
+    st.warning("⚠️ Supabase não configurado. Data de envio não foi salva.")
+
+
 def remove_agendamento(pedido_id):
     client = _get_client()
     if client is not None:
@@ -227,12 +250,15 @@ def montar_acertos(pedidos: list) -> pd.DataFrame:
         supervisor  = p.get("supervisor_nome") or "Sem supervisora"
         cod_pedido  = p.get("codigo_pedido") or ""
 
-        ag         = ag_map.get(str(pid), {})
-        d_ag_str   = ag.get("data_agendada")
-        d_agendada = parse_date(d_ag_str) if d_ag_str else None
-        forma      = ag.get("forma", "")
-        obs        = ag.get("obs", "")
-        hora_ag    = ag.get("hora_agendada", "")
+        ag               = ag_map.get(str(pid), {})
+        d_ag_str         = ag.get("data_agendada")
+        d_agendada       = parse_date(d_ag_str) if d_ag_str else None
+        forma            = ag.get("forma", "")
+        obs              = ag.get("obs", "")
+        hora_ag          = ag.get("hora_agendada", "")
+        data_envio_str   = ag.get("data_envio_maleta", "")
+        hora_envio_str   = ag.get("hora_envio_maleta", "")
+        d_envio_maleta   = parse_date(data_envio_str) if data_envio_str else None
 
         data_ref = d_agendada or d_baixa or d_acerto
 
@@ -253,20 +279,22 @@ def montar_acertos(pedidos: list) -> pd.DataFrame:
         valor = float(p.get("valor_total") if status == "Baixado" else p.get("valor_pre_baixa") or 0)
 
         rows.append({
-            "id":            pid,
-            "Código":        cod_pedido,
-            "Nome":          nome,
-            "Supervisor":    supervisor,
-            "Status":        status,
-            "Data acerto":   d_acerto,
-            "Data agendada": d_agendada,
-            "Data baixa":    d_baixa,
-            "Data ref":      data_ref,
-            "Valor":         round(valor, 2),
-            "Forma":         forma,
-            "Obs":           obs,
-            "Hora agendada": hora_ag,
-            "Situação":      situacao,
+            "id":                pid,
+            "Código":            cod_pedido,
+            "Nome":              nome,
+            "Supervisor":        supervisor,
+            "Status":            status,
+            "Data acerto":       d_acerto,
+            "Data agendada":     d_agendada,
+            "Data baixa":        d_baixa,
+            "Data ref":          data_ref,
+            "Valor":             round(valor, 2),
+            "Forma":             forma,
+            "Obs":               obs,
+            "Hora agendada":     hora_ag,
+            "Data envio maleta": d_envio_maleta,
+            "Hora envio maleta": hora_envio_str,
+            "Situação":          situacao,
         })
 
     if not rows:

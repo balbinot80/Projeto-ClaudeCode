@@ -88,8 +88,7 @@ def _pecas_proxima_maleta(nivel: str, total_vendido: float) -> int | None:
         if v <= 1500: return 55
         if v <= 1800: return 60
         if v <= 2000: return 65
-        if v <= 2500: return 75
-        return 79
+        return 75
     if nivel == "Diamante":
         return 100 if v > 2500 else 90
     return None

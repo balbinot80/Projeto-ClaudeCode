@@ -245,6 +245,7 @@ def alertas_subida(pedidos: list, mes: int, ano: int, pct: float = 0.75) -> pd.D
         qtd        = _qtd_original(p)
         nivel_map[rid] = {
             "nivel":      nivel_por_pecas(qtd),
+            "pecas":      qtd,
             "nome":       nome,
             "supervisor": supervisor,
             "status":     status,
@@ -272,6 +273,7 @@ def alertas_subida(pedidos: list, mes: int, ano: int, pct: float = 0.75) -> pd.D
                 "Nome":        info["nome"],
                 "Supervisor":  info["supervisor"],
                 "Nível atual": nivel,
+                "Peças":       info["pecas"],
                 "Próx. nível": proximo,
                 "Vendas mês":  round(vendas, 2),
                 "Meta subida": limiar,
@@ -334,6 +336,7 @@ def alertas_rebaixamento(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
                 qtd = _qtd_original(p)
                 nivel_map[rid] = {
                     "nivel":      nivel_por_pecas(qtd),
+                    "pecas":      qtd,
                     "nome":       comprador.get("nome") or f"Rev {rid}",
                     "supervisor": p.get("supervisor_nome") or "Sem supervisora",
                     "status":     "Aberto",
@@ -350,6 +353,7 @@ def alertas_rebaixamento(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
             qtd = _qtd_original(p)
             nivel_map[rid] = {
                 "nivel":      nivel_por_pecas(qtd),
+                "pecas":      qtd,
                 "nome":       comprador.get("nome") or f"Rev {rid}",
                 "supervisor": p.get("supervisor_nome") or "Sem supervisora",
                 "status":     "Baixado",
@@ -398,6 +402,7 @@ def alertas_rebaixamento(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
             "Nome":                    info["nome"],
             "Supervisor":              info["supervisor"],
             "Nível atual":             nivel,
+            "Peças":                   info["pecas"],
             f"Vendas {m2:02d}/{y2}":   _fmt_v(v2),
             f"Vendas {m1:02d}/{y1}":   _fmt_v(v1),
             f"Vendas {mes:02d}/{ano}":  _fmt_v(v0),

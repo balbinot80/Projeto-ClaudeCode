@@ -960,15 +960,6 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
     # Carrega status de entrega dos prêmios para o mês
     entregas = load_entregas(mes_key)
 
-    # CSS para reduzir espaçamento entre o card HTML e o checkbox abaixo
-    st.markdown("""
-    <style>
-    .card-premiacao + div[data-testid="stElementContainer"] {
-        margin-top: -8px !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
     # ── Banner do prêmio ──────────────────────────────────────────────────────
     st.markdown(
         f'<div style="background:linear-gradient(135deg,#6B2737 0%,#AB6776 100%);'
@@ -1010,17 +1001,20 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
                 ck_key   = f"ckp_g_{mes_key}_{r['id']}"
                 borda    = "#16a34a" if entregue else "#f9a825"
                 fundo    = "#f0fdf4" if entregue else "#fff8e1"
+                check_badge = (
+                    '<div style="color:#16a34a;font-size:0.82em;font-weight:600;margin-top:6px">✅ Prêmio entregue</div>'
+                    if entregue else ""
+                )
                 st.markdown(
-                    f'<div class="card-premiacao" style="background:{fundo};border:2px solid {borda};'
-                    f'border-radius:10px 10px 0 0;padding:10px 12px 8px 12px;margin-bottom:0">'
+                    f'<div style="background:{fundo};border:2px solid {borda};'
+                    f'border-radius:10px;padding:10px 12px;margin-bottom:6px">'
                     f'<div style="font-weight:700;font-size:0.95em">🥇 {r["Nome"]}</div>'
                     f'<div style="color:#888;font-size:0.78em;margin-bottom:4px">{r["Supervisor"]}</div>'
                     f'<div style="font-size:1em;font-weight:700">{_R(r["Total"])}</div>'
                     f'<div style="color:#27ae60;font-size:0.82em;font-weight:700">'
                     f'✅ {r["% da meta"]:.1f}% da meta</div>'
-                    f'</div>'
-                    f'<div style="background:{fundo};border:2px solid {borda};border-top:none;'
-                    f'border-radius:0 0 10px 10px;padding:2px 10px 6px 10px;margin-bottom:8px"></div>',
+                    f'{check_badge}'
+                    f'</div>',
                     unsafe_allow_html=True,
                 )
                 st.checkbox(
@@ -1108,22 +1102,20 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
                 else:
                     borda = "#90caf9"
                     fundo = "#e3f2fd"
-                rodape = (
-                    f'<div style="background:{fundo};border:2px solid {borda};border-top:none;'
-                    f'border-radius:0 0 10px 10px;padding:2px 10px 6px 10px;margin-bottom:8px"></div>'
-                ) if confirmado else ""
+                check_badge = (
+                    '<div style="color:#16a34a;font-size:0.82em;font-weight:600;margin-top:6px">✅ Colar entregue</div>'
+                    if entregue else ""
+                )
                 st.markdown(
-                    f'<div class="{"card-premiacao" if confirmado else ""}" '
-                    f'style="background:{fundo};border:2px solid {borda};'
-                    f'border-radius:{"10px 10px 0 0" if confirmado else "10px"};'
-                    f'padding:10px 12px 8px 12px;margin-bottom:0">'
+                    f'<div style="background:{fundo};border:2px solid {borda};'
+                    f'border-radius:10px;padding:10px 12px;margin-bottom:6px">'
                     f'<div style="font-weight:700;font-size:0.95em">💎 {r["Nome"]}</div>'
                     f'<div style="color:#888;font-size:0.78em;margin-bottom:4px">{r["Supervisor"]}</div>'
                     f'<div style="font-size:1em;font-weight:700">{_R(r["Valor 1º pedido"])}</div>'
                     f'<div style="color:{status_cor};font-size:0.82em;font-weight:700">'
                     f'{status_txt}</div>'
-                    f'</div>'
-                    f'{rodape}',
+                    f'{check_badge}'
+                    f'</div>',
                     unsafe_allow_html=True,
                 )
                 if confirmado:

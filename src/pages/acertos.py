@@ -57,7 +57,7 @@ def _card_agendado(row: pd.Series) -> str:
     if pd.notna(d_envio) and d_envio:
         envio_s = d_envio.strftime("%d/%m") if hasattr(d_envio, "strftime") else str(d_envio)
         hora_env_t = f" {h_envio}" if h_envio else ""
-        envio_html = f'<br><span style="color:#6a1b9a;font-size:0.9em">📦 Envio: {envio_s}{hora_env_t}</span>'
+        envio_html = f'<br><span style="color:#6a1b9a;font-size:0.9em">📦 Data de envio: {envio_s}{hora_env_t}</span>'
 
     return (
         f'<div style="background:#1976d218;border:2px solid #1976d2;'
@@ -97,7 +97,7 @@ def _card_closed(row: pd.Series) -> str:
 
 
 def _gcal_url(nome, data, hora_str, forma, obs, valor):
-    titulo = f"Acerto · {nome}"
+    titulo = f"Coleta · {nome}"
     if hora_str:
         try:
             h, m   = map(int, hora_str.split(":"))
@@ -132,29 +132,29 @@ def _dialog_gcal_duplo():
     st.success("✅ Agendamentos salvos!")
     st.divider()
 
-    if gcal_envio.get("link"):
-        st.markdown(
-            f"📦 **Envio da maleta** · "
-            f"{gcal_envio.get('data_str', '')} "
-            f"{'às ' + gcal_envio['hora_str'] if gcal_envio.get('hora_str') else ''}"
-        )
-        st.link_button(
-            "📦 Adicionar Envio ao Google Agenda",
-            url=gcal_envio["link"],
-            use_container_width=True,
-        )
-        st.markdown("")
-
     if gcal_acerto.get("link"):
         st.markdown(
-            f"📅 **Acerto** · "
+            f"📅 **Data de coleta** · "
             f"{gcal_acerto.get('data_str', '')} "
             f"{'às ' + gcal_acerto['hora_str'] if gcal_acerto.get('hora_str') else ''}"
         )
         st.link_button(
-            "📅 Adicionar Acerto ao Google Agenda",
+            "📅 Adicionar Data de Coleta ao Google Agenda",
             url=gcal_acerto["link"],
             type="primary",
+            use_container_width=True,
+        )
+        st.markdown("")
+
+    if gcal_envio.get("link"):
+        st.markdown(
+            f"📦 **Data de envio** · "
+            f"{gcal_envio.get('data_str', '')} "
+            f"{'às ' + gcal_envio['hora_str'] if gcal_envio.get('hora_str') else ''}"
+        )
+        st.link_button(
+            "📦 Adicionar Data de Envio ao Google Agenda",
+            url=gcal_envio["link"],
             use_container_width=True,
         )
 
@@ -347,7 +347,7 @@ def _dialog_agendar_envio_maleta():
     col_d, col_h = st.columns(2)
     with col_d:
         data_envio = st.date_input(
-            "Data de envio da maleta",
+            "Data de envio",
             value=date.today(),
             format="DD/MM/YYYY",
             key=f"dlg_envio_data_{pid}",
@@ -369,11 +369,11 @@ def _dialog_agendar_envio_maleta():
             hora_str = hora_envio.strftime("%H:%M") if hora_envio else ""
             save_envio_maleta(pid, str(data_envio), hora_str)
             gcal_envio = {
-                "nome":     f"Envio maleta · {nome}",
+                "nome":     f"Envio · {nome}",
                 "data_str": data_envio.strftime("%d/%m/%Y"),
                 "hora_str": hora_str,
                 "link":     _gcal_url(
-                    f"Envio maleta · {nome}",
+                    f"Envio · {nome}",
                     data_envio, hora_str, forma,
                     obs_envio, info.get("valor", 0),
                 ),
@@ -426,7 +426,7 @@ def _grade_semana(df: pd.DataFrame, seg: date, hoje: date):
                         f'line-height:1.4;margin-bottom:4px">'
                         f'<b>{_nome_curto(row_e["Nome"])}</b><br>'
                         f'<span style="color:#9c27b0;font-weight:bold">'
-                        f'📦 Envio{hora_t}</span><br>'
+                        f'📦 Data de envio{hora_t}</span><br>'
                         f'<span style="color:#444">{FORMAS.get(row_e["Forma"], "")} '
                         f'{row_e["Forma"]}</span>'
                         f'</div>',

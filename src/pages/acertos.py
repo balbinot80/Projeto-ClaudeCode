@@ -121,6 +121,51 @@ def _gcal_url(nome, data, hora_str, forma, obs, valor):
     )
 
 
+# ── Dialog: Google Agenda — dois eventos (acerto + envio da maleta) ──────────
+
+@st.dialog("📅 Adicionar ao Google Agenda?", width="small")
+def _dialog_gcal_duplo():
+    duplo       = st.session_state.get("_gcal_duplo_active", {})
+    gcal_acerto = duplo.get("acerto") or {}
+    gcal_envio  = duplo.get("envio")  or {}
+
+    st.success("✅ Agendamentos salvos!")
+    st.divider()
+
+    if gcal_envio.get("link"):
+        st.markdown(
+            f"📦 **Envio da maleta** · "
+            f"{gcal_envio.get('data_str', '')} "
+            f"{'às ' + gcal_envio['hora_str'] if gcal_envio.get('hora_str') else ''}"
+        )
+        st.link_button(
+            "📦 Adicionar Envio ao Google Agenda",
+            url=gcal_envio["link"],
+            use_container_width=True,
+        )
+        st.markdown("")
+
+    if gcal_acerto.get("link"):
+        st.markdown(
+            f"📅 **Acerto** · "
+            f"{gcal_acerto.get('data_str', '')} "
+            f"{'às ' + gcal_acerto['hora_str'] if gcal_acerto.get('hora_str') else ''}"
+        )
+        st.link_button(
+            "📅 Adicionar Acerto ao Google Agenda",
+            url=gcal_acerto["link"],
+            type="primary",
+            use_container_width=True,
+        )
+
+    st.divider()
+    if st.button("❌ Fechar", use_container_width=True, key="gcal_duplo_fechar"):
+        st.session_state.pop("_gcal_duplo_active", None)
+        st.rerun()
+
+    st.caption("Após clicar em um link, feche esta janela clicando em **❌ Fechar**.")
+
+
 # ── Dialog: confirmação Google Agenda ─────────────────────────────────────────
 # Chamado com pop() do _gcal_dict — não reabre ao fechar por Esc/X
 
@@ -323,14 +368,27 @@ def _dialog_agendar_envio_maleta():
         if st.button("💾 Salvar envio", type="primary", use_container_width=True, key=f"dlg_envio_salvar_{pid}"):
             hora_str = hora_envio.strftime("%H:%M") if hora_envio else ""
             save_envio_maleta(pid, str(data_envio), hora_str)
-            # Após salvar envio, segue para o dialog de Google Agenda do acerto original
-            st.session_state["_gcal_dict"] = info.get("gcal")
+            gcal_envio = {
+                "nome":     f"Envio maleta · {nome}",
+                "data_str": data_envio.strftime("%d/%m/%Y"),
+                "hora_str": hora_str,
+                "link":     _gcal_url(
+                    f"Envio maleta · {nome}",
+                    data_envio, hora_str, forma,
+                    obs_envio, info.get("valor", 0),
+                ),
+            }
+            # Abre dialog com os dois links (envio + acerto)
+            st.session_state["_gcal_duplo"] = {
+                "acerto": info.get("gcal"),
+                "envio":  gcal_envio,
+            }
             st.session_state.pop("_envio_maleta", None)
             st.rerun()
 
     with col_c:
         if st.button("✖ Cancelar", use_container_width=True, key=f"dlg_envio_cancel_{pid}"):
-            # Pula agendamento do envio e vai direto para o Google Agenda do acerto
+            # Pula agendamento do envio — só mostra o Google Agenda do acerto
             st.session_state["_gcal_dict"] = info.get("gcal")
             st.session_state.pop("_envio_maleta", None)
             st.rerun()
@@ -355,6 +413,25 @@ def _grade_semana(df: pd.DataFrame, seg: date, hoje: date):
             st.markdown(f"{destaque}**{DIAS_PT[dia.weekday()]}**  \n{dia.strftime('%d/%m')}")
 
             df_dia = df[df["Data ref"] == dia] if not df.empty else pd.DataFrame()
+
+            # Cards de envio de maleta agendados para este dia
+            if not df.empty and "Data envio maleta" in df.columns:
+                df_envio_dia = df[df["Data envio maleta"] == dia]
+                for _, row_e in df_envio_dia.iterrows():
+                    h_env = row_e.get("Hora envio maleta", "") or ""
+                    hora_t = f" {h_env}" if h_env else ""
+                    st.markdown(
+                        f'<div style="background:#f3e5f5;border:2px solid #9c27b0;'
+                        f'border-radius:6px;padding:4px 7px;font-size:0.78em;'
+                        f'line-height:1.4;margin-bottom:4px">'
+                        f'<b>{_nome_curto(row_e["Nome"])}</b><br>'
+                        f'<span style="color:#9c27b0;font-weight:bold">'
+                        f'📦 Envio{hora_t}</span><br>'
+                        f'<span style="color:#444">{FORMAS.get(row_e["Forma"], "")} '
+                        f'{row_e["Forma"]}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
 
             if df_dia.empty:
                 st.markdown(
@@ -570,7 +647,14 @@ def render(filtro_supervisor: str = ""):
     elif "_envio_maleta" in st.session_state:
         _dialog_agendar_envio_maleta()
 
-    # Confirmação Google Agenda: usa pop() para não reabrir ao fechar por Esc
+    # Google Agenda duplo (acerto + envio da maleta)
+    elif "_gcal_duplo" in st.session_state or "_gcal_duplo_active" in st.session_state:
+        duplo = st.session_state.pop("_gcal_duplo", None)
+        if duplo:
+            st.session_state["_gcal_duplo_active"] = duplo
+        _dialog_gcal_duplo()
+
+    # Confirmação Google Agenda simples (Presencial / Motoboy)
     else:
         gcal = st.session_state.pop("_gcal_dict", None)
         if gcal:

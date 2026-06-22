@@ -5,8 +5,8 @@ from src.logic.revendedoras import parse_date, calcular_competencia
 # ── Definição dos níveis ──────────────────────────────────────────────────────
 
 NIVEIS_PECAS = [
-    ("Diamante", 76,  500),
-    ("Ouro",     55,  75),
+    ("Diamante", 80,  500),
+    ("Ouro",     55,  79),
     ("Pérola",   40,  54),
 ]
 

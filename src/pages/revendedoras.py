@@ -239,6 +239,11 @@ def _dialog_acompanhamento():
     with col_hist:
         historico = get_historico(nome)
         st.markdown("**📋 Histórico de acompanhamentos**")
+        _SEMANA_LABEL = {
+            "0-7": "0–7 dias", "8-15": "8–15 dias",
+            "16-20": "16–20 dias", "21-30": "21–30 dias",
+        }
+
         if not historico:
             st.caption("Nenhum acompanhamento registrado ainda.")
         else:
@@ -249,11 +254,13 @@ def _dialog_acompanhamento():
                     data_fmt = _dt.strptime(reg["data"], "%Y-%m-%d").strftime("%d/%m/%Y")
                 except Exception:
                     data_fmt = reg.get("data", "?")
+                semana_lbl = _SEMANA_LABEL.get(reg.get("semana_chave", ""), "")
+                semana_txt = f" · Semana: {semana_lbl}" if semana_lbl else ""
                 uid = reg.get("_id") or reg.get("_local_idx", i)
                 with scroll.container(border=True):
                     c_txt, c_del = st.columns([7, 1])
                     with c_txt:
-                        st.caption(f"🗓️ {data_fmt}")
+                        st.caption(f"🗓️ {data_fmt}{semana_txt}")
                         st.write(reg.get("descricao", ""))
                     with c_del:
                         if st.button("🗑️", key=f"del_acomp_{uid}", help="Remover este acompanhamento"):
@@ -270,7 +277,8 @@ def _dialog_acompanhamento():
             st.error("⚠️ Informe como foi feito o acompanhamento.")
         else:
             semanas = {key: r["Pré-baixa (R$)"] for key, r in zip(chaves, rows_pb)}
-            save_acompanhamento(nome, str(data_sel), descricao.strip(), semanas)
+            chave_aba = st.session_state.get("_acomp_chave", "")
+            save_acompanhamento(nome, str(data_sel), descricao.strip(), semanas, chave_aba)
             st.toast("✅ Acompanhamento registrado!")
             for _k in ("_acomp_nome", "_acomp_pedido", "_acomp_valor", "_acomp_prebaixa"):
                 st.session_state.pop(_k, None)
@@ -452,12 +460,16 @@ def _tab_periodo(todos_pedidos: list, hoje: date, is_admin: bool = True):
 
             df_show["🔔"] = df_show["Nome"].apply(_alerta_icons)
 
-            # ✅/❌ — acompanhamento nos últimos 7 dias
+            # ✅ — acompanhamento registrado para esta semana (últimos 7 dias + mesma aba)
             from datetime import datetime as _dt_ac
             _corte_ac = date.today() - timedelta(days=7)
 
-            def _tem_acomp_semana(nome_rev: str) -> bool:
+            def _tem_acomp_semana(nome_rev: str, chave_aba: str) -> bool:
                 for reg in _acomp_todos.get(nome_rev, []):
+                    semana_reg = reg.get("semana_chave", "")
+                    # Registro novo com semana específica: só conta se for a mesma aba
+                    if semana_reg and semana_reg != chave_aba:
+                        continue
                     try:
                         if _dt_ac.strptime(reg["data"], "%Y-%m-%d").date() >= _corte_ac:
                             return True
@@ -499,7 +511,7 @@ def _tab_periodo(todos_pedidos: list, hoje: date, is_admin: bool = True):
             for _i, (_, _row) in enumerate(df_show.iterrows()):
                 _nome  = _row.get("Nome", "")
                 _risco = _row.get("Risco", "")
-                _tem   = _tem_acomp_semana(_nome)
+                _tem   = _tem_acomp_semana(_nome, chave)
                 _nova  = _nome in novas
 
                 dcols = st.columns(_PC)
@@ -509,7 +521,8 @@ def _tab_periodo(todos_pedidos: list, hoje: date, is_admin: bool = True):
                     _btn_tp  = "secondary"     if _tem else "primary"
                     if st.button(_btn_lbl, key=f"acomp_{chave}_{_i}",
                                  use_container_width=True, type=_btn_tp):
-                        st.session_state["_acomp_nome"] = _nome
+                        st.session_state["_acomp_nome"]   = _nome
+                        st.session_state["_acomp_chave"]  = chave
                         _ped = _row.get("Pedido", "")
                         st.session_state["_acomp_pedido"] = (
                             str(_ped) if _ped and str(_ped) not in ("nan", "None", "") else ""

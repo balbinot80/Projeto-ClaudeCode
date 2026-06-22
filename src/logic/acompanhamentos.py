@@ -51,9 +51,10 @@ def _rows_para_dict(rows: list) -> dict:
         if nome not in dados:
             dados[nome] = []
         dados[nome].append({
-            "_id":      row.get("id"),   # ID do Supabase para exclusão
-            "data":     str(row.get("data", "")),
-            "descricao": row.get("descricao", ""),
+            "_id":          row.get("id"),
+            "data":         str(row.get("data", "")),
+            "descricao":    row.get("descricao", ""),
+            "semana_chave": row.get("semana_chave", ""),
             "prebaixa_semanas": {
                 "0-7":   float(row.get("prebaixa_0_7",   0) or 0),
                 "8-15":  float(row.get("prebaixa_8_15",  0) or 0),
@@ -104,7 +105,7 @@ def load_acompanhamentos() -> dict:
     return _load_local()
 
 
-def save_acompanhamento(nome: str, data_str: str, descricao: str, prebaixa_semanas: dict):
+def save_acompanhamento(nome: str, data_str: str, descricao: str, prebaixa_semanas: dict, semana_chave: str = ""):
     client = _get_client()
     if client is not None:
         try:
@@ -112,6 +113,7 @@ def save_acompanhamento(nome: str, data_str: str, descricao: str, prebaixa_seman
                 "nome":           nome,
                 "data":           data_str,
                 "descricao":      descricao,
+                "semana_chave":   semana_chave,
                 "prebaixa_0_7":   float(prebaixa_semanas.get("0-7",   0)),
                 "prebaixa_8_15":  float(prebaixa_semanas.get("8-15",  0)),
                 "prebaixa_16_20": float(prebaixa_semanas.get("16-20", 0)),

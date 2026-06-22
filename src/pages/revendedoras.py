@@ -960,43 +960,11 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
     # Carrega status de entrega dos prêmios para o mês
     entregas = load_entregas(mes_key)
 
-    # CSS para cards de premiação — aplica cor no wrapper E no div interno
+    # CSS para reduzir espaçamento entre o card HTML e o checkbox abaixo
     st.markdown("""
     <style>
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-ganhadora),
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-ganhadora) > div[data-testid="stVerticalBlock"] {
-        background-color: #fff8e1 !important;
-    }
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-ganhadora) {
-        border-color: #f9a825 !important; border-radius: 10px !important;
-    }
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-ganhadora-ok),
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-ganhadora-ok) > div[data-testid="stVerticalBlock"] {
-        background-color: #f0fdf4 !important;
-    }
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-ganhadora-ok) {
-        border-color: #16a34a !important; border-radius: 10px !important;
-    }
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-colar),
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-colar) > div[data-testid="stVerticalBlock"] {
-        background: linear-gradient(135deg,#f3e5f5,#e1bee7) !important;
-    }
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-colar) {
-        border-color: #9c27b0 !important; border-radius: 10px !important;
-    }
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-colar-ok),
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-colar-ok) > div[data-testid="stVerticalBlock"] {
-        background: linear-gradient(135deg,#f0fdf4,#dcfce7) !important;
-    }
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-colar-ok) {
-        border-color: #16a34a !important; border-radius: 10px !important;
-    }
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-colar-aberto),
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-colar-aberto) > div[data-testid="stVerticalBlock"] {
-        background-color: #e3f2fd !important;
-    }
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.mk-colar-aberto) {
-        border-color: #90caf9 !important; border-radius: 10px !important;
+    .card-premiacao + div[data-testid="stElementContainer"] {
+        margin-top: -8px !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -1040,24 +1008,28 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
             with cols[i % 4]:
                 entregue = entregas.get(str(r["id"]), False)
                 ck_key   = f"ckp_g_{mes_key}_{r['id']}"
-                marker   = "mk-ganhadora-ok" if entregue else "mk-ganhadora"
-                with st.container(border=True):
-                    st.markdown(
-                        f'<span class="{marker}" style="display:none"></span>'
-                        f'<div style="font-weight:700;font-size:0.95em">🥇 {r["Nome"]}</div>'
-                        f'<div style="color:#888;font-size:0.78em;margin-bottom:4px">{r["Supervisor"]}</div>'
-                        f'<div style="font-size:1em;font-weight:700">{_R(r["Total"])}</div>'
-                        f'<div style="color:#27ae60;font-size:0.82em;font-weight:700">'
-                        f'✅ {r["% da meta"]:.1f}% da meta</div>',
-                        unsafe_allow_html=True,
-                    )
-                    st.checkbox(
-                        "Marcar como entregue",
-                        value=entregue,
-                        key=ck_key,
-                        on_change=_on_entrega_change,
-                        args=(mes_key, str(r["id"]), r["Nome"], ck_key),
-                    )
+                borda    = "#16a34a" if entregue else "#f9a825"
+                fundo    = "#f0fdf4" if entregue else "#fff8e1"
+                st.markdown(
+                    f'<div class="card-premiacao" style="background:{fundo};border:2px solid {borda};'
+                    f'border-radius:10px 10px 0 0;padding:10px 12px 8px 12px;margin-bottom:0">'
+                    f'<div style="font-weight:700;font-size:0.95em">🥇 {r["Nome"]}</div>'
+                    f'<div style="color:#888;font-size:0.78em;margin-bottom:4px">{r["Supervisor"]}</div>'
+                    f'<div style="font-size:1em;font-weight:700">{_R(r["Total"])}</div>'
+                    f'<div style="color:#27ae60;font-size:0.82em;font-weight:700">'
+                    f'✅ {r["% da meta"]:.1f}% da meta</div>'
+                    f'</div>'
+                    f'<div style="background:{fundo};border:2px solid {borda};border-top:none;'
+                    f'border-radius:0 0 10px 10px;padding:2px 10px 6px 10px;margin-bottom:8px"></div>',
+                    unsafe_allow_html=True,
+                )
+                st.checkbox(
+                    "Marcar como entregue",
+                    value=entregue,
+                    key=ck_key,
+                    on_change=_on_entrega_change,
+                    args=(mes_key, str(r["id"]), r["Nome"], ck_key),
+                )
     else:
         st.info("Nenhuma revendedora atingiu a meta com pedidos já baixados neste mês.")
 
@@ -1127,25 +1099,41 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
                 ck_key     = f"ckp_c_{mes_key}_{r['id']}"
                 status_txt = "✅ Pedido finalizado — ganhou!" if confirmado else "📊 Pedido em aberto (pré-baixa)"
                 status_cor = "#7b1fa2" if confirmado else "#1976d2"
-                marker     = ("mk-colar-ok" if entregue else "mk-colar") if confirmado else "mk-colar-aberto"
-                with st.container(border=True):
-                    st.markdown(
-                        f'<span class="{marker}" style="display:none"></span>'
-                        f'<div style="font-weight:700;font-size:0.95em">💎 {r["Nome"]}</div>'
-                        f'<div style="color:#888;font-size:0.78em;margin-bottom:4px">{r["Supervisor"]}</div>'
-                        f'<div style="font-size:1em;font-weight:700">{_R(r["Valor 1º pedido"])}</div>'
-                        f'<div style="color:{status_cor};font-size:0.82em;font-weight:700">'
-                        f'{status_txt}</div>',
-                        unsafe_allow_html=True,
+                if entregue:
+                    borda = "#16a34a"
+                    fundo = "linear-gradient(135deg,#f0fdf4,#dcfce7)"
+                elif confirmado:
+                    borda = "#9c27b0"
+                    fundo = "linear-gradient(135deg,#f3e5f5,#e1bee7)"
+                else:
+                    borda = "#90caf9"
+                    fundo = "#e3f2fd"
+                rodape = (
+                    f'<div style="background:{fundo};border:2px solid {borda};border-top:none;'
+                    f'border-radius:0 0 10px 10px;padding:2px 10px 6px 10px;margin-bottom:8px"></div>'
+                ) if confirmado else ""
+                st.markdown(
+                    f'<div class="{"card-premiacao" if confirmado else ""}" '
+                    f'style="background:{fundo};border:2px solid {borda};'
+                    f'border-radius:{"10px 10px 0 0" if confirmado else "10px"};'
+                    f'padding:10px 12px 8px 12px;margin-bottom:0">'
+                    f'<div style="font-weight:700;font-size:0.95em">💎 {r["Nome"]}</div>'
+                    f'<div style="color:#888;font-size:0.78em;margin-bottom:4px">{r["Supervisor"]}</div>'
+                    f'<div style="font-size:1em;font-weight:700">{_R(r["Valor 1º pedido"])}</div>'
+                    f'<div style="color:{status_cor};font-size:0.82em;font-weight:700">'
+                    f'{status_txt}</div>'
+                    f'</div>'
+                    f'{rodape}',
+                    unsafe_allow_html=True,
+                )
+                if confirmado:
+                    st.checkbox(
+                        "Marcar como entregue",
+                        value=entregue,
+                        key=ck_key,
+                        on_change=_on_entrega_change,
+                        args=(mes_key, str(r["id"]), r["Nome"], ck_key),
                     )
-                    if confirmado:
-                        st.checkbox(
-                            "Marcar como entregue",
-                            value=entregue,
-                            key=ck_key,
-                            on_change=_on_entrega_change,
-                            args=(mes_key, str(r["id"]), r["Nome"], ck_key),
-                        )
     else:
         st.info("Nenhuma nova revendedora qualificou para o colar personalizado neste mês.")
 

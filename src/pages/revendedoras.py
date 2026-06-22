@@ -893,11 +893,22 @@ def _tab_niveis(todos_pedidos: list, mes: int, ano: int):
             if val == "Baixado": return "color: #64748b"
             return ""
 
-        styled = df_reb.style.format(fmt_cols)
+        def _estilo_equipe(val):
+            if val == "Ativa": return "color: #27ae60; font-weight: bold"
+            if val == "Saiu":  return "color: #e74c3c"
+            return ""
+
+        df_reb_show = df_reb.copy()
+        if not is_admin and "Supervisor" in df_reb_show.columns:
+            df_reb_show = df_reb_show.drop(columns=["Supervisor"])
+
+        styled = df_reb_show.style.format(fmt_cols)
         if proj_col:
             styled = styled.map(_estilo_proj, subset=proj_col)
-        if "Pedido" in df_reb.columns:
+        if "Pedido" in df_reb_show.columns:
             styled = styled.map(_estilo_pedido, subset=["Pedido"])
+        if "Equipe" in df_reb_show.columns:
+            styled = styled.map(_estilo_equipe, subset=["Equipe"])
 
         st.dataframe(styled, use_container_width=True, hide_index=True)
 
@@ -930,13 +941,24 @@ def _tab_niveis(todos_pedidos: list, mes: int, ano: int):
             if val == "Baixado": return "color: #64748b"
             return ""
 
+        def _estilo_eq_sub(val):
+            if val == "Ativa": return "color: #27ae60; font-weight: bold"
+            if val == "Saiu":  return "color: #e74c3c"
+            return ""
+
+        df_sub_show = df_sub.copy()
+        if not is_admin and "Supervisor" in df_sub_show.columns:
+            df_sub_show = df_sub_show.drop(columns=["Supervisor"])
+
         styled_sub = (
-            df_sub.style
+            df_sub_show.style
                 .map(_estilo_sit, subset=["Situação"])
                 .format({"Vendas mês": _R, "Meta subida": _R, "Falta": _R})
         )
-        if "Pedido" in df_sub.columns:
+        if "Pedido" in df_sub_show.columns:
             styled_sub = styled_sub.map(_estilo_ped_sub, subset=["Pedido"])
+        if "Equipe" in df_sub_show.columns:
+            styled_sub = styled_sub.map(_estilo_eq_sub, subset=["Equipe"])
 
         st.dataframe(styled_sub, use_container_width=True, hide_index=True)
 

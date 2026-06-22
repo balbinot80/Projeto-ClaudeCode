@@ -215,6 +215,13 @@ def alertas_subida(pedidos: list, mes: int, ano: int, pct: float = 0.75) -> pd.D
     if df_comp.empty:
         return pd.DataFrame()
 
+    # Revendedoras com pelo menos um pedido em aberto (ativa na equipe)
+    revs_ativas = {
+        p["fk_revendedor_id"]
+        for p in pedidos
+        if p.get("status") == "Aberto" and p.get("fk_revendedor_id")
+    }
+
     # Monta lookup nível por revendedora — Aberto tem prioridade sobre Baixado
     nivel_map: dict = {}
     for p in pedidos:
@@ -261,6 +268,7 @@ def alertas_subida(pedidos: list, mes: int, ano: int, pct: float = 0.75) -> pd.D
             situacao = "✅ Já atingiu a meta" if vendas >= limiar else "🔜 Próxima de subir"
             rows.append({
                 "Pedido":      info["status"],
+                "Equipe":      "Ativa" if rid in revs_ativas else "Saiu",
                 "Nome":        info["nome"],
                 "Supervisor":  info["supervisor"],
                 "Nível atual": nivel,
@@ -305,6 +313,13 @@ def alertas_rebaixamento(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
     df0, _ = calcular_competencia(pedidos, mes, ano)
     df1, _ = calcular_competencia(pedidos, m1, y1)
     df2, _ = calcular_competencia(pedidos, m2, y2)
+
+    # Revendedoras com pelo menos um pedido em aberto (ativa na equipe)
+    revs_ativas = {
+        p["fk_revendedor_id"]
+        for p in pedidos
+        if p.get("status") == "Aberto" and p.get("fk_revendedor_id")
+    }
 
     # Nível atual: Aberto tem prioridade; Baixado do mês como fallback
     nivel_map: dict = {}
@@ -379,6 +394,7 @@ def alertas_rebaixamento(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
 
         rows.append({
             "Pedido":                  info["status"],
+            "Equipe":                  "Ativa" if rid in revs_ativas else "Saiu",
             "Nome":                    info["nome"],
             "Supervisor":              info["supervisor"],
             "Nível atual":             nivel,

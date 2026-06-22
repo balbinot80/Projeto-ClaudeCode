@@ -910,7 +910,25 @@ def _tab_niveis(todos_pedidos: list, mes: int, ano: int, is_admin: bool = False)
         if "Equipe" in df_reb_show.columns:
             styled = styled.map(_estilo_equipe, subset=["Equipe"])
 
-        st.dataframe(styled, use_container_width=True, hide_index=True)
+        _CC = st.column_config
+        col_cfg_reb = {
+            "Pedido":          _CC.TextColumn("Pedido",        width="small"),
+            "Equipe":          _CC.TextColumn("Equipe",        width="small"),
+            "Nome":            _CC.TextColumn("Nome",          width="medium"),
+            "Supervisor":      _CC.TextColumn("Supervisora",   width="medium"),
+            "Nível atual":     _CC.TextColumn("Nível",         width="small"),
+            "Peças":           _CC.NumberColumn("Peças",       width="small"),
+            "Próx. maleta":    _CC.NumberColumn("Próx. maleta",width="small"),
+            "Mínimo do nível": _CC.TextColumn("Mínimo",        width="small"),
+            "Rebaixa para":    _CC.TextColumn("Rebaixa",       width="small"),
+        }
+        for c in df_reb_show.columns:
+            if c.startswith("Vendas"):
+                col_cfg_reb[c] = _CC.TextColumn(c, width="small")
+            elif c.startswith("Projeção"):
+                col_cfg_reb[c] = _CC.TextColumn(c, width="medium")
+
+        st.dataframe(styled, use_container_width=True, hide_index=True, column_config=col_cfg_reb)
 
     st.divider()
 
@@ -960,7 +978,23 @@ def _tab_niveis(todos_pedidos: list, mes: int, ano: int, is_admin: bool = False)
         if "Equipe" in df_sub_show.columns:
             styled_sub = styled_sub.map(_estilo_eq_sub, subset=["Equipe"])
 
-        st.dataframe(styled_sub, use_container_width=True, hide_index=True)
+        _CC = st.column_config
+        col_cfg_sub = {
+            "Pedido":       _CC.TextColumn("Pedido",        width="small"),
+            "Equipe":       _CC.TextColumn("Equipe",        width="small"),
+            "Nome":         _CC.TextColumn("Nome",          width="medium"),
+            "Supervisor":   _CC.TextColumn("Supervisora",   width="medium"),
+            "Nível atual":  _CC.TextColumn("Nível",         width="small"),
+            "Peças":        _CC.NumberColumn("Peças",       width="small"),
+            "Próx. maleta": _CC.NumberColumn("Próx. maleta",width="small"),
+            "Próx. nível":  _CC.TextColumn("Próx. nível",   width="small"),
+            "Vendas mês":   _CC.TextColumn("Vendas mês",    width="small"),
+            "Meta subida":  _CC.TextColumn("Meta subida",   width="small"),
+            "Falta":        _CC.TextColumn("Falta",         width="small"),
+            "Situação":     _CC.TextColumn("Situação",      width="medium"),
+        }
+
+        st.dataframe(styled_sub, use_container_width=True, hide_index=True, column_config=col_cfg_sub)
 
 
 # ── Tab 6: Premiações ─────────────────────────────────────────────────────────

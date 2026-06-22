@@ -37,14 +37,21 @@ def _get_client():
     return None
 
 
-def _fetch_supabase() -> dict:
+_SUPABASE_OK = None  # None = não testado, True = ok, False = erro
+
+
+def _fetch_supabase() -> tuple[dict, bool]:
+    """Retorna (dados, supabase_ok). supabase_ok=False indica erro de conexão."""
+    global _SUPABASE_OK
     client = _get_client()
     if client is None:
-        return {}
+        _SUPABASE_OK = False
+        return {}, False
     try:
         res = client.table("agendamentos").select(
             "pedido_id,data_agendada,forma,obs,hora_agendada"
         ).execute()
+        _SUPABASE_OK = True
         return {
             row["pedido_id"]: {
                 "data_agendada": row.get("data_agendada", ""),
@@ -53,9 +60,18 @@ def _fetch_supabase() -> dict:
                 "hora_agendada": row.get("hora_agendada", ""),
             }
             for row in (res.data or [])
-        }
-    except Exception:
-        return {}
+        }, True
+    except Exception as e:
+        _SUPABASE_OK = False
+        try:
+            import streamlit as st
+            st.error(
+                f"⚠️ Erro ao conectar ao Supabase (agendamentos): {e}. "
+                "Os dados exibidos podem estar desatualizados. Verifique o RLS da tabela."
+            )
+        except Exception:
+            pass
+        return {}, False
 
 
 # ── Persistência ──────────────────────────────────────────────────────────────
@@ -95,13 +111,16 @@ def _migrar_local_para_supabase(client, local: dict):
 def load_agendamentos() -> dict:
     client = _get_client()
     if client is not None:
-        dados = _fetch_supabase()
+        dados, supabase_ok = _fetch_supabase()
+        if not supabase_ok:
+            # Erro de conexão — usa local como fallback temporário, mas não migra
+            return _load_local()
         if not dados:
-            # Supabase vazio — migra dados locais se existirem
+            # Supabase acessível e tabela genuinamente vazia — migra local se houver
             local = _load_local()
             if local:
                 _migrar_local_para_supabase(client, local)
-            return local or {}
+                return local
         return dados
     return _load_local()
 
@@ -128,12 +147,16 @@ def save_agendamento(
             ).execute()
             return
         except Exception as e:
-            try:
-                import streamlit as st
-                st.warning(f"⚠️ Erro ao salvar agendamento no Supabase: {e}. Salvando localmente.")
-            except Exception:
-                pass
-    # Fallback local
+            import streamlit as st
+            st.error(
+                f"❌ Falha ao salvar agendamento no Supabase: {e}. "
+                "Verifique se o RLS da tabela 'agendamentos' está desativado. "
+                "O agendamento NÃO foi salvo."
+            )
+            return  # não cai no fallback local silencioso
+    # Sem Supabase configurado: usa local
+    import streamlit as st
+    st.warning("⚠️ Supabase não configurado. Salvando localmente (dados não persistem entre deploys).")
     ag = _load_local()
     ag[str(pedido_id)] = {
         "data_agendada": data_agendada,

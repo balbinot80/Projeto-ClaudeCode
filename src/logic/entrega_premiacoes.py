@@ -31,7 +31,12 @@ def load_entregas(mes_key: str) -> dict:
             .execute()
         )
         return {str(row["rev_id"]): bool(row["entregue"]) for row in (res.data or [])}
-    except Exception:
+    except Exception as e:
+        import streamlit as st
+        st.error(
+            f"⚠️ Erro ao carregar entregas de prêmios do Supabase: {e}. "
+            "Verifique se o RLS da tabela 'entrega_premiacoes' está desativado."
+        )
         return {}
 
 
@@ -50,5 +55,9 @@ def save_entrega(mes_key: str, rev_id: str, nome: str, entregue: bool) -> None:
             },
             on_conflict="mes_key,rev_id",
         ).execute()
-    except Exception:
-        pass
+    except Exception as e:
+        import streamlit as st
+        st.error(
+            f"❌ Falha ao salvar entrega de prêmio no Supabase: {e}. "
+            "Verifique se o RLS da tabela 'entrega_premiacoes' está desativado."
+        )

@@ -30,15 +30,16 @@ def _get_client():
 # ── Supabase ──────────────────────────────────────────────────────────────────
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _fetch_supabase() -> list:
+def _fetch_supabase() -> tuple:
+    """Retorna (rows: list, supabase_ok: bool, erro: str). supabase_ok=False indica erro."""
     client = _get_client()
     if client is None:
-        return []
+        return [], False, ""
     try:
         res = client.table("acompanhamentos").select("*").order("criado_em").execute()
-        return res.data or []
-    except Exception:
-        return []
+        return res.data or [], True, ""
+    except Exception as e:
+        return [], False, str(e)
 
 
 def _rows_para_dict(rows: list) -> dict:
@@ -93,7 +94,13 @@ def _save_local(nome: str, data_str: str, descricao: str, prebaixa_semanas: dict
 
 def load_acompanhamentos() -> dict:
     if _get_client() is not None:
-        return _rows_para_dict(_fetch_supabase())
+        rows, ok, erro = _fetch_supabase()
+        if not ok and erro:
+            st.error(
+                f"⚠️ Erro ao carregar acompanhamentos do Supabase: {erro}. "
+                "Verifique se o RLS da tabela 'acompanhamentos' está desativado."
+            )
+        return _rows_para_dict(rows)
     return _load_local()
 
 
@@ -113,7 +120,14 @@ def save_acompanhamento(nome: str, data_str: str, descricao: str, prebaixa_seman
             _fetch_supabase.clear()
             return
         except Exception as e:
-            st.warning(f"⚠️ Erro ao salvar no Supabase: {e}. Salvando localmente.")
+            st.error(
+                f"❌ Falha ao salvar acompanhamento no Supabase: {e}. "
+                "Verifique se o RLS da tabela 'acompanhamentos' está desativado. "
+                "O registro NÃO foi salvo."
+            )
+            return  # não cai no fallback local silencioso
+    # Sem Supabase configurado: usa local (apenas desenvolvimento)
+    st.warning("⚠️ Supabase não configurado. Salvando localmente (dados não persistem entre deploys).")
     _save_local(nome, data_str, descricao, prebaixa_semanas)
 
 
@@ -149,7 +163,8 @@ def get_ultimos_valores(nome: str) -> dict:
 def get_historico(nome: str) -> list:
     client = _get_client()
     if client is not None:
-        return _rows_para_dict(_fetch_supabase()).get(nome, [])
-    # Local: adiciona índice para exclusão
+        rows, ok, _ = _fetch_supabase()
+        return _rows_para_dict(rows).get(nome, [])
+    # Sem Supabase configurado: usa local com índice para exclusão
     dados = _load_local()
     return [{"_local_idx": i, **r} for i, r in enumerate(dados.get(nome, []))]

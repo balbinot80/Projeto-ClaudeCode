@@ -49,8 +49,13 @@ def load_premiacoes() -> dict:
                 row["mes_key"]: {"meta": float(row["meta"]), "premio": row["premio"]}
                 for row in (res.data or [])
             }
-        except Exception:
-            pass
+        except Exception as e:
+            import streamlit as st
+            st.error(
+                f"⚠️ Erro ao carregar premiações do Supabase: {e}. "
+                "Verifique se o RLS da tabela 'premiacoes' está desativado."
+            )
+            return {}
     return _load_local()
 
 
@@ -64,12 +69,16 @@ def save_premiacao(mes_key: str, meta: float, premio: str):
             ).execute()
             return
         except Exception as e:
-            try:
-                import streamlit as st
-                st.warning(f"⚠️ Erro ao salvar premiação no Supabase: {e}. Salvando localmente.")
-            except Exception:
-                pass
-    # Fallback: salva no JSON local
+            import streamlit as st
+            st.error(
+                f"❌ Falha ao salvar premiação no Supabase: {e}. "
+                "Verifique se o RLS da tabela 'premiacoes' está desativado. "
+                "A configuração NÃO foi salva."
+            )
+            return  # não cai no fallback local silencioso
+    # Sem Supabase configurado: usa local (apenas desenvolvimento)
+    import streamlit as st
+    st.warning("⚠️ Supabase não configurado. Salvando localmente (dados não persistem entre deploys).")
     p = _load_local()
     p[mes_key] = {"meta": meta, "premio": premio}
     os.makedirs(os.path.dirname(_FILE), exist_ok=True)

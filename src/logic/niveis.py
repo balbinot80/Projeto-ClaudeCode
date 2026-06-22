@@ -76,6 +76,24 @@ def _qtd_original(p: dict) -> int:
     return int(float(p.get("quantidade") or 0))
 
 
+def _pecas_proxima_maleta(nivel: str, total_vendido: float) -> int | None:
+    """
+    Retorna a quantidade de peças da próxima maleta com base no nível
+    e no total vendido no mês, conforme tabela de montagem de maletas.
+    """
+    v = total_vendido or 0
+    if nivel == "Pérola":
+        return 45 if v > 500 else 40
+    if nivel == "Ouro":
+        if v <= 1500: return 55
+        if v <= 1800: return 60
+        if v <= 2000: return 65
+        return 75
+    if nivel == "Diamante":
+        return 100 if v > 2500 else 90
+    return None
+
+
 def _mes_n_atras(mes: int, ano: int, n: int):
     for _ in range(n):
         mes -= 1
@@ -272,9 +290,10 @@ def alertas_subida(pedidos: list, mes: int, ano: int, pct: float = 0.75) -> pd.D
                 "Equipe":      "Ativa" if rid in revs_ativas else "Saiu",
                 "Nome":        info["nome"],
                 "Supervisor":  info["supervisor"],
-                "Nível atual": nivel,
-                "Peças":       info["pecas"],
-                "Próx. nível": proximo,
+                "Nível atual":  nivel,
+                "Peças":        info["pecas"],
+                "Próx. maleta": _pecas_proxima_maleta(nivel, vendas),
+                "Próx. nível":  proximo,
                 "Vendas mês":  round(vendas, 2),
                 "Meta subida": limiar,
                 "Falta":       round(max(limiar - vendas, 0), 2),
@@ -403,6 +422,7 @@ def alertas_rebaixamento(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
             "Supervisor":              info["supervisor"],
             "Nível atual":             nivel,
             "Peças":                   info["pecas"],
+            "Próx. maleta":            _pecas_proxima_maleta(nivel, v0 or 0),
             f"Vendas {m2:02d}/{y2}":   _fmt_v(v2),
             f"Vendas {m1:02d}/{y1}":   _fmt_v(v1),
             f"Vendas {mes:02d}/{ano}":  _fmt_v(v0),

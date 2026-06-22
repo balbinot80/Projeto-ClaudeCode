@@ -215,7 +215,7 @@ def alertas_subida(pedidos: list, mes: int, ano: int, pct: float = 0.75) -> pd.D
     if df_comp.empty:
         return pd.DataFrame()
 
-    # Monta lookup nível por revendedora (open ou baixado do mês)
+    # Monta lookup nível por revendedora — Aberto tem prioridade sobre Baixado
     nivel_map: dict = {}
     for p in pedidos:
         rid    = p.get("fk_revendedor_id")
@@ -228,16 +228,20 @@ def alertas_subida(pedidos: list, mes: int, ano: int, pct: float = 0.75) -> pd.D
         if not (d and d.month == mes and d.year == ano):
             continue
 
-        if rid not in nivel_map:
-            comprador  = p.get("comprador") or {}
-            nome       = comprador.get("nome") or f"Rev {rid}"
-            supervisor = p.get("supervisor_nome") or "Sem supervisora"
-            qtd        = _qtd_original(p)
-            nivel_map[rid] = {
-                "nivel":      nivel_por_pecas(qtd),
-                "nome":       nome,
-                "supervisor": supervisor,
-            }
+        # Aberto sobrepõe Baixado se já houver entrada
+        if rid in nivel_map and nivel_map[rid]["status"] == "Aberto":
+            continue
+
+        comprador  = p.get("comprador") or {}
+        nome       = comprador.get("nome") or f"Rev {rid}"
+        supervisor = p.get("supervisor_nome") or "Sem supervisora"
+        qtd        = _qtd_original(p)
+        nivel_map[rid] = {
+            "nivel":      nivel_por_pecas(qtd),
+            "nome":       nome,
+            "supervisor": supervisor,
+            "status":     status,
+        }
 
     rows = []
     for _, row in df_comp.iterrows():
@@ -256,6 +260,7 @@ def alertas_subida(pedidos: list, mes: int, ano: int, pct: float = 0.75) -> pd.D
         if vendas >= limiar * pct:
             situacao = "✅ Já atingiu a meta" if vendas >= limiar else "🔜 Próxima de subir"
             rows.append({
+                "Pedido":      info["status"],
                 "Nome":        info["nome"],
                 "Supervisor":  info["supervisor"],
                 "Nível atual": nivel,
@@ -270,10 +275,11 @@ def alertas_subida(pedidos: list, mes: int, ano: int, pct: float = 0.75) -> pd.D
         return pd.DataFrame()
 
     df_out = pd.DataFrame(rows)
-    df_out["_ord"] = df_out["Situação"].map({"✅ Já atingiu a meta": 0, "🔜 Próxima de subir": 1})
+    df_out["_ord_s"] = df_out["Situação"].map({"✅ Já atingiu a meta": 0, "🔜 Próxima de subir": 1})
+    df_out["_ord_p"] = df_out["Pedido"].map({"Aberto": 0, "Baixado": 1})
     return (
-        df_out.sort_values(["_ord", "Vendas mês"], ascending=[True, False])
-        .drop(columns="_ord")
+        df_out.sort_values(["_ord_p", "_ord_s", "Vendas mês"], ascending=[True, True, False])
+        .drop(columns=["_ord_s", "_ord_p"])
         .reset_index(drop=True)
     )
 
@@ -300,7 +306,7 @@ def alertas_rebaixamento(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
     df1, _ = calcular_competencia(pedidos, m1, y1)
     df2, _ = calcular_competencia(pedidos, m2, y2)
 
-    # Nível atual: usa pedidos abertos (mais recentes) ou baixados do mês como fallback
+    # Nível atual: Aberto tem prioridade; Baixado do mês como fallback
     nivel_map: dict = {}
     for p in pedidos:
         rid = p.get("fk_revendedor_id")
@@ -315,6 +321,7 @@ def alertas_rebaixamento(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
                     "nivel":      nivel_por_pecas(qtd),
                     "nome":       comprador.get("nome") or f"Rev {rid}",
                     "supervisor": p.get("supervisor_nome") or "Sem supervisora",
+                    "status":     "Aberto",
                 }
 
     # Fallback: baixados do mês atual
@@ -330,6 +337,7 @@ def alertas_rebaixamento(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
                 "nivel":      nivel_por_pecas(qtd),
                 "nome":       comprador.get("nome") or f"Rev {rid}",
                 "supervisor": p.get("supervisor_nome") or "Sem supervisora",
+                "status":     "Baixado",
             }
 
     def _total(df, rid):
@@ -370,6 +378,7 @@ def alertas_rebaixamento(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
             return round(v, 2) if v is not None else "—"
 
         rows.append({
+            "Pedido":                  info["status"],
             "Nome":                    info["nome"],
             "Supervisor":              info["supervisor"],
             "Nível atual":             nivel,
@@ -385,15 +394,16 @@ def alertas_rebaixamento(pedidos: list, mes: int, ano: int) -> pd.DataFrame:
         return pd.DataFrame()
 
     _ord_proj = {
-        "🔴 Risco de rebaixamento":    0,
+        "🔴 Risco de rebaixamento":        0,
         "🟠 Atenção — tendência negativa": 1,
-        "🟡 Monitorar":                2,
+        "🟡 Monitorar":                    2,
     }
     df_out = pd.DataFrame(rows)
     proj_col = [c for c in df_out.columns if c.startswith("Projeção")][0]
-    df_out["_ord"] = df_out[proj_col].map(_ord_proj).fillna(3)
+    df_out["_ord_proj"] = df_out[proj_col].map(_ord_proj).fillna(3)
+    df_out["_ord_ped"]  = df_out["Pedido"].map({"Aberto": 0, "Baixado": 1})
     return (
-        df_out.sort_values("_ord")
-        .drop(columns="_ord")
+        df_out.sort_values(["_ord_ped", "_ord_proj"])
+        .drop(columns=["_ord_proj", "_ord_ped"])
         .reset_index(drop=True)
     )

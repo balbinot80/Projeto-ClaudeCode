@@ -888,9 +888,16 @@ def _tab_niveis(todos_pedidos: list, mes: int, ano: int):
         for c in cols_vendas:
             fmt_cols[c] = lambda v: _R(v) if isinstance(v, (int, float)) else str(v)
 
+        def _estilo_pedido(val):
+            if val == "Aberto":  return "color: #1976d2; font-weight: bold"
+            if val == "Baixado": return "color: #64748b"
+            return ""
+
         styled = df_reb.style.format(fmt_cols)
         if proj_col:
             styled = styled.map(_estilo_proj, subset=proj_col)
+        if "Pedido" in df_reb.columns:
+            styled = styled.map(_estilo_pedido, subset=["Pedido"])
 
         st.dataframe(styled, use_container_width=True, hide_index=True)
 
@@ -918,12 +925,20 @@ def _tab_niveis(todos_pedidos: list, mes: int, ano: int):
             if "Próxima"    in str(val): return "color: #e67e22; font-weight: bold"
             return ""
 
-        st.dataframe(
+        def _estilo_ped_sub(val):
+            if val == "Aberto":  return "color: #1976d2; font-weight: bold"
+            if val == "Baixado": return "color: #64748b"
+            return ""
+
+        styled_sub = (
             df_sub.style
                 .map(_estilo_sit, subset=["Situação"])
-                .format({"Vendas mês": _R, "Meta subida": _R, "Falta": _R}),
-            use_container_width=True, hide_index=True,
+                .format({"Vendas mês": _R, "Meta subida": _R, "Falta": _R})
         )
+        if "Pedido" in df_sub.columns:
+            styled_sub = styled_sub.map(_estilo_ped_sub, subset=["Pedido"])
+
+        st.dataframe(styled_sub, use_container_width=True, hide_index=True)
 
 
 # ── Tab 6: Premiações ─────────────────────────────────────────────────────────

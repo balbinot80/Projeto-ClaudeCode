@@ -1170,7 +1170,7 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
                 )
                 if confirmado:
                     st.checkbox(
-                        "Marcar como entregue",
+                        "Marcar como solicitado",
                         value=entregue,
                         key=ck_key,
                         on_change=_on_entrega_change,

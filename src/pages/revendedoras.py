@@ -778,10 +778,10 @@ def _tab_gerencial(df_res: pd.DataFrame, todos_pedidos: list, hoje: date):
 
 # ── Tab 5: Níveis ─────────────────────────────────────────────────────────────
 
-def _tab_niveis(todos_pedidos: list, mes: int, ano: int):
+def _tab_niveis(todos_pedidos: list, mes: int, ano: int, is_admin: bool = False):
     st.subheader(f"Classificação por nível — {mes:02d}/{ano}")
     st.caption(
-        "**Pérola**: 40–54 peças · **Ouro**: 55–75 peças · **Diamante**: 76–500 peças. "
+        "**Pérola**: 40–54 peças · **Ouro**: 55–79 peças · **Diamante**: 80–500 peças. "
         "Pedidos **fechados** têm resultado definitivo; pedidos **em aberto** mostram o parcial (pré-baixa)."
     )
 
@@ -1476,7 +1476,7 @@ def render(filtro_supervisor: str = ""):
         _tab_gerencial(df_res, todos_pedidos, hoje)
 
     with tab5:
-        _tab_niveis(todos_pedidos, mes_num, ano_num)
+        _tab_niveis(todos_pedidos, mes_num, ano_num, is_admin=_is_admin)
 
     with tab6:
         _tab_premiacoes(todos_pedidos, mes_num, ano_num, mes_sel)

@@ -50,7 +50,7 @@ def _estilo_total(val):
 
 # ── Tab 1: Competência ────────────────────────────────────────────────────────
 
-def _tab_competencia(df_res: pd.DataFrame, mes_label: str):
+def _tab_competencia(df_res: pd.DataFrame, mes_label: str, df_prom: pd.DataFrame = None, is_admin: bool = False):
     st.subheader(f"Vendas por revendedora — {mes_label}")
     st.caption(
         "**Baixados no mês** = valor_total dos pedidos com data de baixa no mês. "
@@ -113,6 +113,24 @@ def _tab_competencia(df_res: pd.DataFrame, mes_label: str):
     # Export
     csv = df_res.drop(columns=["fk_revendedor_id"]).to_csv(index=False).encode("utf-8")
     st.download_button("Exportar CSV", csv, f"competencia_{mes_label.replace('/', '-')}.csv", "text/csv")
+
+    # ── Tabela de promissórias ────────────────────────────────────────────────
+    if df_prom is not None and not df_prom.empty:
+        st.divider()
+        st.subheader(f"📄 Inadimplentes — Promissórias")
+        df_prom_show = df_prom.sort_values("Valor", ascending=False).reset_index(drop=True)
+        if not is_admin:
+            df_prom_show = df_prom_show.drop(columns=["Supervisora"], errors="ignore")
+        st.dataframe(
+            df_prom_show.style.format({"Valor": _R}),
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Nome":        st.column_config.TextColumn("Revendedora",       width="medium"),
+                "Supervisora": st.column_config.TextColumn("Supervisora",        width="medium"),
+                "Valor":       st.column_config.TextColumn("Valor Promissória",  width="medium"),
+            },
+        )
 
 
 # ── Tab 2: Alertas ────────────────────────────────────────────────────────────
@@ -1494,12 +1512,14 @@ def render(filtro_supervisor: str = ""):
     n_abaixo    = int(((df_res["Total"] > 0) & (df_res["Total"] < MINIMO_REV)).sum()) if not df_res.empty else 0
     n_sem_res   = int((df_res["Total"] == 0).sum()) if not df_res.empty else 0
 
-    ticket_medio = total_mes / n_rev if n_rev > 0 else 0
+    total_liquido = total_mes - total_promissoria
+    ticket_medio  = total_liquido / n_rev if n_rev > 0 else 0
 
     # Linha 1 — valores financeiros (colunas largas para não truncar)
     c1, c2, c3, c4, c5 = st.columns([1, 2, 2, 2, 2])
     c1.metric("Revendedoras", n_rev)
-    c2.metric("Total vendido", _R(total_mes))
+    c2.metric("Total vendido", _R(total_liquido),
+              help=f"Baixados ({_R(total_bx)}) + Pré-baixa ({_R(total_pb)}) − Promissórias ({_R(total_promissoria)})")
     c3.metric("↳ Baixados", _R(total_bx))
     c4.metric("↳ Pré-baixa", _R(total_pb))
     c5.metric("🎯 Ticket médio", _R(ticket_medio))
@@ -1509,31 +1529,9 @@ def render(filtro_supervisor: str = ""):
     c6.metric("🟡 Abaixo do mínimo", n_abaixo)
     c7.metric("🔴 Sem vendas", n_zero + n_sem_res,
               help="Pedidos abertos com R$0 + revendedoras com total = R$0")
-    c8.metric("📄 Inadimplentes", n_inadimplentes,
-              help=f"Revendedoras com pagamento em Promissória — Total: {_R(total_promissoria)}")
+    c8.metric("📄 Inadimplentes", _R(total_promissoria),
+              help=f"{n_inadimplentes} revendedora(s) com pagamento em Promissória")
 
-    # ── Tabela de promissórias ────────────────────────────────────────────────
-    if not df_prom.empty:
-        st.divider()
-        with st.expander(f"📄 Promissórias em aberto — {n_inadimplentes} revendedora(s) · {_R(total_promissoria)}", expanded=True):
-            df_prom_show = (
-                df_prom
-                .sort_values("Valor", ascending=False)
-                .reset_index(drop=True)
-            )
-            if not _is_admin:
-                df_prom_show = df_prom_show.drop(columns=["Supervisora"], errors="ignore")
-            st.dataframe(
-                df_prom_show.style.format({"Valor": _R}),
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Nome":       st.column_config.TextColumn("Revendedora", width="medium"),
-                    "Supervisora":st.column_config.TextColumn("Supervisora", width="medium"),
-                    "Valor":      st.column_config.TextColumn("Valor Promissória", width="medium"),
-                },
-            )
-        st.divider()
 
     # ── Tabs ──────────────────────────────────────────────────────────────────
     _tab_labels = [
@@ -1551,7 +1549,7 @@ def render(filtro_supervisor: str = ""):
     tab1, tab2, tab3, tab4, tab5, tab6 = _tabs[:6]
 
     with tab1:
-        _tab_competencia(df_res, mes_sel)
+        _tab_competencia(df_res, mes_sel, df_prom=df_prom, is_admin=_is_admin)
 
     with tab2:
         _tab_alertas(df_zero, df_res)

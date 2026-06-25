@@ -1457,6 +1457,34 @@ def render(filtro_supervisor: str = ""):
     df_res, df_det = calcular_competencia(todos_pedidos, mes_num, ano_num)
     df_zero = pedidos_abertos_sem_prebaixa(todos_pedidos, mes_num, ano_num)
 
+    # ── Promissórias do mês ───────────────────────────────────────────────────
+    from src.logic.revendedoras import parse_date as _parse_date
+    _prom_map: dict = {}  # {rid: {nome, supervisor, valor}}
+    for _p in todos_pedidos:
+        if _p.get("status") != "Baixado":
+            continue
+        _fp = _p.get("forma_pagamento") or {}
+        if str(_fp.get("nome", "")).strip().lower() != "promissória":
+            continue
+        _d = _parse_date(_p.get("data_baixa"))
+        if not (_d and _d.month == mes_num and _d.year == ano_num):
+            continue
+        _rid = _p.get("fk_revendedor_id")
+        if not _rid:
+            continue
+        _comp = _p.get("comprador") or {}
+        if _rid not in _prom_map:
+            _prom_map[_rid] = {
+                "Nome":       _comp.get("nome") or f"Rev {_rid}",
+                "Supervisora": _p.get("supervisor_nome") or "—",
+                "Valor":      0.0,
+            }
+        _prom_map[_rid]["Valor"] += float(_fp.get("valor_final") or 0)
+
+    df_prom = pd.DataFrame(list(_prom_map.values())) if _prom_map else pd.DataFrame()
+    n_inadimplentes   = len(_prom_map)
+    total_promissoria = sum(v["Valor"] for v in _prom_map.values())
+
     # ── Métricas globais ──────────────────────────────────────────────────────
     total_mes   = df_res["Total"].sum()    if not df_res.empty else 0
     total_pb    = df_res["Pré-baixa"].sum() if not df_res.empty else 0
@@ -1476,11 +1504,36 @@ def render(filtro_supervisor: str = ""):
     c4.metric("↳ Pré-baixa", _R(total_pb))
     c5.metric("🎯 Ticket médio", _R(ticket_medio))
 
-    # Linha 2 — alertas de risco
-    c6, c7, _esp = st.columns([2, 2, 5])
+    # Linha 2 — alertas de risco + inadimplentes
+    c6, c7, c8, _esp = st.columns([2, 2, 2, 3])
     c6.metric("🟡 Abaixo do mínimo", n_abaixo)
     c7.metric("🔴 Sem vendas", n_zero + n_sem_res,
               help="Pedidos abertos com R$0 + revendedoras com total = R$0")
+    c8.metric("📄 Inadimplentes", n_inadimplentes,
+              help=f"Revendedoras com pagamento em Promissória — Total: {_R(total_promissoria)}")
+
+    # ── Tabela de promissórias ────────────────────────────────────────────────
+    if not df_prom.empty:
+        st.divider()
+        with st.expander(f"📄 Promissórias em aberto — {n_inadimplentes} revendedora(s) · {_R(total_promissoria)}", expanded=True):
+            df_prom_show = (
+                df_prom
+                .sort_values("Valor", ascending=False)
+                .reset_index(drop=True)
+            )
+            if not _is_admin:
+                df_prom_show = df_prom_show.drop(columns=["Supervisora"], errors="ignore")
+            st.dataframe(
+                df_prom_show.style.format({"Valor": _R}),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Nome":       st.column_config.TextColumn("Revendedora", width="medium"),
+                    "Supervisora":st.column_config.TextColumn("Supervisora", width="medium"),
+                    "Valor":      st.column_config.TextColumn("Valor Promissória", width="medium"),
+                },
+            )
+        st.divider()
 
     # ── Tabs ──────────────────────────────────────────────────────────────────
     _tab_labels = [

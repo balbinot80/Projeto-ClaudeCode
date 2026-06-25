@@ -1,0 +1,48 @@
+name: Deploy automático para produção
+
+on:
+  # 08:00, 12:00 e 19:00 horário de Brasília (UTC-3)
+  schedule:
+    - cron: '0 11 * * *'   # 08:00 BRT
+    - cron: '0 15 * * *'   # 12:00 BRT
+    - cron: '0 22 * * *'   # 19:00 BRT
+  # Permite rodar manualmente pelo GitHub → Actions → "Run workflow"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    name: Merge dev → main
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repositório
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configura identidade git
+        run: |
+          git config user.name  "Auto Deploy"
+          git config user.email "action@github.com"
+
+      - name: Verifica se há alterações em dev
+        id: diff
+        run: |
+          CHANGES=$(git log origin/main..origin/dev --oneline | wc -l)
+          echo "changes=$CHANGES" >> $GITHUB_OUTPUT
+          echo "Commits novos em dev: $CHANGES"
+
+      - name: Merge dev → main
+        if: steps.diff.outputs.changes > 0
+        run: |
+          git checkout main
+          git merge origin/dev --no-ff -m "Auto-deploy: $(TZ='America/Sao_Paulo' date '+%Y-%m-%d %H:%M:%S') BRT"
+          git push origin main
+
+      - name: Sem alterações
+        if: steps.diff.outputs.changes == 0
+        run: echo "Nenhuma alteração em dev desde o último deploy. Nada a fazer."

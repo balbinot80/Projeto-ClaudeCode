@@ -623,12 +623,15 @@ def render(filtro_supervisor: str = ""):
     else:
         st.header("📅 Controle de Acertos")
 
-    with st.spinner("Carregando pedidos..."):
-        try:
-            todos_bruto = _get_lista_pedidos()
-        except Exception as e:
-            st.error(f"Erro ao carregar dados: {e}")
-            return
+    _status = st.empty()
+    _status.info("⏳ Carregando dados... Isso pode levar alguns segundos na primeira vez.")
+    try:
+        todos_bruto = _get_lista_pedidos()
+        _status.empty()
+    except Exception as e:
+        _status.empty()
+        st.error(f"Erro ao carregar dados: {e}")
+        return
 
     todos = (
         [p for p in todos_bruto if (p.get("supervisor_nome") or "") == filtro_supervisor]

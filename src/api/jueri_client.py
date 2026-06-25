@@ -20,14 +20,23 @@ BASE_URL = _get_secret("JUERI_BASE_URL", "https://aureumjoias.jueri.com.br/sis/a
 TOKEN = _get_secret("JUERI_TOKEN", "")
 
 
+@st.cache_resource
+def _get_session() -> requests.Session:
+    """Sessão HTTP reutilizada entre requisições (evita custo de handshake a cada chamada)."""
+    s = requests.Session()
+    s.headers.update({"Authorization": f"Bearer {TOKEN}", "Accept": "application/json"})
+    return s
+
+
 def _headers():
     return {"Authorization": f"Bearer {TOKEN}", "Accept": "application/json"}
 
 
 def _req(endpoint_ou_url: str, params: dict = None) -> dict:
     url = endpoint_ou_url if endpoint_ou_url.startswith("http") else f"{BASE_URL}/{endpoint_ou_url}"
+    session = _get_session()
     for tentativa in range(4):
-        resp = requests.get(url, headers=_headers(), params=params or {}, timeout=30)
+        resp = session.get(url, params=params or {}, timeout=30)
         if resp.status_code == 429:
             time.sleep(10 * (tentativa + 1))
             continue
@@ -38,7 +47,7 @@ def _req(endpoint_ou_url: str, params: dict = None) -> dict:
     )
 
 
-def _get_all_pages(endpoint: str, params: dict = None) -> list:
+def _get_all_pages(endpoint: str, params: dict = None, _status_placeholder=None) -> list:
     """Percorre todas as páginas usando next_page_url."""
     params = dict(params or {})
     params["page"] = 1
@@ -46,6 +55,12 @@ def _get_all_pages(endpoint: str, params: dict = None) -> list:
     while True:
         data = _req(endpoint, params)
         results.extend(data.get("data", []))
+        total_pages = data.get("last_page", 1)
+        current_page = params["page"]
+        if _status_placeholder and total_pages > 1:
+            _status_placeholder.caption(
+                f"Carregando dados... página {current_page} de {total_pages}"
+            )
         if not data.get("next_page_url"):
             break
         params["page"] += 1
@@ -113,11 +128,11 @@ def _get_ultima_atualizacao_pedidos() -> str:
         return datetime.now(brt).strftime("%d/%m/%Y às %H:%M")
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=7200, show_spinner=False)
 def _get_lista_pedidos() -> list:
     """
     Busca todos os pedidos (resumo, SEM itens por produto).
-    A API retorna 15 por página — percorre todas as páginas. Cache de 1 hora.
+    A API retorna 15 por página — percorre todas as páginas. Cache de 2 horas.
     """
     return _get_all_pages("pedido")
 

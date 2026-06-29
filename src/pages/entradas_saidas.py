@@ -170,6 +170,92 @@ def _calcular(todos_pedidos: list):
     return entradas, saidas
 
 
+# ── Insights ───────────────────────────────────────────────────────────────────
+
+def _meses_de_str(tempo_str: str) -> int:
+    """Extrai o número inteiro de meses de uma string como '7 meses'."""
+    try:
+        return int(tempo_str.split()[0])
+    except Exception:
+        return 0
+
+
+def _render_insights(ents: list, sais: list, saldo: int, nome_mes: str):
+    if not sais and not ents:
+        return
+
+    st.divider()
+    st.markdown("#### 💡 Insights do mês")
+
+    insights = []
+
+    # ── Saldo ─────────────────────────────────────────────────────────────────
+    if saldo > 0:
+        insights.append(
+            f"✅ **Crescimento líquido de {saldo} revendedora(s)** em {nome_mes} — "
+            "o time está em expansão."
+        )
+    elif saldo < 0:
+        insights.append(
+            f"⚠️ **Perda líquida de {abs(saldo)} revendedora(s)** em {nome_mes} — "
+            "as saídas superaram as entradas. Vale revisar os motivos."
+        )
+    else:
+        insights.append(
+            f"↔️ **Saldo neutro** em {nome_mes}: entradas e saídas empatadas. "
+            "O time manteve o tamanho, mas houve rotatividade."
+        )
+
+    # ── Tempo médio no time das que saíram ────────────────────────────────────
+    if sais:
+        meses_lista = [_meses_de_str(r["Tempo no time"]) for r in sais]
+        media = sum(meses_lista) / len(meses_lista)
+        precoces = sum(1 for m in meses_lista if m < 3)
+        longas   = sum(1 for m in meses_lista if m >= 12)
+
+        insights.append(
+            f"⏱️ **Tempo médio no time das que saíram: {media:.1f} meses.** "
+            + (f"  {precoces} delas ficaram menos de 3 meses — saída precoce, "
+               "pode indicar problema na integração ou expectativas." if precoces else "")
+            + (f"  {longas} tinham mais de 1 ano — perda de revendedoras experientes." if longas else "")
+        )
+
+        # Supervisora com mais saídas
+        from collections import Counter
+        contagem_sup = Counter(r["Supervisor"] for r in sais)
+        sup_top, qtd_top = contagem_sup.most_common(1)[0]
+        if qtd_top >= 2:
+            insights.append(
+                f"📌 **{sup_top}** concentrou {qtd_top} das {len(sais)} saídas deste mês. "
+                "Pode valer uma conversa para entender o que está acontecendo."
+            )
+
+    # ── Retornos entre as entradas ─────────────────────────────────────────────
+    retornos = [r for r in ents if r.get("Tipo") == "🔄 Retorno"]
+    if retornos:
+        insights.append(
+            f"🔄 **{len(retornos)} retorno(s)** neste mês — "
+            f"revendedoras que voltaram após {_MESES_GAP}+ meses. "
+            "Estratégias de reativação podem estar funcionando."
+        )
+
+    # ── Proporção saídas/entradas ──────────────────────────────────────────────
+    if ents and sais:
+        taxa = len(sais) / len(ents) * 100
+        if taxa >= 80:
+            insights.append(
+                f"🔴 **Alta rotatividade:** {taxa:.0f}% de proporção saídas/entradas. "
+                "Para cada revendedora nova que entra, quase uma sai."
+            )
+        elif taxa >= 50:
+            insights.append(
+                f"🟡 **Rotatividade moderada:** {taxa:.0f}% de proporção saídas/entradas."
+            )
+
+    for msg in insights:
+        st.markdown(f"- {msg}")
+
+
 # ── Render ─────────────────────────────────────────────────────────────────────
 
 def render():
@@ -298,3 +384,6 @@ def render():
                                  })
                 else:
                     st.caption("Nenhuma saída neste mês.")
+
+            # ── Insights do mês ───────────────────────────────────────────────
+            _render_insights(ents, sais, saldo_m, _MESES[mes - 1])

@@ -11,7 +11,7 @@ _MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio",
 
 _ANO_TESTE  = 2026
 _MES_INICIO = 1
-_MES_FIM    = 5
+_MES_FIM    = 6
 _MESES_GAP  = 4   # meses sem novo pedido para considerar retorno
 _DIAS_PRAZO = 30  # dias que a supervisora soma na data_baixa
 
@@ -173,8 +173,10 @@ def _calcular(todos_pedidos: list):
 
 def render():
     st.title("📊 Entradas e Saídas de Revendedoras")
+    _mes_ini_label = _MESES[_MES_INICIO - 1]
+    _mes_fim_label = _MESES[_MES_FIM - 1]
     st.caption(
-        f"Teste — Janeiro a Maio de {_ANO_TESTE} · "
+        f"Teste — {_mes_ini_label} a {_mes_fim_label} de {_ANO_TESTE} · "
         f"Entrada = mês da data de baixa − {_DIAS_PRAZO} dias · "
         f"Retorno = novo pedido após {_MESES_GAP}+ meses sem atividade · "
         f"Pedidos criados e cancelados no mesmo mês são desconsiderados."
@@ -210,18 +212,23 @@ def render():
     st.divider()
 
     # ── Resumo acumulado ──────────────────────────────────────────────────────
-    tot_novas    = sum(len([r for r in _filtrar(entradas[m]) if r["Tipo"] == "🆕 Nova"])    for m in range(1, 6))
-    tot_retornos = sum(len([r for r in _filtrar(entradas[m]) if r["Tipo"] == "🔄 Retorno"]) for m in range(1, 6))
-    tot_saidas   = sum(len(_filtrar(saidas[m])) for m in range(1, 6))
+    _rng = range(_MES_INICIO, _MES_FIM + 1)
+    _abrev_ini = _MESES[_MES_INICIO - 1][:3]
+    _abrev_fim = _MESES[_MES_FIM - 1][:3]
+    _periodo   = f"{_abrev_ini}–{_abrev_fim}"
+
+    tot_novas    = sum(len([r for r in _filtrar(entradas[m]) if r["Tipo"] == "🆕 Nova"])    for m in _rng)
+    tot_retornos = sum(len([r for r in _filtrar(entradas[m]) if r["Tipo"] == "🔄 Retorno"]) for m in _rng)
+    tot_saidas   = sum(len(_filtrar(saidas[m])) for m in _rng)
     tot_ent      = tot_novas + tot_retornos
     saldo        = tot_ent - tot_saidas
 
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("🆕 Novas (Jan–Mai)",    tot_novas)
-    c2.metric("🔄 Retornos (Jan–Mai)", tot_retornos)
-    c3.metric("📥 Total entradas",     tot_ent)
-    c4.metric("📤 Total saídas",       tot_saidas)
-    c5.metric("📊 Saldo período",      f"{saldo:+d}")
+    c1.metric(f"🆕 Novas ({_periodo})",    tot_novas)
+    c2.metric(f"🔄 Retornos ({_periodo})", tot_retornos)
+    c3.metric("📥 Total entradas",         tot_ent)
+    c4.metric("📤 Total saídas",           tot_saidas)
+    c5.metric("📊 Saldo período",          f"{saldo:+d}")
 
     st.divider()
 

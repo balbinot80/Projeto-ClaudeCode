@@ -159,11 +159,12 @@ def _calcular(todos_pedidos: list):
         tempo_str = f"{meses_no_time} mes{'es' if meses_no_time != 1 else ''}"
 
         saidas[d_baixa.month].append({
-            "rev_id":        rid,
-            "Nome":          nome,
-            "Supervisor":    supervisor,
-            "Último baixa":  d_baixa.strftime("%d/%m/%Y"),
-            "Tempo no time": tempo_str,
+            "rev_id":          rid,
+            "Nome":            nome,
+            "Supervisor":      supervisor,
+            "1º pedido":       d_primeira.strftime("%d/%m/%Y"),
+            "Último baixa":    d_baixa.strftime("%d/%m/%Y"),
+            "Tempo no time":   tempo_str,
         })
 
     return entradas, saidas
@@ -286,13 +287,14 @@ def render():
                 st.markdown(f"**📤 Saídas — {n_sai}**")
 
                 if sais:
-                    df_s = pd.DataFrame(sais)[["Nome", "Supervisor", "Último baixa", "Tempo no time"]]
+                    df_s = pd.DataFrame(sais)[["Nome", "Supervisor", "1º pedido", "Último baixa", "Tempo no time"]]
                     st.dataframe(df_s, hide_index=True, use_container_width=True,
                                  column_config={
-                                     "Nome":           st.column_config.TextColumn("Revendedora"),
-                                     "Supervisor":     st.column_config.TextColumn("Supervisora"),
-                                     "Último baixa":   st.column_config.TextColumn("Última baixa"),
-                                     "Tempo no time":  st.column_config.TextColumn("Tempo no time"),
+                                     "Nome":          st.column_config.TextColumn("Revendedora"),
+                                     "Supervisor":    st.column_config.TextColumn("Supervisora"),
+                                     "1º pedido":     st.column_config.TextColumn("1º pedido"),
+                                     "Último baixa":  st.column_config.TextColumn("Última baixa"),
+                                     "Tempo no time": st.column_config.TextColumn("Tempo no time"),
                                  })
                 else:
                     st.caption("Nenhuma saída neste mês.")

@@ -1534,7 +1534,7 @@ def render(filtro_supervisor: str = ""):
               help="Pedidos abertos com R$0 + revendedoras com total = R$0")
     _pct_inad = (total_promissoria / total_mes * 100) if total_mes > 0 else 0
     c8.metric("📄 Inadimplentes", _R(total_promissoria),
-              delta=f"{_pct_inad:.1f}% do total vendido",
+              delta=f"{_pct_inad:.1f}% do total vendido" if _is_admin else None,
               delta_color="off",
               help=f"{n_inadimplentes} revendedora(s) com pagamento em Promissória")
 

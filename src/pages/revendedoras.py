@@ -1500,7 +1500,7 @@ def render(filtro_supervisor: str = ""):
                 "Supervisora": _p.get("supervisor_nome") or "—",
                 "Valor":      0.0,
             }
-        _prom_map[_rid]["Valor"] += float(_fp.get("valor_final") or 0)
+        _prom_map[_rid]["Valor"] += float(_p.get("valor_total") or 0)
 
     df_prom = pd.DataFrame(list(_prom_map.values())) if _prom_map else pd.DataFrame()
     n_inadimplentes   = len(_prom_map)

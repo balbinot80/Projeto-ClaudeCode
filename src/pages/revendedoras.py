@@ -1801,10 +1801,10 @@ def render(filtro_supervisor: str = ""):
         "📈 Visão gerencial",
         "🏅 Níveis",
         "🏆 Premiações",
+        "📊 Desempenho" if _is_admin else None,
+        "🎯 Perfil"     if _is_admin else None,
     ]
-    if _is_admin:
-        _tab_labels.append("📊 Desempenho")
-        _tab_labels.append("🎯 Perfil")
+    _tab_labels = [t for t in _tab_labels if t is not None]
 
     _tabs = st.tabs(_tab_labels)
     tab1, tab2, tab3, tab4, tab5, tab6 = _tabs[:6]

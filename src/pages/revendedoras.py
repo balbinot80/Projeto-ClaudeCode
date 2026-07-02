@@ -1526,9 +1526,9 @@ def render(filtro_supervisor: str = ""):
         _acertos_mes_revs = set()
         _n_postergados    = 0
         for _p in todos_pedidos:
-            if _p.get("status") == "Baixado" and _p.get("supervisor_nome"):
-                _d_bx = _parse_date(_p.get("data_baixa"))
-                if _d_bx and _d_bx.month == mes_num and _d_bx.year == ano_num:
+            if _p.get("status") in ("Baixado", "Aberto") and _p.get("supervisor_nome"):
+                _d_ac_mes = _parse_date(_p.get("data_acerto"))
+                if _d_ac_mes and _d_ac_mes.month == mes_num and _d_ac_mes.year == ano_num:
                     _acertos_mes_revs.add(_p.get("fk_revendedor_id"))
             if _p.get("status") == "Aberto":
                 _d_ac = _parse_date(_p.get("data_acerto"))
@@ -1543,8 +1543,8 @@ def render(filtro_supervisor: str = ""):
         c1a.metric(
             "📅 Acertos no mês", _n_acertos_mes,
             help=(
-                f"Revendedoras com pedido baixado em {mes_sel}, "
-                "desconsiderando pedidos sem supervisora atribuída."
+                f"Revendedoras com data de acerto previsto em {mes_sel} "
+                "(pedidos Abertos e Baixados), desconsiderando pedidos sem supervisora atribuída."
             ),
         )
         c1b.metric(

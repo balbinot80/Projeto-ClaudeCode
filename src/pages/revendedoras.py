@@ -1258,6 +1258,193 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
         st.info("Nenhuma revendedora entre 70% e 99% da meta neste mês.")
 
 
+# ── Tab: Perfil das Revendedoras (admin) ─────────────────────────────────────
+
+def _categorizar_profissao(profissao: str) -> str:
+    if not profissao:
+        return "❓ Não informado"
+    p = profissao.lower()
+    if any(k in p for k in ["manicure", "estetic", "cabeleire", "beleza", "maquiagem", "makeup"]):
+        return "✂️ Beleza & Estética"
+    if any(k in p for k in ["vendedor", "vendedora", "caixa", "atendente", "comercio", "comércio"]):
+        return "🛒 Comércio & Vendas"
+    if any(k in p for k in ["analista", "administrat", "faturist", "logistic", "financeiro",
+                              "financeira", "assistente", "contador", "contabil", "auxiliar admin"]):
+        return "💼 Administrativo & Financeiro"
+    if any(k in p for k in ["auxiliar de sala", "professor", "pedagog", "educador", "docente"]):
+        return "📚 Educação"
+    if any(k in p for k in ["costurei", "operador", "operadora", "producao", "produção",
+                              "auxiliar de prod", "confeccao", "confecção"]):
+        return "🏭 Produção & Indústria"
+    if any(k in p for k in ["saude", "saúde", "enfermei", "médic", "medic", "nutri", "farmac"]):
+        return "🏥 Saúde"
+    return "🔹 Outros"
+
+
+def _tab_perfil(df_res: pd.DataFrame, mes_label: str):
+    from src.api.jueri_client import get_revendedores
+
+    st.subheader(f"🎯 Perfil das Revendedoras — {mes_label}")
+    st.caption("Análise baseada nos campos Profissão e Local de trabalho cadastrados no Jueri.")
+
+    _status = st.empty()
+    _status.info("⏳ Carregando perfis cadastrados...")
+    try:
+        revs = get_revendedores()
+        _status.empty()
+    except Exception as e:
+        _status.error(f"Erro ao carregar perfis: {e}")
+        return
+
+    # Monta mapa rev_id → {profissao, local, categoria}
+    prof_map = {}
+    for r in revs:
+        prof = (r.get("profissao") or "").strip()
+        local = (r.get("local") or "").strip()
+        if prof or local:
+            prof_map[str(r["id"])] = {
+                "Profissão":   prof or "—",
+                "Local":       local or "—",
+                "Categoria":   _categorizar_profissao(prof),
+            }
+
+    if not prof_map:
+        st.info("Nenhuma revendedora com profissão ou local de trabalho preenchidos no Jueri.")
+        return
+
+    # Junta com df_res do mês
+    rows = []
+    for _, row in df_res.iterrows():
+        rid = str(row["fk_revendedor_id"])
+        if rid in prof_map:
+            rows.append({
+                "Nome":      row["Nome"],
+                "Supervisor": row["Supervisor"],
+                **prof_map[rid],
+                "Total":     row["Total"],
+                "Baixado":   row["Baixado"],
+                "Pré-baixa": row["Pré-baixa"],
+            })
+
+    n_total_mes = len(df_res)
+    n_com_perfil = len(rows)
+
+    if not rows:
+        st.info("Nenhuma revendedora com perfil cadastrado aparece nos dados do mês selecionado.")
+        return
+
+    df_perf = pd.DataFrame(rows)
+
+    # ── Cabeçalho ─────────────────────────────────────────────────────────────
+    p1, p2, p3 = st.columns(3)
+    p1.metric("Com perfil no mês", n_com_perfil,
+              help=f"{n_com_perfil} de {n_total_mes} revendedoras do mês têm profissão cadastrada")
+    p2.metric("Ticket médio (com perfil)", _R(df_perf["Total"].mean()))
+    p3.metric("Total vendido (com perfil)", _R(df_perf["Total"].sum()))
+
+    st.divider()
+
+    # ── Análise por categoria ─────────────────────────────────────────────────
+    st.markdown("### 📊 Desempenho por categoria profissional")
+
+    df_cat = (
+        df_perf.groupby("Categoria")
+        .agg(
+            Revendedoras=("Nome", "count"),
+            Total_vendido=("Total", "sum"),
+            Ticket_medio=("Total", "mean"),
+        )
+        .reset_index()
+        .sort_values("Total_vendido", ascending=False)
+    )
+
+    import plotly.express as px
+
+    fig = px.bar(
+        df_cat,
+        x="Categoria",
+        y="Total_vendido",
+        color="Ticket_medio",
+        text="Revendedoras",
+        labels={"Total_vendido": "Total vendido (R$)", "Ticket_medio": "Ticket médio"},
+        color_continuous_scale="RdPu",
+    )
+    fig.update_traces(textposition="outside")
+    fig.update_layout(height=380, xaxis_tickangle=-20,
+                      coloraxis_colorbar=dict(title="Ticket médio"))
+    st.plotly_chart(fig, use_container_width=True)
+
+    df_cat_show = df_cat.copy()
+    df_cat_show["Ticket médio"] = df_cat_show["Ticket_medio"].apply(_R)
+    df_cat_show["Total vendido"] = df_cat_show["Total_vendido"].apply(_R)
+    st.dataframe(
+        df_cat_show[["Categoria", "Revendedoras", "Ticket médio", "Total vendido"]],
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "Categoria":     st.column_config.TextColumn("Categoria",     width="medium"),
+            "Revendedoras":  st.column_config.NumberColumn("Qtd",         width="small"),
+            "Ticket médio":  st.column_config.TextColumn("Ticket médio",  width="small"),
+            "Total vendido": st.column_config.TextColumn("Total vendido", width="small"),
+        },
+    )
+
+    st.divider()
+
+    # ── Tabela individual ─────────────────────────────────────────────────────
+    st.markdown("### 👤 Revendedoras com perfil no mês")
+    df_ind = df_perf[["Nome", "Profissão", "Local", "Categoria", "Total"]].copy()
+    df_ind = df_ind.sort_values("Total", ascending=False).reset_index(drop=True)
+    df_ind["Total"] = df_ind["Total"].apply(_R)
+    st.dataframe(
+        df_ind,
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "Nome":      st.column_config.TextColumn("Revendedora",       width="medium"),
+            "Profissão": st.column_config.TextColumn("Profissão",         width="medium"),
+            "Local":     st.column_config.TextColumn("Local de trabalho", width="medium"),
+            "Categoria": st.column_config.TextColumn("Categoria",         width="medium"),
+            "Total":     st.column_config.TextColumn("Total vendido",     width="small"),
+        },
+    )
+
+    st.divider()
+
+    # ── Insights ──────────────────────────────────────────────────────────────
+    st.markdown("### 💡 Insights")
+
+    melhor_ticket = df_cat.sort_values("Ticket_medio", ascending=False).iloc[0]
+    maior_volume  = df_cat.iloc[0]
+    menor_ticket  = df_cat.sort_values("Ticket_medio").iloc[0]
+
+    insights = [
+        f"🏆 **Maior volume de vendas:** {maior_volume['Categoria']} "
+        f"— {_R(maior_volume['Total_vendido'])} com {int(maior_volume['Revendedoras'])} revendedora(s).",
+
+        f"💰 **Maior ticket médio:** {melhor_ticket['Categoria']} "
+        f"— {_R(melhor_ticket['Ticket_medio'])}/revendedora. "
+        "Esse grupo tem o maior retorno por pessoa — vale priorizar na captação.",
+
+        f"📉 **Menor ticket médio:** {menor_ticket['Categoria']} "
+        f"— {_R(menor_ticket['Ticket_medio'])}/revendedora. "
+        "Pode indicar necessidade de acompanhamento mais próximo ou maleta menor.",
+
+        f"📌 **Cobertura atual:** {n_com_perfil} de {n_total_mes} revendedoras do mês têm perfil "
+        f"cadastrado ({n_com_perfil/n_total_mes*100:.0f}%). "
+        "Quanto mais perfis preenchidos, mais confiável fica a análise de segmentação.",
+    ]
+
+    if n_com_perfil < n_total_mes * 0.3:
+        insights.append(
+            "⚠️ **Amostra ainda pequena** — menos de 30% das revendedoras têm perfil preenchido. "
+            "Os dados são indicativos, mas podem mudar conforme mais cadastros forem completados."
+        )
+
+    for msg in insights:
+        st.markdown(f"- {msg}")
+
+
 # ── Render principal ──────────────────────────────────────────────────────────
 
 def _calcular_desempenho_mes(todos_pedidos: list, mes: int, ano: int) -> list:
@@ -1617,6 +1804,7 @@ def render(filtro_supervisor: str = ""):
     ]
     if _is_admin:
         _tab_labels.append("📊 Desempenho")
+        _tab_labels.append("🎯 Perfil")
 
     _tabs = st.tabs(_tab_labels)
     tab1, tab2, tab3, tab4, tab5, tab6 = _tabs[:6]
@@ -1643,4 +1831,6 @@ def render(filtro_supervisor: str = ""):
     if _is_admin:
         with _tabs[6]:
             _tab_desempenho(todos_pedidos, hoje)
+        with _tabs[7]:
+            _tab_perfil(df_res, mes_sel)
 

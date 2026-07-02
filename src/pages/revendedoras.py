@@ -50,7 +50,7 @@ def _estilo_total(val):
 
 # ── Tab 1: Competência ────────────────────────────────────────────────────────
 
-def _tab_competencia(df_res: pd.DataFrame, mes_label: str, df_prom: pd.DataFrame = None, is_admin: bool = False):
+def _tab_competencia(df_res: pd.DataFrame, mes_label: str, df_prom: pd.DataFrame = None, is_admin: bool = False, rows_postergados: list = None):
     st.subheader(f"Vendas por revendedora — {mes_label}")
     st.caption(
         "**Baixados no mês** = valor_total dos pedidos com data de baixa no mês. "
@@ -113,6 +113,29 @@ def _tab_competencia(df_res: pd.DataFrame, mes_label: str, df_prom: pd.DataFrame
     # Export
     csv = df_res.drop(columns=["fk_revendedor_id"]).to_csv(index=False).encode("utf-8")
     st.download_button("Exportar CSV", csv, f"competencia_{mes_label.replace('/', '-')}.csv", "text/csv")
+
+    # ── Tabela de postergados (admin) ─────────────────────────────────────────
+    if is_admin and rows_postergados:
+        st.divider()
+        st.subheader(f"⏰ Acertos postergados — {len(rows_postergados)} pedido(s)")
+        st.caption("Pedidos em aberto com mais de 30 dias entre data de criação e data de acerto previsto.")
+        df_post = (
+            pd.DataFrame(rows_postergados)
+            .sort_values("Dias", ascending=False)
+            .reset_index(drop=True)
+        )
+        st.dataframe(
+            df_post,
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "Nome":         st.column_config.TextColumn("Revendedora",     width="medium"),
+                "Supervisora":  st.column_config.TextColumn("Supervisora",     width="medium"),
+                "Criação":      st.column_config.TextColumn("Data criação",    width="small"),
+                "Acerto prev.": st.column_config.TextColumn("Acerto previsto", width="small"),
+                "Dias":         st.column_config.NumberColumn("Dias",          width="small"),
+            },
+        )
 
     # ── Tabela de promissórias ────────────────────────────────────────────────
     if df_prom is not None and not df_prom.empty:
@@ -1599,7 +1622,8 @@ def render(filtro_supervisor: str = ""):
     tab1, tab2, tab3, tab4, tab5, tab6 = _tabs[:6]
 
     with tab1:
-        _tab_competencia(df_res, mes_sel, df_prom=df_prom, is_admin=_is_admin)
+        _tab_competencia(df_res, mes_sel, df_prom=df_prom, is_admin=_is_admin,
+                         rows_postergados=_rows_postergados if _is_admin else None)
 
     with tab2:
         _tab_alertas(df_zero, df_res)
@@ -1620,25 +1644,3 @@ def render(filtro_supervisor: str = ""):
         with _tabs[6]:
             _tab_desempenho(todos_pedidos, hoje)
 
-    # ── Tabela de postergados (admin) ─────────────────────────────────────────
-    if _is_admin and _rows_postergados:
-        st.divider()
-        st.subheader(f"⏰ Acertos postergados — {len(_rows_postergados)} pedido(s)")
-        st.caption("Pedidos em aberto com mais de 30 dias entre data de criação e data de acerto previsto.")
-        df_post = (
-            pd.DataFrame(_rows_postergados)
-            .sort_values("Dias", ascending=False)
-            .reset_index(drop=True)
-        )
-        st.dataframe(
-            df_post,
-            hide_index=True,
-            use_container_width=True,
-            column_config={
-                "Nome":         st.column_config.TextColumn("Revendedora",    width="medium"),
-                "Supervisora":  st.column_config.TextColumn("Supervisora",    width="medium"),
-                "Criação":      st.column_config.TextColumn("Data criação",   width="small"),
-                "Acerto prev.": st.column_config.TextColumn("Acerto previsto",width="small"),
-                "Dias":         st.column_config.NumberColumn("Dias de atraso", width="small"),
-            },
-        )

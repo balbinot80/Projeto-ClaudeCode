@@ -1522,9 +1522,9 @@ def render(filtro_supervisor: str = ""):
     ticket_medio  = total_liquido / n_rev if n_rev > 0 else 0
 
     # ── Métricas exclusivas admin: acertos no mês + postergados ───────────────
+    _rows_postergados = []
     if _is_admin:
         _acertos_mes_revs = set()
-        _n_postergados    = 0
         for _p in todos_pedidos:
             if _p.get("status") in ("Baixado", "Aberto") and _p.get("supervisor_nome"):
                 _d_ac_mes = _parse_date(_p.get("data_acerto"))
@@ -1534,8 +1534,16 @@ def render(filtro_supervisor: str = ""):
                 _d_ac = _parse_date(_p.get("data_acerto"))
                 _d_cr = _parse_date(_p.get("data_criacao"))
                 if _d_ac and _d_cr and (_d_ac - _d_cr).days > 30:
-                    _n_postergados += 1
-        _n_acertos_mes = len(_acertos_mes_revs)
+                    _comp = _p.get("comprador") or {}
+                    _rows_postergados.append({
+                        "Nome":         _comp.get("nome") or f"Rev {_p.get('fk_revendedor_id')}",
+                        "Supervisora":  _p.get("supervisor_nome") or "—",
+                        "Criação":      _d_cr.strftime("%d/%m/%Y"),
+                        "Acerto prev.": _d_ac.strftime("%d/%m/%Y"),
+                        "Dias":         (_d_ac - _d_cr).days,
+                    })
+        _n_acertos_mes  = len(_acertos_mes_revs)
+        _n_postergados  = len(_rows_postergados)
 
     # Linha 1 — valores financeiros (colunas largas para não truncar)
     if _is_admin:
@@ -1611,3 +1619,26 @@ def render(filtro_supervisor: str = ""):
     if _is_admin:
         with _tabs[6]:
             _tab_desempenho(todos_pedidos, hoje)
+
+    # ── Tabela de postergados (admin) ─────────────────────────────────────────
+    if _is_admin and _rows_postergados:
+        st.divider()
+        st.subheader(f"⏰ Acertos postergados — {len(_rows_postergados)} pedido(s)")
+        st.caption("Pedidos em aberto com mais de 30 dias entre data de criação e data de acerto previsto.")
+        df_post = (
+            pd.DataFrame(_rows_postergados)
+            .sort_values("Dias", ascending=False)
+            .reset_index(drop=True)
+        )
+        st.dataframe(
+            df_post,
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "Nome":         st.column_config.TextColumn("Revendedora",    width="medium"),
+                "Supervisora":  st.column_config.TextColumn("Supervisora",    width="medium"),
+                "Criação":      st.column_config.TextColumn("Data criação",   width="small"),
+                "Acerto prev.": st.column_config.TextColumn("Acerto previsto",width="small"),
+                "Dias":         st.column_config.NumberColumn("Dias de atraso", width="small"),
+            },
+        )

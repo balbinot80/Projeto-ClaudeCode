@@ -1521,9 +1521,42 @@ def render(filtro_supervisor: str = ""):
     total_liquido = total_mes - total_promissoria
     ticket_medio  = total_liquido / n_rev if n_rev > 0 else 0
 
+    # ── Métricas exclusivas admin: acertos no mês + postergados ───────────────
+    if _is_admin:
+        _acertos_mes_revs = set()
+        _n_postergados    = 0
+        for _p in todos_pedidos:
+            if _p.get("status") == "Baixado" and _p.get("supervisor_nome"):
+                _d_bx = _parse_date(_p.get("data_baixa"))
+                if _d_bx and _d_bx.month == mes_num and _d_bx.year == ano_num:
+                    _acertos_mes_revs.add(_p.get("fk_revendedor_id"))
+            if _p.get("status") == "Aberto":
+                _d_ac = _parse_date(_p.get("data_acerto"))
+                _d_cr = _parse_date(_p.get("data_criacao"))
+                if _d_ac and _d_cr and (_d_ac - _d_cr).days > 30:
+                    _n_postergados += 1
+        _n_acertos_mes = len(_acertos_mes_revs)
+
     # Linha 1 — valores financeiros (colunas largas para não truncar)
-    c1, c2, c3, c4, c5 = st.columns([1, 2, 2, 2, 2])
-    c1.metric("Revendedoras", n_rev)
+    if _is_admin:
+        c1a, c1b, c2, c3, c4, c5 = st.columns([1, 1, 2, 2, 2, 2])
+        c1a.metric(
+            "📅 Acertos no mês", _n_acertos_mes,
+            help=(
+                f"Revendedoras com pedido baixado em {mes_sel}, "
+                "desconsiderando pedidos sem supervisora atribuída."
+            ),
+        )
+        c1b.metric(
+            "⏰ Postergados", _n_postergados,
+            help=(
+                "Pedidos em aberto com mais de 30 dias entre a data de criação "
+                "e a data de acerto previsto — ciclo fora do padrão."
+            ),
+        )
+    else:
+        c1a, c2, c3, c4, c5 = st.columns([1, 2, 2, 2, 2])
+        c1a.metric("Revendedoras", n_rev)
     c2.metric("Total vendido", _R(total_liquido),
               help=f"Baixados ({_R(total_bx)}) + Pré-baixa ({_R(total_pb)}) − Promissórias ({_R(total_promissoria)})")
     c3.metric("↳ Baixados", _R(total_bx))

@@ -1055,12 +1055,69 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
             st.success("Configuração salva!")
             st.rerun()
 
-    if not meta_atual:
-        st.info("Configure a meta de vendas do mês acima para ver o ranking de premiações.")
-        return
-
     # Carrega status de entrega dos prêmios para o mês
     entregas = load_entregas(mes_key)
+
+    # ── Seção colar: sempre visível, meta fixa de R$ 1.000,00 ────────────────
+    colar = verificar_colar(todos_pedidos, mes, ano)
+
+    st.markdown("### 💎 Colar personalizado — nova revendedora")
+    st.caption(
+        "Regra fixa: primeiro pedido de nova revendedora com valor > R$ 1.000,00. "
+        "✅ Pedido finalizado = ganhou. 📊 Em aberto = contando pré-baixa (ainda pode mudar)."
+    )
+    if colar:
+        cols = st.columns(min(len(colar), 4))
+        for i, r in enumerate(colar):
+            with cols[i % 4]:
+                confirmado = r["status_pedido"] == "Baixado"
+                entregue   = entregas.get(str(r["id"]), False) if confirmado else False
+                ck_key     = f"ckp_c_{mes_key}_{r['id']}"
+                status_txt = "✅ Pedido finalizado — ganhou!" if confirmado else "📊 Pedido em aberto (pré-baixa)"
+                status_cor = "#7b1fa2" if confirmado else "#1976d2"
+                if entregue:
+                    borda = "#16a34a"
+                    fundo = "linear-gradient(135deg,#f0fdf4,#dcfce7)"
+                elif confirmado:
+                    borda = "#9c27b0"
+                    fundo = "linear-gradient(135deg,#f3e5f5,#e1bee7)"
+                else:
+                    borda = "#90caf9"
+                    fundo = "#e3f2fd"
+                check_badge = (
+                    '<div style="color:#16a34a;font-size:0.82em;font-weight:600;margin-top:6px">✅ Colar entregue</div>'
+                    if entregue else ""
+                )
+                st.markdown(
+                    f'<div style="background:{fundo};border:2px solid {borda};'
+                    f'border-radius:10px;padding:10px 12px;margin-bottom:6px">'
+                    f'<div style="font-weight:700;font-size:0.95em">💎 {r["Nome"]}</div>'
+                    f'<div style="color:#888;font-size:0.78em;margin-bottom:4px">{r["Supervisor"]}</div>'
+                    f'<div style="font-size:1em;font-weight:700">{_R(r["Valor 1º pedido"])}</div>'
+                    f'<div style="color:{status_cor};font-size:0.82em;font-weight:700">'
+                    f'{status_txt}</div>'
+                    f'{check_badge}'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                if confirmado:
+                    st.checkbox(
+                        "Marcar como solicitado",
+                        value=entregue,
+                        key=ck_key,
+                        on_change=_on_entrega_change,
+                        args=(mes_key, str(r["id"]), r["Nome"], ck_key),
+                    )
+    else:
+        st.info("Nenhuma nova revendedora qualificou para o colar personalizado neste mês.")
+
+    # ── Ranking: só aparece quando a meta do mês estiver configurada ──────────
+    if not meta_atual:
+        st.divider()
+        st.info("⚙️ Configure a meta de vendas do mês acima para ver o ranking de premiações.")
+        return
+
+    st.divider()
 
     # ── Banner do prêmio ──────────────────────────────────────────────────────
     st.markdown(
@@ -1080,7 +1137,6 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
     ganhadoras = [r for r in ranking if r["Categoria"] == "ganhadora"]
     potenciais = [r for r in ranking if r["Categoria"] == "potencial"]
     proximas   = [r for r in ranking if r["Categoria"] == "proxima"]
-    colar      = verificar_colar(todos_pedidos, mes, ano)
 
     # Métricas resumo
     st.markdown("<br>", unsafe_allow_html=True)
@@ -1177,59 +1233,6 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
                 )
     else:
         st.info("Nenhuma revendedora entre 70% e 99% da meta neste mês.")
-
-    st.divider()
-
-    # ── Seção 4: Colar personalizado ──────────────────────────────────────────
-    st.markdown("### 💎 Colar personalizado — nova revendedora")
-    st.caption(
-        "Regra fixa: primeiro pedido de nova revendedora com valor > R$ 1.000,00. "
-        "✅ Pedido finalizado = ganhou. 📊 Em aberto = contando pré-baixa (ainda pode mudar)."
-    )
-    if colar:
-        cols = st.columns(min(len(colar), 4))
-        for i, r in enumerate(colar):
-            with cols[i % 4]:
-                confirmado = r["status_pedido"] == "Baixado"
-                entregue   = entregas.get(str(r["id"]), False) if confirmado else False
-                ck_key     = f"ckp_c_{mes_key}_{r['id']}"
-                status_txt = "✅ Pedido finalizado — ganhou!" if confirmado else "📊 Pedido em aberto (pré-baixa)"
-                status_cor = "#7b1fa2" if confirmado else "#1976d2"
-                if entregue:
-                    borda = "#16a34a"
-                    fundo = "linear-gradient(135deg,#f0fdf4,#dcfce7)"
-                elif confirmado:
-                    borda = "#9c27b0"
-                    fundo = "linear-gradient(135deg,#f3e5f5,#e1bee7)"
-                else:
-                    borda = "#90caf9"
-                    fundo = "#e3f2fd"
-                check_badge = (
-                    '<div style="color:#16a34a;font-size:0.82em;font-weight:600;margin-top:6px">✅ Colar entregue</div>'
-                    if entregue else ""
-                )
-                st.markdown(
-                    f'<div style="background:{fundo};border:2px solid {borda};'
-                    f'border-radius:10px;padding:10px 12px;margin-bottom:6px">'
-                    f'<div style="font-weight:700;font-size:0.95em">💎 {r["Nome"]}</div>'
-                    f'<div style="color:#888;font-size:0.78em;margin-bottom:4px">{r["Supervisor"]}</div>'
-                    f'<div style="font-size:1em;font-weight:700">{_R(r["Valor 1º pedido"])}</div>'
-                    f'<div style="color:{status_cor};font-size:0.82em;font-weight:700">'
-                    f'{status_txt}</div>'
-                    f'{check_badge}'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-                if confirmado:
-                    st.checkbox(
-                        "Marcar como solicitado",
-                        value=entregue,
-                        key=ck_key,
-                        on_change=_on_entrega_change,
-                        args=(mes_key, str(r["id"]), r["Nome"], ck_key),
-                    )
-    else:
-        st.info("Nenhuma nova revendedora qualificou para o colar personalizado neste mês.")
 
 
 # ── Render principal ──────────────────────────────────────────────────────────

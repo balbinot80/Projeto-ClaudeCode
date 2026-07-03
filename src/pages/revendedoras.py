@@ -1766,49 +1766,75 @@ def render(filtro_supervisor: str = ""):
                         _acertos_potenciais_revs.add(_p.get("fk_revendedor_id"))
         _n_acertos_potenciais = len(_acertos_potenciais_revs)
 
-    # Linha 1 — valores financeiros (colunas largas para não truncar)
-    if _is_admin:
-        c1a, c1b, c1c, c2, c3, c4, c5 = st.columns([1, 1, 1, 2, 2, 2, 2])
-        c1a.metric(
-            "📅 Acertos no mês", _n_acertos_mes,
-            help=(
-                f"Revendedoras com data de acerto previsto em {mes_sel} "
-                "(pedidos Abertos e Baixados), desconsiderando pedidos sem supervisora atribuída."
-            ),
-        )
-        c1b.metric(
-            "⏰ Postergados", _n_postergados,
-            help=(
-                "Pedidos em aberto com mais de 30 dias entre a data de criação "
-                "e a data de acerto previsto — ciclo fora do padrão."
-            ),
-        )
-        c1c.metric(
-            "📈 Potencial s/ postergação", _n_acertos_potenciais,
-            help=(
-                f"Revendedoras que teriam acerto em {mes_sel} se o ciclo padrão de 30 dias "
-                "fosse respeitado (baseado na data de criação de cada pedido, sem contar adiamentos)."
-            ),
-        )
-    else:
-        c1a, c2, c3, c4, c5 = st.columns([1, 2, 2, 2, 2])
-        c1a.metric("Revendedoras", n_rev)
-    c2.metric("Total vendido", _R(total_liquido),
-              help=f"Baixados ({_R(total_bx)}) + Pré-baixa ({_R(total_pb)}) − Promissórias ({_R(total_promissoria)})")
-    c3.metric("↳ Baixados", _R(total_bx))
-    c4.metric("↳ Pré-baixa", _R(total_pb))
-    c5.metric("🎯 Ticket médio", _R(ticket_medio))
+    # Bloco visuais de metricas
+    st.markdown("""
+<style>
+.au-bloco{border-radius:14px;padding:1rem 1.6rem 1.3rem;margin-bottom:.75rem}
+.au-bloco-rev{background:#FAF7F4;border:1.5px solid rgba(171,103,116,.22)}
+.au-bloco-fin{background:#ffffff;border:1.5px solid rgba(196,152,90,.22)}
+.au-bloco-titulo{font-size:.58rem;font-weight:700;text-transform:uppercase;letter-spacing:.13em;color:#AB6774;margin-bottom:.85rem}
+.au-metrics{display:flex;gap:1rem 2.5rem;flex-wrap:wrap;align-items:flex-start}
+.au-metric{min-width:72px}
+.au-metric-label{font-size:.72rem;color:#7A6068;white-space:nowrap;cursor:default}
+.au-metric-value{font-size:1.65rem;font-weight:700;color:#2A1A1F;line-height:1.1;margin-top:.1rem}
+.au-metric-sub{font-size:1.15rem;font-weight:600;color:#4A3038}
+.au-metric-delta{font-size:.65rem;color:#7A6068;margin-top:.2rem;background:rgba(122,96,104,.09);border-radius:4px;padding:1px 6px;display:inline-block}
+.au-sep{width:1.5px;background:rgba(171,103,116,.18);align-self:stretch;min-height:44px;margin:0 .15rem}
+</style>
+""", unsafe_allow_html=True)
 
-    # Linha 2 — alertas de risco + inadimplentes
-    c6, c7, c8, _esp = st.columns([2, 2, 2, 3])
-    c6.metric("🟡 Abaixo do mínimo", n_abaixo)
-    c7.metric("🔴 Sem vendas", n_zero + n_sem_res,
-              help="Pedidos abertos com R$0 + revendedoras com total = R$0")
+    def _m(label, value, tip="", sub=False, delta=""):
+        vcls = "au-metric-sub" if sub else "au-metric-value"
+        tip_attr = f' title="{tip}"' if tip else ""
+        d_html = f'<div class="au-metric-delta">{delta}</div>' if delta else ""
+        return (f'<div class="au-metric">' + f'<div class="au-metric-label"{tip_attr}>{label}</div>' + f'<div class="{vcls}">{value}</div>{d_html}</div>')
+
+    _S = '<div class="au-sep"></div>'
     _pct_inad = (total_promissoria / total_mes * 100) if total_mes > 0 else 0
-    c8.metric("📄 Inadimplentes", _R(total_promissoria),
-              delta=f"{_pct_inad:.1f}% do total vendido" if _is_admin else None,
-              delta_color="off",
-              help=f"{n_inadimplentes} revendedora(s) com pagamento em Promissória")
+
+    if _is_admin:
+        _b1 = "".join([
+            _m("📅 Acertos no mês", _n_acertos_mes,
+               f"Revendedoras com data de acerto previsto em {mes_sel} (Abertos e Baixados, sem supervisora excluídos)."),
+            _m("⏰ Postergados", _n_postergados,
+               "Pedidos em aberto com mais de 30 dias entre criação e data de acerto previsto."),
+            _m("📈 Potencial s/ postergação", _n_acertos_potenciais,
+               f"Revendedoras que teriam acerto em {mes_sel} se o ciclo padrão de 30 dias fosse respeitado."),
+            _S,
+            _m("🟡 Abaixo do mínimo", n_abaixo, sub=True),
+            _m("🔴 Sem vendas", n_zero + n_sem_res,
+               "Pedidos abertos com R$0 + revendedoras com total = R$0", sub=True),
+        ])
+    else:
+        _b1 = "".join([
+            _m("👥 Revendedoras", n_rev),
+            _S,
+            _m("🟡 Abaixo do mínimo", n_abaixo, sub=True),
+            _m("🔴 Sem vendas", n_zero + n_sem_res,
+               "Pedidos abertos com R$0 + revendedoras com total = R$0", sub=True),
+        ])
+    st.markdown(
+        f'<div class="au-bloco au-bloco-rev">' + f'<div class="au-bloco-titulo">👥 Revendedoras — {mes_sel}</div>' + f'<div class="au-metrics">{_b1}</div></div>',
+        unsafe_allow_html=True,
+    )
+
+    _inad_delta = f"▲ {_pct_inad:.1f}% do total vendido" if _is_admin else ""
+    _b2 = "".join([
+        _m("💰 Total vendido", _R(total_liquido),
+           f"Baixados ({_R(total_bx)}) + Pré-baixa ({_R(total_pb)}) − Promissórias ({_R(total_promissoria)})"),
+        _m("↳ Baixados", _R(total_bx), sub=True),
+        _m("↳ Pré-baixa", _R(total_pb), sub=True),
+        _S,
+        _m("🎯 Ticket médio", _R(ticket_medio)),
+        _S,
+        _m("📄 Inadimplentes", _R(total_promissoria),
+           f"{n_inadimplentes} revendedora(s) com pagamento em Promissória",
+           delta=_inad_delta),
+    ])
+    st.markdown(
+        f'<div class="au-bloco au-bloco-fin">' + f'<div class="au-bloco-titulo">💰 Financeiro — {mes_sel}</div>' + f'<div class="au-metrics">{_b2}</div></div>',
+        unsafe_allow_html=True,
+    )
 
 
     # ── Tabs ──────────────────────────────────────────────────────────────────

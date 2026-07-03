@@ -1755,9 +1755,20 @@ def render(filtro_supervisor: str = ""):
         _n_acertos_mes  = len(_acertos_mes_revs)
         _n_postergados  = len(_rows_postergados)
 
+        # Potencial sem postergação: revendedoras cuja data_criacao + 30 dias cai no mês
+        _acertos_potenciais_revs: set = set()
+        for _p in todos_pedidos:
+            if _p.get("status") in ("Baixado", "Aberto") and _p.get("supervisor_nome"):
+                _d_cr2 = _parse_date(_p.get("data_criacao"))
+                if _d_cr2:
+                    _d_natural = _d_cr2 + timedelta(days=30)
+                    if _d_natural.month == mes_num and _d_natural.year == ano_num:
+                        _acertos_potenciais_revs.add(_p.get("fk_revendedor_id"))
+        _n_acertos_potenciais = len(_acertos_potenciais_revs)
+
     # Linha 1 — valores financeiros (colunas largas para não truncar)
     if _is_admin:
-        c1a, c1b, c2, c3, c4, c5 = st.columns([1, 1, 2, 2, 2, 2])
+        c1a, c1b, c1c, c2, c3, c4, c5 = st.columns([1, 1, 1, 2, 2, 2, 2])
         c1a.metric(
             "📅 Acertos no mês", _n_acertos_mes,
             help=(
@@ -1770,6 +1781,13 @@ def render(filtro_supervisor: str = ""):
             help=(
                 "Pedidos em aberto com mais de 30 dias entre a data de criação "
                 "e a data de acerto previsto — ciclo fora do padrão."
+            ),
+        )
+        c1c.metric(
+            "📈 Potencial s/ postergação", _n_acertos_potenciais,
+            help=(
+                f"Revendedoras que teriam acerto em {mes_sel} se o ciclo padrão de 30 dias "
+                "fosse respeitado (baseado na data de criação de cada pedido, sem contar adiamentos)."
             ),
         )
     else:

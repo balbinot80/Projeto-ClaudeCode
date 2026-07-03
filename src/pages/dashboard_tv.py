@@ -160,11 +160,10 @@ def _nivel_por_rev(todos_pedidos: list, mes: int, ano: int) -> dict:
     return nivel_map
 
 
-def _slide_vendas(todos_pedidos: list, hoje: date, ultima: str):
+def _slide_vendas(todos_pedidos: list, mes: int, ano: int, ultima: str):
     from src.logic.revendedoras import calcular_competencia
     from src.logic.premiacoes import calcular_ranking, load_premiacoes
 
-    mes, ano = hoje.month, hoje.year
     _header_bar("🛍️ VENDAS", f"{_MESES_PT[mes-1]} de {ano}", ultima)
 
     df_res, _ = calcular_competencia(todos_pedidos, mes, ano)
@@ -220,10 +219,9 @@ def _slide_vendas(todos_pedidos: list, hoje: date, ultima: str):
 
 # ── Slide 1: Premiações ────────────────────────────────────────────────────────
 
-def _slide_premiacoes(todos_pedidos: list, hoje: date, ultima: str):
+def _slide_premiacoes(todos_pedidos: list, mes: int, ano: int, ultima: str):
     from src.logic.premiacoes import calcular_ranking, load_premiacoes, verificar_colar
 
-    mes, ano = hoje.month, hoje.year
     _header_bar("🏆 PREMIAÇÕES", f"{_MESES_PT[mes-1]} de {ano}", ultima)
 
     prems   = load_premiacoes()
@@ -363,10 +361,9 @@ def _celula_desemp(rows: list, negrito: bool = False) -> str:
     )
 
 
-def _slide_desempenho(todos_pedidos: list, hoje: date, ultima: str):
+def _slide_desempenho(todos_pedidos: list, mes: int, ano: int, ultima: str):
     from src.logic.niveis import ICONE_NIVEL
 
-    mes, ano = hoje.month, hoje.year
     _header_bar("📊 DESEMPENHO", f"{_MESES_PT[mes-1]} de {ano}", ultima)
 
     meses_range = list(range(1, mes + 1))
@@ -438,9 +435,31 @@ def render():
 
     slide_idx = st.session_state.tv_slide
 
-    # Carrega dados comuns (cacheados por 1 h)
+    # ── Seletor de mês (compacto, canto superior direito) ─────────────────────
+    from src.logic.revendedoras import meses_disponiveis
+    _tv_hoje   = date.today()
+    _tv_meses  = meses_disponiveis(7, futuros=0)
+    _tv_opcoes = [f"{m:02d}/{y}" for y, m in _tv_meses]
+    _tv_atual  = f"{_tv_hoje.month:02d}/{_tv_hoje.year}"
+    if "tv_mes_sel" not in st.session_state:
+        st.session_state.tv_mes_sel = _tv_atual
+
+    _, _col_mes = st.columns([5, 1])
+    with _col_mes:
+        _tv_mes_widget = st.selectbox(
+            "Mês de competência",
+            _tv_opcoes,
+            index=_tv_opcoes.index(st.session_state.tv_mes_sel)
+                  if st.session_state.tv_mes_sel in _tv_opcoes else
+                  (_tv_opcoes.index(_tv_atual) if _tv_atual in _tv_opcoes else 0),
+            key="tv_mes_sel_widget",
+        )
+    st.session_state.tv_mes_sel = _tv_mes_widget
+    _tv_mes_num = int(_tv_mes_widget[:2])
+    _tv_ano_num = int(_tv_mes_widget[3:])
+
+    # Carrega dados comuns (cacheados por 2 h)
     from src.api.jueri_client import _get_lista_pedidos, _get_ultima_atualizacao_pedidos
-    hoje   = date.today()
     ultima = _get_ultima_atualizacao_pedidos()
 
     try:
@@ -451,11 +470,11 @@ def render():
 
     # Renderiza slide atual
     if slide_idx == 0:
-        _slide_vendas(todos_pedidos, hoje, ultima)
+        _slide_vendas(todos_pedidos, _tv_mes_num, _tv_ano_num, ultima)
     elif slide_idx == 1:
-        _slide_premiacoes(todos_pedidos, hoje, ultima)
+        _slide_premiacoes(todos_pedidos, _tv_mes_num, _tv_ano_num, ultima)
     else:
-        _slide_desempenho(todos_pedidos, hoje, ultima)
+        _slide_desempenho(todos_pedidos, _tv_mes_num, _tv_ano_num, ultima)
 
     # Barra de navegação inferior
     st.markdown('<hr style="margin:8px 0 4px;border:none;border-top:1px solid #f1f5f9">', unsafe_allow_html=True)

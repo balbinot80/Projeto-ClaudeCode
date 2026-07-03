@@ -324,24 +324,10 @@ if _time_cfg:
 
 if pagina == "🏠 Dashboard":
     from src.api.jueri_client import get_produtos, get_revendedores, get_pedidos_baixados, get_pedidos_abertos
-    from src.logic.revendedoras import meses_disponiveis
-    from datetime import datetime, date
+    from datetime import datetime, timedelta
     import pandas as pd
 
     st.title("🏠 Dashboard — Visão Geral")
-
-    # ── Filtro de mês ─────────────────────────────────────────────────────────
-    _dash_meses = meses_disponiveis(7, futuros=1)
-    _dash_opcoes = [f"{m:02d}/{y}" for y, m in _dash_meses]
-    _dash_hoje   = date.today()
-    _dash_atual  = f"{_dash_hoje.month:02d}/{_dash_hoje.year}"
-    _dash_idx    = _dash_opcoes.index(_dash_atual) if _dash_atual in _dash_opcoes else 0
-
-    _col_f, _ = st.columns([2, 5])
-    with _col_f:
-        _dash_mes_sel = st.selectbox("Mês de competência", _dash_opcoes, index=_dash_idx, key="dash_mes_sel")
-    _dash_mes_num = int(_dash_mes_sel[:2])
-    _dash_ano_num = int(_dash_mes_sel[3:])
 
     try:
         with st.spinner("Carregando dados..."):
@@ -354,15 +340,13 @@ if pagina == "🏠 Dashboard":
         st.info("Aguarde alguns instantes e clique em **🔄 Atualizar dados** no menu lateral.")
         st.stop()
 
-    # Filtra baixados pelo mês de competência selecionado
-    baixados_mes = []
+    corte_30d = datetime.now() - timedelta(days=30)
+    baixados_30d = []
     for p in baixados:
         try:
-            data_str = (p.get("data_baixa") or p.get("data_criacao") or "")[:10]
-            if data_str:
-                d = datetime.fromisoformat(data_str)
-                if d.month == _dash_mes_num and d.year == _dash_ano_num:
-                    baixados_mes.append(p)
+            data_str = (p.get("data_baixa") or p.get("data_criacao") or "2000-01-01")[:10]
+            if datetime.fromisoformat(data_str) >= corte_30d:
+                baixados_30d.append(p)
         except (ValueError, TypeError):
             pass
 
@@ -382,7 +366,7 @@ if pagina == "🏠 Dashboard":
     col2.metric("🔴 Estoque crítico", criticos)
     col3.metric("👥 Revendedoras ativas",
                 sum(1 for r in revendedores if str(r.get("fk_status_id", "1")) == "1"))
-    col4.metric(f"📦 Pedidos baixados — {_dash_mes_sel}", len(baixados_mes))
+    col4.metric("📦 Pedidos baixados (30 dias)", len(baixados_30d))
 
     st.divider()
 
@@ -393,13 +377,13 @@ if pagina == "🏠 Dashboard":
         )
 
     # ── Ticket médio por supervisora ──────────────────────────────────────────
-    st.subheader(f"🎯 Ticket médio por supervisora — {_dash_mes_sel}")
-    st.caption(f"Valor médio por pedido baixado em {_dash_mes_sel}, agrupado por supervisora.")
+    st.subheader("🎯 Ticket médio por supervisora — últimos 30 dias")
+    st.caption("Valor médio por pedido baixado nos últimos 30 dias, agrupado por supervisora.")
 
-    if baixados_mes:
+    if baixados_30d:
         ticket_sup: dict = {}
         contagem_sup: dict = {}
-        for p in baixados_mes:
+        for p in baixados_30d:
             sup = p.get("supervisor_nome") or "Sem supervisora"
             val = float(p.get("valor_total") or 0)
             ticket_sup[sup] = ticket_sup.get(sup, 0) + val
@@ -442,7 +426,7 @@ if pagina == "🏠 Dashboard":
             hide_index=True,
         )
     else:
-        st.info(f"Sem pedidos baixados em {_dash_mes_sel}.")
+        st.info("Sem pedidos baixados nos últimos 30 dias.")
 
     st.info("Use o menu lateral para navegar entre os módulos do sistema.")
 

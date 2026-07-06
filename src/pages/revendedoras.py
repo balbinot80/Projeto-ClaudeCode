@@ -1758,21 +1758,21 @@ def render(filtro_supervisor: str = ""):
                     "Status":      _status_p,
                     "Valor":       f"R$ {_val_p:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
                 })
-            # Potencial (data_criacao + 30 dias no mês)
-            if _d_cr:
+            # Potencial: apenas Aberto, data_criacao + 30 dias no mês, 1 linha por revendedora
+            if _status_p == "Aberto" and _d_cr:
                 _d_natural = _d_cr + timedelta(days=30)
                 if _d_natural.month == mes_num and _d_natural.year == ano_num:
+                    if _rid_p not in _acertos_potenciais_revs:
+                        _postergado_p = _d_ac and (_d_ac - _d_cr).days > 30
+                        _rows_potenciais.append({
+                            "Nome":          _nome_p,
+                            "Supervisora":   _sup_p or "—",
+                            "Criação":       _d_cr.strftime("%d/%m/%Y"),
+                            "Data natural":  _d_natural.strftime("%d/%m/%Y"),
+                            "Acerto atual":  _d_ac.strftime("%d/%m/%Y") if _d_ac else "—",
+                            "Postergado":    "Sim" if _postergado_p else "Não",
+                        })
                     _acertos_potenciais_revs.add(_rid_p)
-                    _postergado_p = _d_ac and (_d_ac - _d_cr).days > 30
-                    _rows_potenciais.append({
-                        "Nome":          _nome_p,
-                        "Supervisora":   _sup_p or "—",
-                        "Criação":       _d_cr.strftime("%d/%m/%Y"),
-                        "Data natural":  _d_natural.strftime("%d/%m/%Y"),
-                        "Acerto atual":  _d_ac.strftime("%d/%m/%Y") if _d_ac else "—",
-                        "Status":        _status_p,
-                        "Postergado":    "Sim" if _postergado_p else "Não",
-                    })
 
         # Postergados: ciclo > 30 dias e data_acerto dentro do mês selecionado
         if (_status_p in ("Aberto", "Baixado") and _d_ac and _d_cr

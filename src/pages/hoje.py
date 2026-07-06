@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 from src.api.jueri_client import _get_lista_pedidos
 from src.logic.acertos import montar_acertos
-from src.logic.motivos_atraso import load_motivos, save_motivo
+from src.logic.motivos_atraso import load_motivos, load_motivos_batch, save_motivo
 from src.logic.premiacoes import calcular_ranking, load_premiacoes
 from src.logic.revendedoras import MINIMO_REV, calcular_competencia, parse_date
 
@@ -289,6 +289,16 @@ def render(filtro_supervisor: str = "", nome_usuario: str = ""):
 
     st.divider()
 
+    # ── Pré-carrega indicador de motivos para vencidos ────────────────────────
+    venc_ids      = [r["id"] for r in vencidos]
+    motivos_hj    = load_motivos_batch(venc_ids)
+    sem_motivo_hj = sum(1 for v in motivos_hj.values() if not v)
+    if vencidos and sem_motivo_hj:
+        st.error(
+            f"🚨 {sem_motivo_hj} acerto(s) vencido(s) **sem motivo de atraso** registrado — "
+            "clique em **⚠️** para registrar."
+        )
+
     # ── Linha 1: Vencidos + Agendados hoje | A agendar esta semana ────────────
     col_esq, col_dir = st.columns([3, 2])
 
@@ -324,11 +334,15 @@ def render(filtro_supervisor: str = "", nome_usuario: str = ""):
                         ):
                             _ir_agendar(row["id"])
                     with c_mot:
+                        tem_mot_hj  = motivos_hj.get(str(row["id"]), False)
+                        lbl_mot_hj  = "✅" if tem_mot_hj else "⚠️"
+                        tipo_mot_hj = "secondary" if tem_mot_hj else "primary"
                         if st.button(
-                            "📝",
+                            lbl_mot_hj,
                             key=f"hj_vm_{row['id']}",
                             use_container_width=True,
-                            help="Registrar/ver motivo do atraso",
+                            type=tipo_mot_hj,
+                            help="Ver/registrar motivo do atraso",
                         ):
                             st.session_state["_motivo_id"] = row["id"]
                             st.rerun()

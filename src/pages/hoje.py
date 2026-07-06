@@ -23,28 +23,31 @@ def _ir_agendar(pedido_id):
 
 
 def _inject_colors():
-    """JS com MutationObserver: aplica cor de fundo nos containers pelo marker."""
+    """JS via iframe: usa window.parent.document para acessar o DOM do Streamlit."""
     components.html("""
 <script>
-const MAP = {
-  'hj-red':    {bg:'#FEF2F2', bd:'rgba(220,38,38,.35)'},
-  'hj-green':  {bg:'#F0FDF4', bd:'rgba(22,163,74,.35)'},
-  'hj-yellow': {bg:'#FFFDE7', bd:'rgba(202,138,4,.35)'},
-  'hj-gold':   {bg:'#FFFDE7', bd:'rgba(196,152,90,.35)'},
-};
-const apply = () => {
-  for (const [cls, c] of Object.entries(MAP)) {
-    document.querySelectorAll('.hj-card-' + cls).forEach(el => {
-      const w = el.closest('[data-testid="stVerticalBlockBorderWrapper"]');
-      if (w) {
-        w.style.setProperty('background', c.bg, 'important');
-        w.style.setProperty('border-color', c.bd, 'important');
-      }
-    });
-  }
-};
-apply();
-new MutationObserver(apply).observe(document.body, {childList:true, subtree:true});
+(function() {
+  const d = window.parent.document;
+  const MAP = {
+    'hj-red':    {bg:'#FEF2F2', bd:'rgba(220,38,38,.4)'},
+    'hj-green':  {bg:'#F0FDF4', bd:'rgba(22,163,74,.4)'},
+    'hj-yellow': {bg:'#FFFDE7', bd:'rgba(202,138,4,.4)'},
+    'hj-gold':   {bg:'#FFFDE7', bd:'rgba(196,152,90,.4)'},
+  };
+  const apply = () => {
+    for (const [cls, c] of Object.entries(MAP)) {
+      d.querySelectorAll('.hj-card-' + cls).forEach(el => {
+        const w = el.closest('[data-testid="stVerticalBlockBorderWrapper"]');
+        if (w) {
+          w.style.setProperty('background', c.bg, 'important');
+          w.style.setProperty('border-color', c.bd, 'important');
+        }
+      });
+    }
+  };
+  apply();
+  new MutationObserver(apply).observe(d.body, {childList:true, subtree:true});
+})();
 </script>
 """, height=0)
 

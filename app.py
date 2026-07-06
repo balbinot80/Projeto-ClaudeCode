@@ -266,6 +266,12 @@ with st.sidebar:
             "📊 Entradas e Saídas",
             "🔍 Diagnóstico",
         ]
+    elif role == "supervisora_teste":
+        paginas_disponiveis = [
+            "🏠 Hoje",
+            "👥 Revendedoras",
+            "📅 Controle de Acertos",
+        ]
     else:
         # Supervisoras: tela de revendedoras + controle de acertos
         paginas_disponiveis = ["👥 Revendedoras", "📅 Controle de Acertos"]
@@ -329,7 +335,11 @@ if _time_cfg:
 
 # ── Roteamento ─────────────────────────────────────────────────────────────────
 
-if pagina == "🏠 Dashboard":
+if pagina == "🏠 Hoje":
+    from src.pages.hoje import render
+    render(filtro_supervisor=sup_filtro, nome_usuario=nome_usuario)
+
+elif pagina == "🏠 Dashboard":
     from src.api.jueri_client import get_produtos, get_revendedores, get_pedidos_baixados, get_pedidos_abertos
     from datetime import datetime, timedelta
     import pandas as pd

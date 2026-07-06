@@ -2,8 +2,6 @@ from datetime import date, timedelta
 
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
-
 from src.api.jueri_client import _get_lista_pedidos
 from src.logic.acertos import montar_acertos
 from src.logic.premiacoes import calcular_ranking, load_premiacoes
@@ -17,39 +15,9 @@ _R = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", "
 
 
 def _ir_agendar(pedido_id):
-    st.session_state["_ag_id"]    = pedido_id
-    st.session_state["_nav_page"] = "📅 Controle de Acertos"
+    st.session_state["_ag_id"]   = pedido_id
+    st.session_state["_nav_goto"] = "📅 Controle de Acertos"
     st.rerun()
-
-
-def _inject_colors():
-    """JS via iframe: usa window.parent.document para acessar o DOM do Streamlit."""
-    components.html("""
-<script>
-(function() {
-  const d = window.parent.document;
-  const MAP = {
-    'hj-red':    {bg:'#FEF2F2', bd:'rgba(220,38,38,.4)'},
-    'hj-green':  {bg:'#F0FDF4', bd:'rgba(22,163,74,.4)'},
-    'hj-yellow': {bg:'#FFFDE7', bd:'rgba(202,138,4,.4)'},
-    'hj-gold':   {bg:'#FFFDE7', bd:'rgba(196,152,90,.4)'},
-  };
-  const apply = () => {
-    for (const [cls, c] of Object.entries(MAP)) {
-      d.querySelectorAll('.hj-card-' + cls).forEach(el => {
-        const w = el.closest('[data-testid="stVerticalBlockBorderWrapper"]');
-        if (w) {
-          w.style.setProperty('background', c.bg, 'important');
-          w.style.setProperty('border-color', c.bd, 'important');
-        }
-      });
-    }
-  };
-  apply();
-  new MutationObserver(apply).observe(d.body, {childList:true, subtree:true});
-})();
-</script>
-""", height=0)
 
 
 def _css():
@@ -84,14 +52,33 @@ def _css():
 .hj-sep{padding:4px 0;border-bottom:1px solid rgba(0,0,0,.07)}
 .hj-prog-bg  {background:#e5e7eb;border-radius:99px;height:5px;margin-top:3px}
 .hj-prog-fill{height:5px;border-radius:99px;background:#C4985A}
+
+/* ── Fundo colorido: wrapper vira contexto de posicionamento ── */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    position: relative !important;
+    isolation: isolate !important;
+    overflow: hidden !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
 
-def _marker(cor):
-    """Span invisível usado pelo JS para identificar o card."""
-    st.markdown(f'<span class="hj-card-{cor}" style="display:none"></span>',
-                unsafe_allow_html=True)
+_BG = {
+    "hj-red":    "#FEF2F2",
+    "hj-green":  "#F0FDF4",
+    "hj-yellow": "#FFFDE7",
+    "hj-gold":   "#FFF8E7",
+}
+
+def _bg(cor: str):
+    bg = _BG.get(cor, "")
+    if not bg:
+        return
+    st.markdown(
+        f'<div style="position:absolute;top:0;left:0;right:0;bottom:0;'
+        f'background:{bg};z-index:-1;pointer-events:none;"></div>',
+        unsafe_allow_html=True,
+    )
 
 
 def _titulo(txt, cor):
@@ -119,7 +106,6 @@ def _pessoa(nome, detalhe, badge, b_cls, key, btn_lbl, primario=False):
 
 def render(filtro_supervisor: str = "", nome_usuario: str = ""):
     _css()
-    _inject_colors()
 
     hoje    = date.today()
     mes_num = hoje.month
@@ -216,7 +202,7 @@ def render(filtro_supervisor: str = "", nome_usuario: str = ""):
         # Vencidos — vermelho
         if vencidos:
             with st.container(border=True):
-                _marker("hj-red")
+                _bg("hj-red")
                 _titulo("🚨 Acertos vencidos — ação imediata", "red")
                 for row in sorted(vencidos, key=lambda r: r["Data acerto"] or hoje):
                     dag    = row.get("Data agendada")
@@ -233,14 +219,14 @@ def render(filtro_supervisor: str = "", nome_usuario: str = ""):
                         _ir_agendar(row["id"])
         else:
             with st.container(border=True):
-                _marker("hj-green")
+                _bg("hj-green")
                 _titulo("✅ Nenhum acerto vencido", "green")
                 st.markdown('<span class="hj-sub">Tudo em dia!</span>', unsafe_allow_html=True)
 
         # Agendados hoje — verde
         if agendados_hj:
             with st.container(border=True):
-                _marker("hj-green")
+                _bg("hj-green")
                 _titulo("📅 Agendados para hoje", "green")
                 for row in agendados_hj:
                     hora  = row.get("Hora agendada") or ""
@@ -251,7 +237,7 @@ def render(filtro_supervisor: str = "", nome_usuario: str = ""):
                         _ir_agendar(row["id"])
         else:
             with st.container(border=True):
-                _marker("hj-green")
+                _bg("hj-green")
                 _titulo("📅 Nenhum acerto agendado para hoje", "green")
                 st.markdown('<span class="hj-sub">Veja os pendentes da semana ao lado.</span>',
                             unsafe_allow_html=True)
@@ -260,7 +246,7 @@ def render(filtro_supervisor: str = "", nome_usuario: str = ""):
         # A agendar esta semana — amarelo
         if a_agendar_sem:
             with st.container(border=True):
-                _marker("hj-yellow")
+                _bg("hj-yellow")
                 _titulo(f"⬜ A agendar esta semana ({len(a_agendar_sem)})", "yellow")
                 for row in sorted(a_agendar_sem, key=lambda r: r["Data acerto"] or hoje):
                     dac  = row.get("Data acerto")
@@ -272,7 +258,7 @@ def render(filtro_supervisor: str = "", nome_usuario: str = ""):
                         _ir_agendar(row["id"])
         else:
             with st.container(border=True):
-                _marker("hj-green")
+                _bg("hj-green")
                 _titulo("✅ Agenda da semana completa", "green")
                 st.markdown('<span class="hj-sub">Todos os acertos desta semana estão agendados.</span>',
                             unsafe_allow_html=True)
@@ -285,7 +271,7 @@ def render(filtro_supervisor: str = "", nome_usuario: str = ""):
         # Abaixo do mínimo — amarelo
         if abaixo_min:
             with st.container(border=True):
-                _marker("hj-yellow")
+                _bg("hj-yellow")
                 _titulo(f"🟡 Abaixo do mínimo ({len(abaixo_min)})", "yellow")
                 for r in sorted(abaixo_min, key=lambda x: x["total"]):
                     pct = int(r["total"] / MINIMO_REV * 100)
@@ -303,7 +289,7 @@ def render(filtro_supervisor: str = "", nome_usuario: str = ""):
                 st.caption(f"Mínimo: {_R(MINIMO_REV)}/mês.")
         else:
             with st.container(border=True):
-                _marker("hj-green")
+                _bg("hj-green")
                 _titulo("✅ Todas acima do mínimo", "green")
                 st.markdown('<span class="hj-sub">Todas acima do mínimo este mês.</span>',
                             unsafe_allow_html=True)
@@ -312,7 +298,7 @@ def render(filtro_supervisor: str = "", nome_usuario: str = ""):
         # Sem vendas — amarelo
         if sem_vendas_list:
             with st.container(border=True):
-                _marker("hj-yellow")
+                _bg("hj-yellow")
                 rod = f" (+{len(sem_vendas_list)-7} mais)" if len(sem_vendas_list) > 7 else ""
                 _titulo(f"⚠️ Sem vendas ({len(sem_vendas_list)}){rod}", "yellow")
                 for r in sem_vendas_list[:7]:
@@ -324,7 +310,7 @@ def render(filtro_supervisor: str = "", nome_usuario: str = ""):
                     )
         else:
             with st.container(border=True):
-                _marker("hj-green")
+                _bg("hj-green")
                 _titulo("✅ Todas com vendas no mês", "green")
                 st.markdown('<span class="hj-sub">Nenhuma revendedora com zero vendas.</span>',
                             unsafe_allow_html=True)
@@ -333,12 +319,12 @@ def render(filtro_supervisor: str = "", nome_usuario: str = ""):
         # Premiações
         with st.container(border=True):
             if meta_mes <= 0:
-                _marker("hj-gold")
+                _bg("hj-gold")
                 _titulo("🏆 Premiação", "gold")
                 st.markdown('<span class="hj-sub">Meta não configurada. Acesse Revendedoras → Premiações.</span>',
                             unsafe_allow_html=True)
             elif ganhadoras:
-                _marker("hj-green")
+                _bg("hj-green")
                 _titulo(f"🏆 {len(ganhadoras)} ganhadora(s) este mês", "green")
                 for r in ganhadoras[:4]:
                     st.markdown(
@@ -358,7 +344,7 @@ def render(filtro_supervisor: str = "", nome_usuario: str = ""):
                         f'style="width:{min(int(pct),100)}%"></div></div>'
                         f'</div>', unsafe_allow_html=True)
             elif quase_meta:
-                _marker("hj-gold")
+                _bg("hj-gold")
                 _titulo(f"🏆 {len(quase_meta)} perto da meta", "gold")
                 for r in quase_meta[:5]:
                     pct   = r["% da meta"]
@@ -373,7 +359,7 @@ def render(filtro_supervisor: str = "", nome_usuario: str = ""):
                         f'style="width:{min(int(pct),100)}%"></div></div>'
                         f'</div>', unsafe_allow_html=True)
             else:
-                _marker("hj-gold")
+                _bg("hj-gold")
                 _titulo("🏆 Premiação", "gold")
                 st.markdown('<span class="hj-sub">Nenhuma chegou a 70% da meta ainda.</span>',
                             unsafe_allow_html=True)

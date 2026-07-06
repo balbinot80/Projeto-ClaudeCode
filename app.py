@@ -276,7 +276,11 @@ with st.sidebar:
         # Supervisoras: tela de revendedoras + controle de acertos
         paginas_disponiveis = ["👥 Revendedoras", "📅 Controle de Acertos"]
 
-    pagina = st.radio("Navegação", paginas_disponiveis)
+    # Chave de navegação: permite que outras telas naveguem programaticamente
+    if "_nav_page" not in st.session_state or st.session_state["_nav_page"] not in paginas_disponiveis:
+        st.session_state["_nav_page"] = paginas_disponiveis[0]
+
+    pagina = st.radio("Navegação", paginas_disponiveis, key="_nav_page")
 
     st.divider()
 

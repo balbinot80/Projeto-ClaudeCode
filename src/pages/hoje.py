@@ -23,29 +23,39 @@ def _ir_agendar(pedido_id):
 
 
 def _inject_colors():
-    """JS via iframe: usa window.parent.document para acessar o DOM do Streamlit."""
+    """JS via iframe com fallbacks: window.parent → window.top."""
     components.html("""
 <script>
 (function() {
-  const d = window.parent.document;
+  let d;
+  try { d = window.parent.document; } catch(e) {}
+  if (!d || d === window.document) { try { d = window.top.document; } catch(e2) { return; } }
   const MAP = {
-    'hj-red':    {bg:'#FEF2F2', bd:'rgba(220,38,38,.4)'},
-    'hj-green':  {bg:'#F0FDF4', bd:'rgba(22,163,74,.4)'},
-    'hj-yellow': {bg:'#FFFDE7', bd:'rgba(202,138,4,.4)'},
-    'hj-gold':   {bg:'#FFFDE7', bd:'rgba(196,152,90,.4)'},
+    'hj-card-hj-red':    {bg:'#FEF2F2', bd:'rgba(220,38,38,.4)'},
+    'hj-card-hj-green':  {bg:'#F0FDF4', bd:'rgba(22,163,74,.4)'},
+    'hj-card-hj-yellow': {bg:'#FFFDE7', bd:'rgba(202,138,4,.4)'},
+    'hj-card-hj-gold':   {bg:'#FFF8E7', bd:'rgba(196,152,90,.4)'},
   };
   const apply = () => {
     for (const [cls, c] of Object.entries(MAP)) {
-      d.querySelectorAll('.hj-card-' + cls).forEach(el => {
+      d.querySelectorAll('.' + cls).forEach(el => {
         const w = el.closest('[data-testid="stVerticalBlockBorderWrapper"]');
         if (w) {
           w.style.setProperty('background', c.bg, 'important');
           w.style.setProperty('border-color', c.bd, 'important');
+          w.style.setProperty('border-radius', '14px', 'important');
+          const inner = w.querySelector('[data-testid="stVerticalBlock"]');
+          if (inner) {
+            inner.style.setProperty('background', c.bg, 'important');
+            inner.style.setProperty('border-radius', '12px', 'important');
+          }
         }
       });
     }
   };
   apply();
+  setTimeout(apply, 300);
+  setTimeout(apply, 1000);
   new MutationObserver(apply).observe(d.body, {childList:true, subtree:true});
 })();
 </script>
@@ -84,14 +94,54 @@ def _css():
 .hj-sep{padding:4px 0;border-bottom:1px solid rgba(0,0,0,.07)}
 .hj-prog-bg  {background:#e5e7eb;border-radius:99px;height:5px;margin-top:3px}
 .hj-prog-fill{height:5px;border-radius:99px;background:#C4985A}
+
+/* ── Coloração dos cards via :has() ─────────────────────── */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-red){
+    background:#FEF2F2 !important;
+    border-color:rgba(220,38,38,.4) !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-red)
+> div[data-testid="stVerticalBlock"]{
+    background:#FEF2F2 !important;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-green){
+    background:#F0FDF4 !important;
+    border-color:rgba(22,163,74,.4) !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-green)
+> div[data-testid="stVerticalBlock"]{
+    background:#F0FDF4 !important;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-yellow){
+    background:#FFFDE7 !important;
+    border-color:rgba(202,138,4,.4) !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-yellow)
+> div[data-testid="stVerticalBlock"]{
+    background:#FFFDE7 !important;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-gold){
+    background:#FFF8E7 !important;
+    border-color:rgba(196,152,90,.4) !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-gold)
+> div[data-testid="stVerticalBlock"]{
+    background:#FFF8E7 !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
 
 def _marker(cor):
-    """Span invisível usado pelo JS para identificar o card."""
-    st.markdown(f'<span class="hj-card-{cor}" style="display:none"></span>',
-                unsafe_allow_html=True)
+    """Marcador de cor do card — height:0 garante que :has() funcione mesmo sem display."""
+    st.markdown(
+        f'<div class="hj-card-{cor}" '
+        f'style="height:0;line-height:0;overflow:hidden;margin:0;padding:0"></div>',
+        unsafe_allow_html=True,
+    )
 
 
 def _titulo(txt, cor):

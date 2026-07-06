@@ -1731,63 +1731,62 @@ def render(filtro_supervisor: str = ""):
     total_liquido = total_mes - total_promissoria
     ticket_medio  = total_liquido / n_rev if n_rev > 0 else 0
 
-    # ── Métricas exclusivas admin: acertos no mês + postergados + potencial ────
+    # ── Métricas: acertos no mês + postergados + potencial ───────────────────
     _rows_postergados   = []
     _rows_acertos_mes   = []
     _rows_potenciais    = []
-    if _is_admin:
-        _acertos_mes_revs      = set()
-        _acertos_potenciais_revs: set = set()
-        for _p in todos_pedidos:
-            _status_p = _p.get("status")
-            _sup_p    = _p.get("supervisor_nome")
-            _comp_p   = _p.get("comprador") or {}
-            _nome_p   = _comp_p.get("nome") or f"Rev {_p.get('fk_revendedor_id')}"
-            _rid_p    = _p.get("fk_revendedor_id")
-            _d_ac     = _parse_date(_p.get("data_acerto"))
-            _d_cr     = _parse_date(_p.get("data_criacao"))
+    _acertos_mes_revs      = set()
+    _acertos_potenciais_revs: set = set()
+    for _p in todos_pedidos:
+        _status_p = _p.get("status")
+        _sup_p    = _p.get("supervisor_nome")
+        _comp_p   = _p.get("comprador") or {}
+        _nome_p   = _comp_p.get("nome") or f"Rev {_p.get('fk_revendedor_id')}"
+        _rid_p    = _p.get("fk_revendedor_id")
+        _d_ac     = _parse_date(_p.get("data_acerto"))
+        _d_cr     = _parse_date(_p.get("data_criacao"))
 
-            if _status_p in ("Baixado", "Aberto") and _sup_p:
-                # Acertos no mês
-                if _d_ac and _d_ac.month == mes_num and _d_ac.year == ano_num:
-                    _acertos_mes_revs.add(_rid_p)
-                    _val_p = float(_p.get("valor_total") or _p.get("valor_pre_baixa") or 0)
-                    _rows_acertos_mes.append({
-                        "Nome":        _nome_p,
-                        "Supervisora": _sup_p or "—",
-                        "Acerto prev.": _d_ac.strftime("%d/%m/%Y"),
-                        "Status":      _status_p,
-                        "Valor":       f"R$ {_val_p:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
-                    })
-                # Potencial (data_criacao + 30 dias no mês)
-                if _d_cr:
-                    _d_natural = _d_cr + timedelta(days=30)
-                    if _d_natural.month == mes_num and _d_natural.year == ano_num:
-                        _acertos_potenciais_revs.add(_rid_p)
-                        _postergado_p = _d_ac and (_d_ac - _d_cr).days > 30
-                        _rows_potenciais.append({
-                            "Nome":          _nome_p,
-                            "Supervisora":   _sup_p or "—",
-                            "Criação":       _d_cr.strftime("%d/%m/%Y"),
-                            "Data natural":  _d_natural.strftime("%d/%m/%Y"),
-                            "Acerto atual":  _d_ac.strftime("%d/%m/%Y") if _d_ac else "—",
-                            "Status":        _status_p,
-                            "Postergado":    "Sim" if _postergado_p else "Não",
-                        })
-
-            # Postergados: pedidos abertos com ciclo > 30 dias
-            if _status_p == "Aberto" and _d_ac and _d_cr and (_d_ac - _d_cr).days > 30:
-                _rows_postergados.append({
-                    "Nome":         _nome_p,
-                    "Supervisora":  _sup_p or "—",
-                    "Criação":      _d_cr.strftime("%d/%m/%Y"),
+        if _status_p in ("Baixado", "Aberto") and _sup_p:
+            # Acertos no mês
+            if _d_ac and _d_ac.month == mes_num and _d_ac.year == ano_num:
+                _acertos_mes_revs.add(_rid_p)
+                _val_p = float(_p.get("valor_total") or _p.get("valor_pre_baixa") or 0)
+                _rows_acertos_mes.append({
+                    "Nome":        _nome_p,
+                    "Supervisora": _sup_p or "—",
                     "Acerto prev.": _d_ac.strftime("%d/%m/%Y"),
-                    "Dias":         (_d_ac - _d_cr).days,
+                    "Status":      _status_p,
+                    "Valor":       f"R$ {_val_p:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
                 })
+            # Potencial (data_criacao + 30 dias no mês)
+            if _d_cr:
+                _d_natural = _d_cr + timedelta(days=30)
+                if _d_natural.month == mes_num and _d_natural.year == ano_num:
+                    _acertos_potenciais_revs.add(_rid_p)
+                    _postergado_p = _d_ac and (_d_ac - _d_cr).days > 30
+                    _rows_potenciais.append({
+                        "Nome":          _nome_p,
+                        "Supervisora":   _sup_p or "—",
+                        "Criação":       _d_cr.strftime("%d/%m/%Y"),
+                        "Data natural":  _d_natural.strftime("%d/%m/%Y"),
+                        "Acerto atual":  _d_ac.strftime("%d/%m/%Y") if _d_ac else "—",
+                        "Status":        _status_p,
+                        "Postergado":    "Sim" if _postergado_p else "Não",
+                    })
 
-        _n_acertos_mes       = len(_acertos_mes_revs)
-        _n_postergados       = len(_rows_postergados)
-        _n_acertos_potenciais = len(_acertos_potenciais_revs)
+        # Postergados: pedidos abertos com ciclo > 30 dias
+        if _status_p == "Aberto" and _d_ac and _d_cr and (_d_ac - _d_cr).days > 30:
+            _rows_postergados.append({
+                "Nome":         _nome_p,
+                "Supervisora":  _sup_p or "—",
+                "Criação":      _d_cr.strftime("%d/%m/%Y"),
+                "Acerto prev.": _d_ac.strftime("%d/%m/%Y"),
+                "Dias":         (_d_ac - _d_cr).days,
+            })
+
+    _n_acertos_mes       = len(_acertos_mes_revs)
+    _n_postergados       = len(_rows_postergados)
+    _n_acertos_potenciais = len(_acertos_potenciais_revs)
 
     # Bloco visuais de metricas
     st.markdown("""
@@ -1815,27 +1814,18 @@ def render(filtro_supervisor: str = ""):
     _S = '<div class="au-sep"></div>'
     _pct_inad = (total_promissoria / total_mes * 100) if total_mes > 0 else 0
 
-    if _is_admin:
-        _b1 = "".join([
-            _m("📅 Acertos no mês", _n_acertos_mes,
-               f"Revendedoras com data de acerto previsto em {mes_sel} (Abertos e Baixados, sem supervisora excluídos)."),
-            _m("⏰ Postergados", _n_postergados,
-               "Pedidos em aberto com mais de 30 dias entre criação e data de acerto previsto."),
-            _m("📈 Potencial s/ postergação", _n_acertos_potenciais,
-               f"Revendedoras que teriam acerto em {mes_sel} se o ciclo padrão de 30 dias fosse respeitado."),
-            _S,
-            _m("🟡 Abaixo do mínimo", n_abaixo, sub=True),
-            _m("🔴 Sem vendas", n_zero + n_sem_res,
-               "Pedidos abertos com R$0 + revendedoras com total = R$0", sub=True),
-        ])
-    else:
-        _b1 = "".join([
-            _m("👥 Revendedoras", n_rev),
-            _S,
-            _m("🟡 Abaixo do mínimo", n_abaixo, sub=True),
-            _m("🔴 Sem vendas", n_zero + n_sem_res,
-               "Pedidos abertos com R$0 + revendedoras com total = R$0", sub=True),
-        ])
+    _b1 = "".join([
+        _m("📅 Acertos no mês", _n_acertos_mes,
+           f"Revendedoras com data de acerto previsto em {mes_sel} (Abertos e Baixados, sem supervisora excluídos)."),
+        _m("⏰ Postergados", _n_postergados,
+           "Pedidos em aberto com mais de 30 dias entre criação e data de acerto previsto."),
+        _m("📈 Potencial s/ postergação", _n_acertos_potenciais,
+           f"Revendedoras que teriam acerto em {mes_sel} se o ciclo padrão de 30 dias fosse respeitado."),
+        _S,
+        _m("🟡 Abaixo do mínimo", n_abaixo, sub=True),
+        _m("🔴 Sem vendas", n_zero + n_sem_res,
+           "Pedidos abertos com R$0 + revendedoras com total = R$0", sub=True),
+    ])
     st.markdown(
         f'<div class="au-bloco au-bloco-rev">' + f'<div class="au-bloco-titulo">👥 Revendedoras — {mes_sel}</div>' + f'<div class="au-metrics">{_b1}</div></div>',
         unsafe_allow_html=True,
@@ -1860,39 +1850,38 @@ def render(filtro_supervisor: str = ""):
     )
 
     # ── Tabelas detalhadas (admin) ─────────────────────────────────────────────
-    if _is_admin:
-        with st.expander(f"📅 Acertos no mês — {_n_acertos_mes} revendedora(s)", expanded=False):
-            if _rows_acertos_mes:
-                _df_ac = (
-                    pd.DataFrame(_rows_acertos_mes)
-                    .sort_values(["Supervisora", "Nome"])
-                    .reset_index(drop=True)
-                )
-                st.dataframe(_df_ac, use_container_width=True, hide_index=True)
-            else:
-                st.caption("Nenhum acerto previsto para este mês.")
+    with st.expander(f"📅 Acertos no mês — {_n_acertos_mes} revendedora(s)", expanded=False):
+        if _rows_acertos_mes:
+            _df_ac = (
+                pd.DataFrame(_rows_acertos_mes)
+                .sort_values(["Supervisora", "Nome"])
+                .reset_index(drop=True)
+            )
+            st.dataframe(_df_ac, use_container_width=True, hide_index=True)
+        else:
+            st.caption("Nenhum acerto previsto para este mês.")
 
-        with st.expander(f"⏰ Postergados — {_n_postergados} pedido(s)", expanded=False):
-            if _rows_postergados:
-                _df_post = (
-                    pd.DataFrame(_rows_postergados)
-                    .sort_values("Dias", ascending=False)
-                    .reset_index(drop=True)
-                )
-                st.dataframe(_df_post, use_container_width=True, hide_index=True)
-            else:
-                st.caption("Nenhum pedido postergado encontrado.")
+    with st.expander(f"⏰ Postergados — {_n_postergados} pedido(s)", expanded=False):
+        if _rows_postergados:
+            _df_post = (
+                pd.DataFrame(_rows_postergados)
+                .sort_values("Dias", ascending=False)
+                .reset_index(drop=True)
+            )
+            st.dataframe(_df_post, use_container_width=True, hide_index=True)
+        else:
+            st.caption("Nenhum pedido postergado encontrado.")
 
-        with st.expander(f"📈 Potencial s/ postergação — {_n_acertos_potenciais} revendedora(s)", expanded=False):
-            if _rows_potenciais:
-                _df_pot = (
-                    pd.DataFrame(_rows_potenciais)
-                    .sort_values(["Postergado", "Supervisora", "Nome"], ascending=[False, True, True])
-                    .reset_index(drop=True)
-                )
-                st.dataframe(_df_pot, use_container_width=True, hide_index=True)
-            else:
-                st.caption("Nenhum dado disponível para este mês.")
+    with st.expander(f"📈 Potencial s/ postergação — {_n_acertos_potenciais} revendedora(s)", expanded=False):
+        if _rows_potenciais:
+            _df_pot = (
+                pd.DataFrame(_rows_potenciais)
+                .sort_values(["Postergado", "Supervisora", "Nome"], ascending=[False, True, True])
+                .reset_index(drop=True)
+            )
+            st.dataframe(_df_pot, use_container_width=True, hide_index=True)
+        else:
+            st.caption("Nenhum dado disponível para este mês.")
 
     # ── Tabs ──────────────────────────────────────────────────────────────────
     _tab_labels = [

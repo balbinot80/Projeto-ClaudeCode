@@ -23,37 +23,68 @@ def _ir_agendar(pedido_id):
 
 
 def _inject_colors():
-    """JS via iframe com fallbacks: window.parent → window.top."""
+    """Injeta <style> no <head> do documento pai via JS — mais confiável que inline styles."""
     components.html("""
 <script>
 (function() {
   let d;
   try { d = window.parent.document; } catch(e) {}
   if (!d || d === window.document) { try { d = window.top.document; } catch(e2) { return; } }
+  if (!d) return;
+
+  /* Injeta stylesheet no <head> do pai — CSS em <head> é mais confiável que dangerouslySetInnerHTML */
+  const sid = 'hj-aureum-colors-v4';
+  if (!d.getElementById(sid)) {
+    const s = d.createElement('style');
+    s.id = sid;
+    s.textContent = `
+      div[data-testid="stVerticalBlock"]:has(span.hj-card-hj-red),
+      div[data-testid="stVerticalBlockBorderWrapper"]:has(span.hj-card-hj-red) {
+        box-shadow: inset 0 0 0 9999px #FEF2F2 !important;
+        border-color: rgba(220,38,38,.5) !important;
+      }
+      div[data-testid="stVerticalBlock"]:has(span.hj-card-hj-green),
+      div[data-testid="stVerticalBlockBorderWrapper"]:has(span.hj-card-hj-green) {
+        box-shadow: inset 0 0 0 9999px #F0FDF4 !important;
+        border-color: rgba(22,163,74,.5) !important;
+      }
+      div[data-testid="stVerticalBlock"]:has(span.hj-card-hj-yellow),
+      div[data-testid="stVerticalBlockBorderWrapper"]:has(span.hj-card-hj-yellow) {
+        box-shadow: inset 0 0 0 9999px #FFFDE7 !important;
+        border-color: rgba(202,138,4,.5) !important;
+      }
+      div[data-testid="stVerticalBlock"]:has(span.hj-card-hj-gold),
+      div[data-testid="stVerticalBlockBorderWrapper"]:has(span.hj-card-hj-gold) {
+        box-shadow: inset 0 0 0 9999px #FFF8E7 !important;
+        border-color: rgba(196,152,90,.5) !important;
+      }
+    `;
+    d.head.appendChild(s);
+  }
+
+  /* Fallback: aplica diretamente via inline style */
   const MAP = {
-    'hj-card-hj-red':    {sh:'inset 0 0 0 9999px #FEF2F2', bd:'rgba(220,38,38,.45)'},
-    'hj-card-hj-green':  {sh:'inset 0 0 0 9999px #F0FDF4', bd:'rgba(22,163,74,.45)'},
-    'hj-card-hj-yellow': {sh:'inset 0 0 0 9999px #FFFDE7', bd:'rgba(202,138,4,.45)'},
-    'hj-card-hj-gold':   {sh:'inset 0 0 0 9999px #FFF8E7', bd:'rgba(196,152,90,.45)'},
+    'hj-card-hj-red':    {sh:'inset 0 0 0 9999px #FEF2F2', bd:'rgba(220,38,38,.5)'},
+    'hj-card-hj-green':  {sh:'inset 0 0 0 9999px #F0FDF4', bd:'rgba(22,163,74,.5)'},
+    'hj-card-hj-yellow': {sh:'inset 0 0 0 9999px #FFFDE7', bd:'rgba(202,138,4,.5)'},
+    'hj-card-hj-gold':   {sh:'inset 0 0 0 9999px #FFF8E7', bd:'rgba(196,152,90,.5)'},
   };
-  const apply = () => {
+  const applyInline = () => {
     for (const [cls, c] of Object.entries(MAP)) {
-      d.querySelectorAll('.' + cls).forEach(el => {
-        const w = el.closest('[data-testid="stVerticalBlockBorderWrapper"]');
+      d.querySelectorAll('span.' + cls).forEach(el => {
+        let w = el.closest('[data-testid="stVerticalBlockBorderWrapper"]');
+        if (!w) w = el.closest('[data-testid="stVerticalBlock"]');
         if (w) {
           w.style.setProperty('box-shadow', c.sh, 'important');
           w.style.setProperty('border-color', c.bd, 'important');
-          d.querySelectorAll('[data-testid="stVerticalBlock"]').forEach(inner => {
-            if (w.contains(inner)) inner.style.setProperty('box-shadow', c.sh, 'important');
-          });
         }
       });
     }
   };
-  apply();
-  setTimeout(apply, 300);
-  setTimeout(apply, 1000);
-  new MutationObserver(apply).observe(d.body, {childList:true, subtree:true});
+  applyInline();
+  setTimeout(applyInline, 400);
+  setTimeout(applyInline, 1200);
+  new MutationObserver(applyInline).observe(d.body, {childList:true, subtree:true});
 })();
 </script>
 """, height=0)
@@ -92,47 +123,45 @@ def _css():
 .hj-prog-bg  {background:#e5e7eb;border-radius:99px;height:5px;margin-top:3px}
 .hj-prog-fill{height:5px;border-radius:99px;background:#C4985A}
 
-/* ── Coloração dos cards: inset box-shadow sobrepõe qualquer background ── */
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-red){
-    border-color:rgba(220,38,38,.45) !important;
+/* ── Coloração dos cards — 3 estratégias simultâneas ──── */
+
+/* A) Caminho exato (padrão stylable_container) */
+div[data-testid="stVerticalBlock"]:has(>div.element-container>div.stMarkdown>div[data-testid="stMarkdownContainer"]>p>span.hj-card-hj-red),
+div[data-testid="stVerticalBlock"]:has(span.hj-card-hj-red),
+div[data-testid="stVerticalBlockBorderWrapper"]:has(span.hj-card-hj-red){
     box-shadow:inset 0 0 0 9999px #FEF2F2 !important;
-}
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-red) [data-testid="stVerticalBlock"]{
-    box-shadow:inset 0 0 0 9999px #FEF2F2 !important;
+    border-color:rgba(220,38,38,.5) !important;
 }
 
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-green){
-    border-color:rgba(22,163,74,.45) !important;
+div[data-testid="stVerticalBlock"]:has(>div.element-container>div.stMarkdown>div[data-testid="stMarkdownContainer"]>p>span.hj-card-hj-green),
+div[data-testid="stVerticalBlock"]:has(span.hj-card-hj-green),
+div[data-testid="stVerticalBlockBorderWrapper"]:has(span.hj-card-hj-green){
     box-shadow:inset 0 0 0 9999px #F0FDF4 !important;
-}
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-green) [data-testid="stVerticalBlock"]{
-    box-shadow:inset 0 0 0 9999px #F0FDF4 !important;
+    border-color:rgba(22,163,74,.5) !important;
 }
 
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-yellow){
-    border-color:rgba(202,138,4,.45) !important;
+div[data-testid="stVerticalBlock"]:has(>div.element-container>div.stMarkdown>div[data-testid="stMarkdownContainer"]>p>span.hj-card-hj-yellow),
+div[data-testid="stVerticalBlock"]:has(span.hj-card-hj-yellow),
+div[data-testid="stVerticalBlockBorderWrapper"]:has(span.hj-card-hj-yellow){
     box-shadow:inset 0 0 0 9999px #FFFDE7 !important;
-}
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-yellow) [data-testid="stVerticalBlock"]{
-    box-shadow:inset 0 0 0 9999px #FFFDE7 !important;
+    border-color:rgba(202,138,4,.5) !important;
 }
 
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-gold){
-    border-color:rgba(196,152,90,.45) !important;
+div[data-testid="stVerticalBlock"]:has(>div.element-container>div.stMarkdown>div[data-testid="stMarkdownContainer"]>p>span.hj-card-hj-gold),
+div[data-testid="stVerticalBlock"]:has(span.hj-card-hj-gold),
+div[data-testid="stVerticalBlockBorderWrapper"]:has(span.hj-card-hj-gold){
     box-shadow:inset 0 0 0 9999px #FFF8E7 !important;
-}
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-gold) [data-testid="stVerticalBlock"]{
-    box-shadow:inset 0 0 0 9999px #FFF8E7 !important;
+    border-color:rgba(196,152,90,.5) !important;
 }
 </style>
 """, unsafe_allow_html=True)
 
 
 def _marker(cor):
-    """Marcador de cor do card — height:0 garante que :has() funcione mesmo sem display."""
+    """Span em <p> — mesmo padrão do stylable_container, comprovadamente funcional."""
     st.markdown(
-        f'<div class="hj-card-{cor}" '
-        f'style="height:0;line-height:0;overflow:hidden;margin:0;padding:0"></div>',
+        f'<p style="height:0;margin:0;padding:0;overflow:hidden;line-height:0">'
+        f'<span class="hj-card-{cor}"></span></p>',
         unsafe_allow_html=True,
     )
 

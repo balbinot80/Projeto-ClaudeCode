@@ -41,6 +41,27 @@ def load_motivos(pedido_id) -> list:
         return []
 
 
+def load_motivos_batch(pedido_ids: list) -> dict:
+    """Retorna {str(pedido_id): True/False} indicando se há motivo registrado."""
+    if not pedido_ids:
+        return {}
+    client = _get_client()
+    if client is None:
+        return {}
+    try:
+        ids = [str(pid) for pid in pedido_ids]
+        res = (
+            client.table("motivos_atraso")
+            .select("pedido_id")
+            .in_("pedido_id", ids)
+            .execute()
+        )
+        com_motivo = {row["pedido_id"] for row in (res.data or [])}
+        return {pid: (pid in com_motivo) for pid in ids}
+    except Exception:
+        return {}
+
+
 def save_motivo(pedido_id, motivo: str, usuario: str = "") -> bool:
     """Insere um novo registro de motivo de atraso. Retorna True se bem-sucedido."""
     client = _get_client()

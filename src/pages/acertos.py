@@ -8,7 +8,7 @@ from src.logic.acertos import (
     montar_acertos, semana_de, proxima_semana_resumo,
     save_agendamento, save_envio_maleta, remove_agendamento,
 )
-from src.logic.motivos_atraso import load_motivos, save_motivo
+from src.logic.motivos_atraso import load_motivos, load_motivos_batch, save_motivo
 
 _FORMAS_ENVIO = {"Correios", "Disk Tenha"}
 
@@ -488,7 +488,7 @@ def _label_sem(off: int) -> str:
     return f"Semana {off:+d}"
 
 
-def _grade_semana(df: pd.DataFrame, seg: date, hoje: date):
+def _grade_semana(df: pd.DataFrame, seg: date, hoje: date, motivos_map: dict = None):
     dias = [seg + timedelta(days=i) for i in range(7)]
     cols = st.columns(7)
 
@@ -548,10 +548,14 @@ def _grade_semana(df: pd.DataFrame, seg: date, hoje: date):
                     else:
                         st.markdown(_card_closed(row), unsafe_allow_html=True)
                         if "Atrasou" in str(row["Situação"]):
+                            tem_motivo = (motivos_map or {}).get(str(row["id"]), False)
+                            btn_lbl_m  = "✅ Ver motivo" if tem_motivo else "⚠️ Sem motivo!"
+                            btn_type_m = "secondary" if tem_motivo else "primary"
                             if st.button(
-                                "📝 Motivo",
+                                btn_lbl_m,
                                 key=f"cal_mot_{row['id']}",
                                 use_container_width=True,
+                                type=btn_type_m,
                             ):
                                 st.session_state["_motivo_id"] = row["id"]
                                 st.rerun()
@@ -619,13 +623,26 @@ def _tab_calendario(df: pd.DataFrame):
 
     st.divider()
 
+    # Pré-carrega mapa de motivos para todos os "Atrasou" visíveis
+    atrasou_ids = (
+        df[df["Situação"].str.contains("Atrasou", na=False)]["id"].tolist()
+        if not df.empty else []
+    )
+    motivos_map = load_motivos_batch(atrasou_ids)
+    sem_motivo  = sum(1 for v in motivos_map.values() if not v)
+    if sem_motivo:
+        st.error(
+            f"🚨 {sem_motivo} acerto(s) realizado(s) com atraso **sem motivo registrado**. "
+            "Clique em **⚠️ Sem motivo!** para registrar."
+        )
+
     st.markdown(f"**{_label_sem(offset)}** · {seg1.strftime('%d/%m')} – {dom1.strftime('%d/%m/%Y')}")
-    _grade_semana(df, seg1, hoje)
+    _grade_semana(df, seg1, hoje, motivos_map)
 
     st.divider()
 
     st.markdown(f"**{_label_sem(offset + 1)}** · {seg2.strftime('%d/%m')} – {dom2.strftime('%d/%m/%Y')}")
-    _grade_semana(df, seg2, hoje)
+    _grade_semana(df, seg2, hoje, motivos_map)
 
     st.divider()
     st.caption(
@@ -648,7 +665,12 @@ def _tab_vencidos(df: pd.DataFrame):
         st.success("✅ Nenhum acerto vencido no momento.")
         return
 
+    motivos_map_v = load_motivos_batch(df_venc["id"].tolist())
+    sem_mot_v     = sum(1 for v in motivos_map_v.values() if not v)
+
     st.warning(f"⚠️ {len(df_venc)} acerto(s) vencido(s) — clique em **📅 Agendar** para regularizar.")
+    if sem_mot_v:
+        st.error(f"🚨 {sem_mot_v} vencido(s) **sem motivo de atraso** registrado.")
 
     supervisoras = sorted(df_venc["Supervisor"].unique())
 
@@ -709,10 +731,14 @@ def _tab_vencidos(df: pd.DataFrame):
                                     st.session_state["_ag_id"] = row["id"]
                                     st.rerun()
                             with c_mot:
+                                tem_mot_v  = motivos_map_v.get(str(row["id"]), False)
+                                lbl_mot_v  = "✅ Ver motivo" if tem_mot_v else "⚠️ Sem motivo!"
+                                tipo_mot_v = "secondary" if tem_mot_v else "primary"
                                 if st.button(
-                                    "📝 Motivo",
+                                    lbl_mot_v,
                                     key=f"venc_m_{row['id']}",
                                     use_container_width=True,
+                                    type=tipo_mot_v,
                                 ):
                                     st.session_state["_motivo_id"] = row["id"]
                                     st.rerun()

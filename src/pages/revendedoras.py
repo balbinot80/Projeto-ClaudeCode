@@ -1774,11 +1774,12 @@ def render(filtro_supervisor: str = ""):
                         "Postergado":    "Sim" if _postergado_p else "Não",
                     })
 
-        # Postergados: pedidos abertos com ciclo > 30 dias
-        if _status_p == "Aberto" and _d_ac and _d_cr and (_d_ac - _d_cr).days > 30:
+        # Postergados: pedidos (abertos ou baixados) com ciclo > 30 dias
+        if _status_p in ("Aberto", "Baixado") and _d_ac and _d_cr and (_d_ac - _d_cr).days > 30:
             _rows_postergados.append({
                 "Nome":         _nome_p,
                 "Supervisora":  _sup_p or "—",
+                "Status":       _status_p,
                 "Criação":      _d_cr.strftime("%d/%m/%Y"),
                 "Acerto prev.": _d_ac.strftime("%d/%m/%Y"),
                 "Dias":         (_d_ac - _d_cr).days,

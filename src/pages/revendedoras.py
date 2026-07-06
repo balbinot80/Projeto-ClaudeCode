@@ -1831,7 +1831,7 @@ def render(filtro_supervisor: str = ""):
            f"Revendedoras que teriam acerto em {mes_sel} se o ciclo padrão de 30 dias fosse respeitado."),
         _S,
         _m("👥 Total c/ pedido aberto", _n_revs_aberto_total,
-           "Revendedoras com pelo menos um pedido em Aberto, independente do mês.", sub=True),
+           "Revendedoras com pelo menos um pedido em Aberto, independente do mês."),
         _S,
         _m("🟡 Abaixo do mínimo", n_abaixo, sub=True),
         _m("🔴 Sem vendas", n_zero + n_sem_res,

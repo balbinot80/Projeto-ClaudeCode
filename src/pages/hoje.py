@@ -31,24 +31,21 @@ def _inject_colors():
   try { d = window.parent.document; } catch(e) {}
   if (!d || d === window.document) { try { d = window.top.document; } catch(e2) { return; } }
   const MAP = {
-    'hj-card-hj-red':    {bg:'#FEF2F2', bd:'rgba(220,38,38,.4)'},
-    'hj-card-hj-green':  {bg:'#F0FDF4', bd:'rgba(22,163,74,.4)'},
-    'hj-card-hj-yellow': {bg:'#FFFDE7', bd:'rgba(202,138,4,.4)'},
-    'hj-card-hj-gold':   {bg:'#FFF8E7', bd:'rgba(196,152,90,.4)'},
+    'hj-card-hj-red':    {sh:'inset 0 0 0 9999px #FEF2F2', bd:'rgba(220,38,38,.45)'},
+    'hj-card-hj-green':  {sh:'inset 0 0 0 9999px #F0FDF4', bd:'rgba(22,163,74,.45)'},
+    'hj-card-hj-yellow': {sh:'inset 0 0 0 9999px #FFFDE7', bd:'rgba(202,138,4,.45)'},
+    'hj-card-hj-gold':   {sh:'inset 0 0 0 9999px #FFF8E7', bd:'rgba(196,152,90,.45)'},
   };
   const apply = () => {
     for (const [cls, c] of Object.entries(MAP)) {
       d.querySelectorAll('.' + cls).forEach(el => {
         const w = el.closest('[data-testid="stVerticalBlockBorderWrapper"]');
         if (w) {
-          w.style.setProperty('background', c.bg, 'important');
+          w.style.setProperty('box-shadow', c.sh, 'important');
           w.style.setProperty('border-color', c.bd, 'important');
-          w.style.setProperty('border-radius', '14px', 'important');
-          const inner = w.querySelector('[data-testid="stVerticalBlock"]');
-          if (inner) {
-            inner.style.setProperty('background', c.bg, 'important');
-            inner.style.setProperty('border-radius', '12px', 'important');
-          }
+          d.querySelectorAll('[data-testid="stVerticalBlock"]').forEach(inner => {
+            if (w.contains(inner)) inner.style.setProperty('box-shadow', c.sh, 'important');
+          });
         }
       });
     }
@@ -95,41 +92,37 @@ def _css():
 .hj-prog-bg  {background:#e5e7eb;border-radius:99px;height:5px;margin-top:3px}
 .hj-prog-fill{height:5px;border-radius:99px;background:#C4985A}
 
-/* ── Coloração dos cards via :has() ─────────────────────── */
+/* ── Coloração dos cards: inset box-shadow sobrepõe qualquer background ── */
 div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-red){
-    background:#FEF2F2 !important;
-    border-color:rgba(220,38,38,.4) !important;
+    border-color:rgba(220,38,38,.45) !important;
+    box-shadow:inset 0 0 0 9999px #FEF2F2 !important;
 }
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-red)
-> div[data-testid="stVerticalBlock"]{
-    background:#FEF2F2 !important;
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-red) [data-testid="stVerticalBlock"]{
+    box-shadow:inset 0 0 0 9999px #FEF2F2 !important;
 }
 
 div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-green){
-    background:#F0FDF4 !important;
-    border-color:rgba(22,163,74,.4) !important;
+    border-color:rgba(22,163,74,.45) !important;
+    box-shadow:inset 0 0 0 9999px #F0FDF4 !important;
 }
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-green)
-> div[data-testid="stVerticalBlock"]{
-    background:#F0FDF4 !important;
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-green) [data-testid="stVerticalBlock"]{
+    box-shadow:inset 0 0 0 9999px #F0FDF4 !important;
 }
 
 div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-yellow){
-    background:#FFFDE7 !important;
-    border-color:rgba(202,138,4,.4) !important;
+    border-color:rgba(202,138,4,.45) !important;
+    box-shadow:inset 0 0 0 9999px #FFFDE7 !important;
 }
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-yellow)
-> div[data-testid="stVerticalBlock"]{
-    background:#FFFDE7 !important;
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-yellow) [data-testid="stVerticalBlock"]{
+    box-shadow:inset 0 0 0 9999px #FFFDE7 !important;
 }
 
 div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-gold){
-    background:#FFF8E7 !important;
-    border-color:rgba(196,152,90,.4) !important;
+    border-color:rgba(196,152,90,.45) !important;
+    box-shadow:inset 0 0 0 9999px #FFF8E7 !important;
 }
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-gold)
-> div[data-testid="stVerticalBlock"]{
-    background:#FFF8E7 !important;
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.hj-card-hj-gold) [data-testid="stVerticalBlock"]{
+    box-shadow:inset 0 0 0 9999px #FFF8E7 !important;
 }
 </style>
 """, unsafe_allow_html=True)

@@ -615,6 +615,56 @@ def _tab_vencidos(df: pd.DataFrame):
                                 st.rerun()
 
 
+# ── Aba: Agendar esta semana (fluxo guiado) ───────────────────────────────────
+
+def _tab_agendar_semana(df: pd.DataFrame):
+    hoje = date.today()
+    sem_fim = hoje + timedelta(days=6)
+
+    if df.empty:
+        st.info("Nenhum dado disponível.")
+        return
+
+    mask = (
+        (df["Situação"] == "⬜ A agendar")
+        & (df["Data acerto"] >= hoje)
+        & (df["Data acerto"] <= sem_fim)
+    )
+    df_pend = df[mask].sort_values("Data acerto").copy()
+
+    if df_pend.empty:
+        st.success("✅ Todos os acertos desta semana já estão agendados!")
+        st.caption("Use a aba Calendário para ver os detalhes.")
+        return
+
+    st.markdown(
+        f"**{len(df_pend)} revendedora(s) com acerto previsto esta semana e sem agendamento.**  \n"
+        "Clique em **📅 Agendar** em cada card para registrar data, forma e horário."
+    )
+
+    for i in range(0, len(df_pend), 3):
+        grupo = list(df_pend.iloc[i:i+3].iterrows())
+        cols = st.columns(3)
+        for j, (_, row) in enumerate(grupo):
+            with cols[j]:
+                dias_faltam = (row["Data acerto"] - hoje).days
+                urgencia_cor = "#e74c3c" if dias_faltam <= 1 else "#e67e22" if dias_faltam <= 3 else "#2980b9"
+                urgencia_txt = "Hoje!" if dias_faltam == 0 else f"em {dias_faltam}d"
+                with st.container(border=True):
+                    st.markdown(
+                        f'<div style="font-size:0.85em;line-height:1.7">'
+                        f'<b>{_nome_curto(row["Nome"])}</b><br>'
+                        f'Acerto: <span style="color:{urgencia_cor};font-weight:bold">'
+                        f'{row["Data acerto"].strftime("%d/%m")} ({urgencia_txt})</span><br>'
+                        f'{_R(row["Valor"])}'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                    if st.button("📅 Agendar", key=f"sem_{row['id']}", use_container_width=True):
+                        st.session_state["_ag_id"] = row["id"]
+                        st.rerun()
+
+
 # ── Render principal ──────────────────────────────────────────────────────────
 
 def render(filtro_supervisor: str = ""):
@@ -683,10 +733,27 @@ def render(filtro_supervisor: str = ""):
     n_venc = int((df["Situação"] == "🔴 Vencido").sum()) if not df.empty else 0
     lbl_venc = f"🔴 Vencidos ({n_venc})" if n_venc else "🔴 Vencidos"
 
-    tab1, tab2 = st.tabs(["📅 Calendário", lbl_venc])
+    # Pendentes desta semana (a agendar com data_acerto nos próximos 7 dias)
+    _hoje_ac = date.today()
+    _sem_fim  = _hoje_ac + timedelta(days=6)
+    if not df.empty:
+        _mask_pend = (
+            (df["Situação"] == "⬜ A agendar")
+            & (df["Data acerto"] >= _hoje_ac)
+            & (df["Data acerto"] <= _sem_fim)
+        )
+        n_pend = int(_mask_pend.sum())
+    else:
+        n_pend = 0
+    lbl_pend = f"📋 Agendar esta semana ({n_pend})" if n_pend else "📋 Agendar esta semana"
+
+    tab1, tab2, tab3 = st.tabs(["📅 Calendário", lbl_venc, lbl_pend])
 
     with tab1:
         _tab_calendario(df)
 
     with tab2:
         _tab_vencidos(df)
+
+    with tab3:
+        _tab_agendar_semana(df)

@@ -53,10 +53,11 @@ def _css():
 .hj-prog-bg  {background:#e5e7eb;border-radius:99px;height:5px;margin-top:3px}
 .hj-prog-fill{height:5px;border-radius:99px;background:#C4985A}
 
-/* ── Permite div de fundo absoluto dentro de st.container(border=True) ── */
-div[data-testid="stVerticalBlockBorderWrapper"] > div[data-testid="stVerticalBlock"] {
+/* ── Fundo colorido: wrapper vira contexto de posicionamento ── */
+div[data-testid="stVerticalBlockBorderWrapper"] {
     position: relative !important;
     isolation: isolate !important;
+    overflow: hidden !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -74,8 +75,8 @@ def _bg(cor: str):
     if not bg:
         return
     st.markdown(
-        f'<div style="position:absolute;top:-1rem;left:-1rem;right:-1rem;bottom:-1rem;'
-        f'background:{bg};z-index:-1;pointer-events:none;border-radius:0.4rem;"></div>',
+        f'<div style="position:absolute;top:0;left:0;right:0;bottom:0;'
+        f'background:{bg};z-index:-1;pointer-events:none;"></div>',
         unsafe_allow_html=True,
     )
 

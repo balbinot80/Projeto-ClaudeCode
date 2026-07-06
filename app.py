@@ -276,7 +276,13 @@ with st.sidebar:
         # Supervisoras: tela de revendedoras + controle de acertos
         paginas_disponiveis = ["👥 Revendedoras", "📅 Controle de Acertos"]
 
-    # Chave de navegação: permite que outras telas naveguem programaticamente
+    # Navegação programática: _nav_goto é definido por outras telas antes do rerun
+    # Precisa ser aplicado ANTES do st.radio para não conflitar com a chave do widget
+    if "_nav_goto" in st.session_state:
+        destino = st.session_state.pop("_nav_goto")
+        if destino in paginas_disponiveis:
+            st.session_state["_nav_page"] = destino
+
     if "_nav_page" not in st.session_state or st.session_state["_nav_page"] not in paginas_disponiveis:
         st.session_state["_nav_page"] = paginas_disponiveis[0]
 

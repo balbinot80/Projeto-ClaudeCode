@@ -15,8 +15,8 @@ _R = lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", "
 
 
 def _ir_agendar(pedido_id):
-    st.session_state["_ag_id"]    = pedido_id
-    st.session_state["_nav_page"] = "📅 Controle de Acertos"
+    st.session_state["_ag_id"]   = pedido_id
+    st.session_state["_nav_goto"] = "📅 Controle de Acertos"
     st.rerun()
 
 

@@ -223,6 +223,50 @@ def render(filtro_supervisor: str = "", nome_usuario: str = ""):
             _card(f"⚠️ Sem vendas este mês ({n_sv})",
                   "hj-titulo-urg", "hj-urgente", itens, rodape)
 
-    # ── Dica de navegação ──────────────────────────────────────────────────────
+    # ── Guia de rotina ─────────────────────────────────────────────────────────
     st.divider()
+    with st.expander("🗓️ Guia de rotina — por onde começar?", expanded=False):
+        st.markdown("""
+#### ☀️ Check diário — 5 minutos, toda manhã
+
+| Passo | Onde | O que fazer |
+|---|---|---|
+| 1 | **🏠 Hoje** | Ver acertos vencidos → ligar agora |
+| 2 | **🏠 Hoje** | Ver agendados para hoje → confirmar com a revendedora |
+| 3 | **📅 Controle de Acertos** | Verificar aba **🔴 Vencidos** → reagendar |
+
+---
+
+#### 📅 Revisão semanal — Segunda-feira, 15 minutos
+
+| Passo | Onde | O que fazer |
+|---|---|---|
+| 1 | **📅 Controle de Acertos** | Abrir aba **📋 Agendar esta semana** → agendar todos os pendentes |
+| 2 | **👥 Revendedoras** | Ver expander **⏰ Postergados** → contatar quem está atrasando |
+| 3 | **👥 Revendedoras** | Ver expander **📅 Acertos no mês** → planejar a semana |
+
+---
+
+#### 📊 Revisão semanal — Sexta-feira, 10 minutos
+
+| Passo | Onde | O que fazer |
+|---|---|---|
+| 1 | **👥 Revendedoras** | Ver bloco **💰 Financeiro** → total vendido acumulado |
+| 2 | **👥 Revendedoras** | Aba **🏆 Premiações** → quem está perto de bater meta? |
+| 3 | **👥 Revendedoras** | Aba **🏅 Níveis** → quem está perto de subir? |
+| 4 | **📅 Controle de Acertos** | Registrar envios de maleta realizados na semana |
+
+---
+
+#### 🏁 Balanço mensal — Início do mês, 30 minutos
+
+| Passo | Onde | O que fazer |
+|---|---|---|
+| 1 | **👥 Revendedoras** | Mudar mês para o mês anterior → ver resultado final |
+| 2 | **👥 Revendedoras** | Expander **📈 Potencial s/ postergação** → entender o que ficou para trás |
+| 3 | **👥 Revendedoras** | Aba **🏆 Premiações** → confirmar prêmios do mês |
+| 4 | **👥 Revendedoras** | Aba **📅 Competência** → análise completa do fechamento |
+""")
+
+    # ── Dica de navegação ──────────────────────────────────────────────────────
     st.caption("💡 Use o menu lateral para acessar **Revendedoras** e **Controle de Acertos**.")

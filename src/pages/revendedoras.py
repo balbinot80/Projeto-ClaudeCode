@@ -1669,6 +1669,33 @@ def render(filtro_supervisor: str = ""):
 
     hoje = date.today()
 
+    # ── Alertas proativos (supervisora_teste) ──────────────────────────────────
+    _role_atual = st.session_state.get("usuario", {}).get("role", "")
+    if _role_atual == "supervisora_teste":
+        _al_venc = [
+            p for p in todos_pedidos
+            if p.get("status") == "Aberto"
+            and parse_date(p.get("data_acerto"))
+            and parse_date(p.get("data_acerto")) < hoje
+        ]
+        _al_sv = {
+            (p.get("comprador") or {}).get("nome") or f"Rev {p.get('fk_revendedor_id')}"
+            for p in todos_pedidos
+            if p.get("status") == "Aberto"
+            and float(p.get("valor_pre_baixa") or 0) == 0
+        }
+        _alerts = []
+        if _al_venc:
+            _alerts.append(
+                f"🚨 **{len(_al_venc)} acerto(s) vencido(s)** — acesse Controle de Acertos para regularizar"
+            )
+        if _al_sv:
+            _alerts.append(
+                f"⚠️ **{len(_al_sv)} revendedora(s) sem vendas** registradas até o momento"
+            )
+        if _alerts:
+            st.error("  ·  ".join(_alerts))
+
     # ── Filtro de mês ─────────────────────────────────────────────────────────
     meses = meses_disponiveis(7, futuros=1)
     opcoes = [f"{m:02d}/{y}" for y, m in meses]

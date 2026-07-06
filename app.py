@@ -88,6 +88,12 @@ _USUARIOS = {
         "supervisor_nome": "",
         "secret_key": "DASHBOARD_SENHA",
     },
+    "teste": {
+        "nome": "Supervisora Teste",
+        "role": "supervisora_teste",
+        "supervisor_nome": "Yasmim Evellyn Ferreira",
+        "secret_key": "TESTE_SENHA",
+    },
 }
 
 
@@ -205,7 +211,8 @@ if not st.session_state.autenticado:
 usuario = st.session_state.usuario
 role = usuario.get("role", "admin")
 nome_usuario = usuario.get("nome", "Usuário")
-sup_filtro = usuario.get("supervisor_nome", "") if role == "supervisora" else ""
+_e_supervisora = role in ("supervisora", "supervisora_teste")
+sup_filtro = usuario.get("supervisor_nome", "") if _e_supervisora else ""
 
 _TIMES = {
     "yasmim": {

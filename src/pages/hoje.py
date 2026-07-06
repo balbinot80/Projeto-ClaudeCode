@@ -1,9 +1,10 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pandas as pd
 import streamlit as st
 from src.api.jueri_client import _get_lista_pedidos
 from src.logic.acertos import montar_acertos
+from src.logic.motivos_atraso import load_motivos, save_motivo
 from src.logic.premiacoes import calcular_ranking, load_premiacoes
 from src.logic.revendedoras import MINIMO_REV, calcular_competencia, parse_date
 
@@ -102,6 +103,90 @@ def _pessoa(nome, detalhe, badge, b_cls, key, btn_lbl, primario=False):
     return False
 
 
+# ── Dialog: motivo do atraso ──────────────────────────────────────────────────
+
+@st.dialog("📝 Motivo do Atraso", width="large")
+def _dialog_motivo(row: pd.Series):
+    pid      = row["id"]
+    nome     = row["Nome"]
+    sit      = row.get("Situação", "")
+    dac      = row.get("Data acerto")
+    dac_s    = dac.strftime("%d/%m/%Y") if dac else "—"
+    usuario  = st.session_state.get("usuario", {}).get("nome", "")
+
+    st.markdown(f"### {nome}")
+
+    if "Vencido" in sit:
+        dias = (date.today() - dac).days if dac else 0
+        st.markdown(
+            f'<span style="color:#dc2626;font-weight:600">'
+            f'🔴 Vencido há {dias} dia(s)</span> · Previsto: {dac_s}',
+            unsafe_allow_html=True,
+        )
+    elif "Atrasou" in sit:
+        d_baixa   = row.get("Data baixa")
+        d_baixa_s = d_baixa.strftime("%d/%m/%Y") if d_baixa else "—"
+        atraso    = (d_baixa - dac).days if d_baixa and dac else 0
+        st.markdown(
+            f'<span style="color:#b45309;font-weight:600">'
+            f'⚠️ Realizado em {d_baixa_s} — atrasou {atraso} dia(s)</span>',
+            unsafe_allow_html=True,
+        )
+
+    motivos = load_motivos(pid)
+
+    st.divider()
+    if motivos:
+        st.markdown("**Histórico de motivos registrados:**")
+        for m in motivos:
+            ts = m.get("created_at", "")
+            if ts:
+                try:
+                    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    ts = dt.strftime("%d/%m/%Y %H:%M")
+                except Exception:
+                    ts = ts[:16]
+            autor = m.get("usuario") or "—"
+            st.markdown(
+                f'<div style="background:#f8f9fa;border-left:3px solid #C4985A;'
+                f'padding:6px 10px;border-radius:4px;margin-bottom:6px;font-size:0.88em">'
+                f'<span style="color:#7A6068;font-size:0.85em">{ts} · {autor}</span><br>'
+                f'{m["motivo"]}'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+    else:
+        st.info("Nenhum motivo registrado ainda.")
+
+    st.divider()
+    st.markdown("**Registrar novo motivo:**")
+    idx = st.session_state.get(f"_motivo_idx_{pid}", 0)
+    motivo_txt = st.text_area(
+        "Motivo",
+        key=f"dlg_hj_motivo_{pid}_{idx}",
+        placeholder="Ex: Revendedora viajou, ligou pedindo reagendamento para 15/07",
+        label_visibility="collapsed",
+        height=80,
+    )
+
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("💾 Salvar motivo", use_container_width=True, type="primary",
+                     key=f"dlg_hj_save_{pid}"):
+            if motivo_txt.strip():
+                ok = save_motivo(pid, motivo_txt.strip(), usuario)
+                if ok:
+                    st.session_state[f"_motivo_idx_{pid}"] = idx + 1
+                    st.toast("✅ Motivo salvo!", icon="📝")
+                    st.rerun()
+            else:
+                st.warning("Digite um motivo antes de salvar.")
+    with c2:
+        if st.button("Fechar", use_container_width=True, key=f"dlg_hj_fechar_{pid}"):
+            st.session_state.pop("_motivo_id", None)
+            st.rerun()
+
+
 # ── render ─────────────────────────────────────────────────────────────────────
 
 def render(filtro_supervisor: str = "", nome_usuario: str = ""):
@@ -135,6 +220,15 @@ def render(filtro_supervisor: str = "", nome_usuario: str = ""):
     )
 
     df = montar_acertos(pedidos)
+
+    # ── Dialog: motivo do atraso ───────────────────────────────────────────────
+    mid = st.session_state.get("_motivo_id")
+    if mid is not None:
+        rows_m = df[df["id"] == mid]
+        if not rows_m.empty:
+            _dialog_motivo(rows_m.iloc[0])
+        else:
+            st.session_state.pop("_motivo_id", None)
 
     # ── Classifica acertos ─────────────────────────────────────────────────────
     vencidos, agendados_hj, a_agendar_sem = [], [], []
@@ -213,10 +307,31 @@ def render(filtro_supervisor: str = "", nome_usuario: str = ""):
                     det    = f'Previsto {dac.strftime("%d/%m/%Y") if dac else "—"}'
                     if has_ag:
                         det += f' · {row.get("Forma") or ""}'
-                    if _pessoa(row["Nome"], det, badge, b_cls,
-                               f"hj_v_{row['id']}",
-                               "🔄 Reagendar" if has_ag else "📅 Agendar agora"):
-                        _ir_agendar(row["id"])
+                    c_info, c_btn, c_mot = st.columns([4, 2, 1])
+                    with c_info:
+                        st.markdown(
+                            f'<div class="hj-sep">'
+                            f'<span class="hj-nome">{row["Nome"]}</span>'
+                            f'<span class="hj-badge {b_cls}">{badge}</span>'
+                            f'<br><span class="hj-sub">{det}</span></div>',
+                            unsafe_allow_html=True,
+                        )
+                    with c_btn:
+                        if st.button(
+                            "🔄 Reagendar" if has_ag else "📅 Agendar agora",
+                            key=f"hj_v_{row['id']}",
+                            use_container_width=True,
+                        ):
+                            _ir_agendar(row["id"])
+                    with c_mot:
+                        if st.button(
+                            "📝",
+                            key=f"hj_vm_{row['id']}",
+                            use_container_width=True,
+                            help="Registrar/ver motivo do atraso",
+                        ):
+                            st.session_state["_motivo_id"] = row["id"]
+                            st.rerun()
         else:
             with st.container(border=True):
                 _bg("hj-green")

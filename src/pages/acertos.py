@@ -8,6 +8,7 @@ from src.logic.acertos import (
     montar_acertos, semana_de, proxima_semana_resumo,
     save_agendamento, save_envio_maleta, remove_agendamento,
 )
+from src.logic.motivos_atraso import load_motivos, save_motivo
 
 _FORMAS_ENVIO = {"Correios", "Disk Tenha"}
 
@@ -119,6 +120,90 @@ def _gcal_url(nome, data, hora_str, forma, obs, valor):
         f"&details={quote(chr(10).join(linhas))}"
         "&ctz=America%2FSao_Paulo&sf=true&output=xml"
     )
+
+
+# ── Dialog: motivo do atraso ──────────────────────────────────────────────────
+
+@st.dialog("📝 Motivo do Atraso", width="large")
+def _dialog_motivo(row: pd.Series):
+    pid     = row["id"]
+    nome    = row["Nome"]
+    sit     = row.get("Situação", "")
+    dac     = row.get("Data acerto")
+    dac_s   = dac.strftime("%d/%m/%Y") if dac else "—"
+    usuario = st.session_state.get("usuario", {}).get("nome", "")
+
+    st.markdown(f"### {nome}")
+
+    if "Vencido" in sit:
+        dias = (date.today() - dac).days if dac else 0
+        st.markdown(
+            f'<span style="color:#dc2626;font-weight:600">'
+            f'🔴 Vencido há {dias} dia(s)</span> · Previsto: {dac_s}',
+            unsafe_allow_html=True,
+        )
+    elif "Atrasou" in sit:
+        d_baixa   = row.get("Data baixa")
+        d_baixa_s = d_baixa.strftime("%d/%m/%Y") if d_baixa else "—"
+        atraso    = (d_baixa - dac).days if d_baixa and dac else 0
+        st.markdown(
+            f'<span style="color:#b45309;font-weight:600">'
+            f'⚠️ Realizado em {d_baixa_s} — atrasou {atraso} dia(s)</span>',
+            unsafe_allow_html=True,
+        )
+
+    motivos = load_motivos(pid)
+
+    st.divider()
+    if motivos:
+        st.markdown("**Histórico de motivos registrados:**")
+        for m in motivos:
+            ts = m.get("created_at", "")
+            if ts:
+                try:
+                    dt = dt_cls.fromisoformat(ts.replace("Z", "+00:00"))
+                    ts = dt.strftime("%d/%m/%Y %H:%M")
+                except Exception:
+                    ts = ts[:16]
+            autor = m.get("usuario") or "—"
+            st.markdown(
+                f'<div style="background:#f8f9fa;border-left:3px solid #C4985A;'
+                f'padding:6px 10px;border-radius:4px;margin-bottom:6px;font-size:0.88em">'
+                f'<span style="color:#7A6068;font-size:0.85em">{ts} · {autor}</span><br>'
+                f'{m["motivo"]}'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+    else:
+        st.info("Nenhum motivo registrado ainda.")
+
+    st.divider()
+    st.markdown("**Registrar novo motivo:**")
+    idx = st.session_state.get(f"_motivo_idx_{pid}", 0)
+    motivo_txt = st.text_area(
+        "Motivo",
+        key=f"dlg_ac_motivo_{pid}_{idx}",
+        placeholder="Ex: Revendedora viajou, ligou pedindo reagendamento para 15/07",
+        label_visibility="collapsed",
+        height=80,
+    )
+
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("💾 Salvar motivo", use_container_width=True, type="primary",
+                     key=f"dlg_ac_save_{pid}"):
+            if motivo_txt.strip():
+                ok = save_motivo(pid, motivo_txt.strip(), usuario)
+                if ok:
+                    st.session_state[f"_motivo_idx_{pid}"] = idx + 1
+                    st.toast("✅ Motivo salvo!", icon="📝")
+                    st.rerun()
+            else:
+                st.warning("Digite um motivo antes de salvar.")
+    with c2:
+        if st.button("Fechar", use_container_width=True, key=f"dlg_ac_fechar_{pid}"):
+            st.session_state.pop("_motivo_id", None)
+            st.rerun()
 
 
 # ── Dialog: Google Agenda — dois eventos (acerto + envio da maleta) ──────────
@@ -462,6 +547,14 @@ def _grade_semana(df: pd.DataFrame, seg: date, hoje: date):
                                 st.rerun()
                     else:
                         st.markdown(_card_closed(row), unsafe_allow_html=True)
+                        if "Atrasou" in str(row["Situação"]):
+                            if st.button(
+                                "📝 Motivo",
+                                key=f"cal_mot_{row['id']}",
+                                use_container_width=True,
+                            ):
+                                st.session_state["_motivo_id"] = row["id"]
+                                st.rerun()
 
 
 # ── Aba: Calendário ───────────────────────────────────────────────────────────
@@ -606,13 +699,23 @@ def _tab_vencidos(df: pd.DataFrame):
                                 f'{agenda_html}',
                                 unsafe_allow_html=True,
                             )
-                            if st.button(
-                                btn_lbl,
-                                key=f"venc_{row['id']}",
-                                use_container_width=True,
-                            ):
-                                st.session_state["_ag_id"] = row["id"]
-                                st.rerun()
+                            c_ag, c_mot = st.columns(2)
+                            with c_ag:
+                                if st.button(
+                                    btn_lbl,
+                                    key=f"venc_{row['id']}",
+                                    use_container_width=True,
+                                ):
+                                    st.session_state["_ag_id"] = row["id"]
+                                    st.rerun()
+                            with c_mot:
+                                if st.button(
+                                    "📝 Motivo",
+                                    key=f"venc_m_{row['id']}",
+                                    use_container_width=True,
+                                ):
+                                    st.session_state["_motivo_id"] = row["id"]
+                                    st.rerun()
 
 
 # ── Aba: Agendar esta semana (fluxo guiado) ───────────────────────────────────
@@ -691,6 +794,15 @@ def render(filtro_supervisor: str = ""):
     df = montar_acertos(todos)
 
     # ── Dialogs chamados aqui (nível de render, fora de qualquer tab/coluna) ──
+
+    # Dialog: motivo do atraso
+    mid = st.session_state.get("_motivo_id")
+    if mid is not None:
+        rows_m = df[df["id"] == mid]
+        if not rows_m.empty:
+            _dialog_motivo(rows_m.iloc[0])
+        else:
+            st.session_state.pop("_motivo_id", None)
 
     # Dialog: troca no mesmo dia? (Correios / Disk Tenha)
     if "_troca_check" in st.session_state:

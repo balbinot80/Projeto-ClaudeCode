@@ -1735,8 +1735,9 @@ def render(filtro_supervisor: str = ""):
     _rows_postergados   = []
     _rows_acertos_mes   = []
     _rows_potenciais    = []
-    _acertos_mes_revs      = set()
+    _acertos_mes_revs        = set()
     _acertos_potenciais_revs: set = set()
+    _revs_aberto_total: set  = set()   # todas as revs com qualquer pedido Aberto
     for _p in todos_pedidos:
         _status_p = _p.get("status")
         _sup_p    = _p.get("supervisor_nome")
@@ -1745,6 +1746,9 @@ def render(filtro_supervisor: str = ""):
         _rid_p    = _p.get("fk_revendedor_id")
         _d_ac     = _parse_date(_p.get("data_acerto"))
         _d_cr     = _parse_date(_p.get("data_criacao"))
+
+        if _status_p == "Aberto" and _rid_p:
+            _revs_aberto_total.add(_rid_p)
 
         if _status_p in ("Baixado", "Aberto") and _sup_p:
             # Acertos no mês
@@ -1787,9 +1791,10 @@ def render(filtro_supervisor: str = ""):
                 "Dias":         (_d_ac - _d_cr).days,
             })
 
-    _n_acertos_mes       = len(_acertos_mes_revs)
-    _n_postergados       = len(_rows_postergados)
+    _n_acertos_mes        = len(_acertos_mes_revs)
+    _n_postergados        = len(_rows_postergados)
     _n_acertos_potenciais = len(_acertos_potenciais_revs)
+    _n_revs_aberto_total  = len(_revs_aberto_total)
 
     # Bloco visuais de metricas
     st.markdown("""
@@ -1824,6 +1829,9 @@ def render(filtro_supervisor: str = ""):
            "Pedidos em aberto com mais de 30 dias entre criação e data de acerto previsto."),
         _m("📈 Potencial s/ postergação", _n_acertos_potenciais,
            f"Revendedoras que teriam acerto em {mes_sel} se o ciclo padrão de 30 dias fosse respeitado."),
+        _S,
+        _m("👥 Total c/ pedido aberto", _n_revs_aberto_total,
+           "Revendedoras com pelo menos um pedido em Aberto, independente do mês.", sub=True),
         _S,
         _m("🟡 Abaixo do mínimo", n_abaixo, sub=True),
         _m("🔴 Sem vendas", n_zero + n_sem_res,

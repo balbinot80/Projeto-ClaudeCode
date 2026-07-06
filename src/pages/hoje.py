@@ -63,17 +63,15 @@ div[data-testid="stVerticalBlockBorderWrapper"] > div[data-testid="stVerticalBlo
 
 
 _BG = {
-    "hj-red":    ("#FEF2F2", "rgba(220,38,38,.5)"),
-    "hj-green":  ("#F0FDF4", "rgba(22,163,74,.5)"),
-    "hj-yellow": ("#FFFDE7", "rgba(202,138,4,.5)"),
-    "hj-gold":   ("#FFF8E7", "rgba(196,152,90,.5)"),
+    "hj-red":    "#FEF2F2",
+    "hj-green":  "#F0FDF4",
+    "hj-yellow": "#FFFDE7",
+    "hj-gold":   "#FFF8E7",
 }
 
 def _bg(cor: str):
-    """Div absolutamente posicionado dentro do stVerticalBlock (position:relative;isolation:isolate).
-    Cobre toda a área do card incluindo padding, sem depender de :has() nem de iframe JS."""
-    bg, bd = _BG.get(cor, ("transparent", ""))
-    if bg == "transparent":
+    bg = _BG.get(cor, "")
+    if not bg:
         return
     st.markdown(
         f'<div style="position:absolute;top:-1rem;left:-1rem;right:-1rem;bottom:-1rem;'

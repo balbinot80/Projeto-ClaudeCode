@@ -1758,8 +1758,8 @@ def render(filtro_supervisor: str = ""):
                     "Status":      _status_p,
                     "Valor":       f"R$ {_val_p:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
                 })
-            # Potencial: apenas Aberto, data_criacao + 30 dias no mês, 1 linha por revendedora
-            if _status_p == "Aberto" and _d_cr:
+            # Potencial: Aberto e Baixado, data_criacao + 30 dias no mês, 1 linha por revendedora
+            if _d_cr:
                 _d_natural = _d_cr + timedelta(days=30)
                 if _d_natural.month == mes_num and _d_natural.year == ano_num:
                     if _rid_p not in _acertos_potenciais_revs:

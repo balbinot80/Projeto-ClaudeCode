@@ -797,6 +797,17 @@ def _tab_agendar_semana(df: pd.DataFrame):
 # ── Render principal ──────────────────────────────────────────────────────────
 
 def render(filtro_supervisor: str = ""):
+    # Garante que calendário do date_input e dropdowns apareçam acima do backdrop do dialog
+    st.markdown("""
+<style>
+[data-baseweb="popover"],
+[data-baseweb="calendar"],
+ul[data-baseweb="menu"] {
+    z-index: 99999 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
     if filtro_supervisor:
         st.header(f"📅 Controle de Acertos — {filtro_supervisor}")
     else:

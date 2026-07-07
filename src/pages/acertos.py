@@ -302,37 +302,43 @@ def _dialog_agendar(row: pd.Series):
 
     st.divider()
 
-    col_f, col_d, col_h = st.columns(3)
+    # Forma de envio — radio horizontal (evita dropdown com z-index problemático)
+    idx  = list(FORMAS.keys()).index(row["Forma"]) if row["Forma"] in FORMAS else 0
+    forma = st.radio(
+        "Forma de envio",
+        list(FORMAS.keys()),
+        index=idx,
+        format_func=lambda f: f"{FORMAS[f]} {f}",
+        key=f"dlg_forma_{pid}",
+        horizontal=True,
+    )
 
-    with col_f:
-        idx = list(FORMAS.keys()).index(row["Forma"]) if row["Forma"] in FORMAS else 0
-        forma = st.selectbox(
-            "Forma de envio",
-            list(FORMAS.keys()),
-            index=idx,
-            format_func=lambda f: f"{FORMAS[f]} {f}",
-            key=f"dlg_forma_{pid}",
-        )
+    col_d, col_h = st.columns(2)
 
     with col_d:
-        data_ag = st.date_input(
-            "Data agendada",
-            value=date.today(),
-            format="DD/MM/YYYY",
+        # text_input evita o popup de calendário que ficava atrás do dialog
+        data_str_in = st.text_input(
+            "Data agendada (DD/MM/AAAA)",
+            value=date.today().strftime("%d/%m/%Y"),
             key=f"dlg_data_{pid}",
+            placeholder="Ex: 15/07/2026",
         )
+        try:
+            data_ag    = dt_cls.strptime(data_str_in.strip(), "%d/%m/%Y").date()
+            data_valida = True
+        except ValueError:
+            st.caption("⚠️ Use o formato DD/MM/AAAA")
+            data_ag    = date.today()
+            data_valida = False
 
     with col_h:
         hora_existente = row.get("Hora agendada", "") or ""
-        if hora_existente:
-            try:
-                h, m        = map(int, hora_existente.split(":"))
-                hora_padrao = time_cls(h, m)
-            except Exception:
-                hora_padrao = time_cls(9, 0)
-        else:
-            hora_padrao = time_cls(9, 0)
-        hora_ag = st.time_input("Horário", value=hora_padrao, key=f"dlg_hora_{pid}")
+        hora_str = st.text_input(
+            "Horário (HH:MM)",
+            value=hora_existente or "09:00",
+            key=f"dlg_hora_{pid}",
+            placeholder="Ex: 14:30",
+        ).strip()
 
     obs_label = "Motivo do atraso no agendamento *" if vencido else "Observação (opcional)"
     obs = st.text_area(
@@ -349,10 +355,11 @@ def _dialog_agendar(row: pd.Series):
     with col_s:
         if st.button("💾 Salvar agendamento", type="primary",
                      use_container_width=True, key=f"dlg_salvar_{pid}"):
-            if vencido and not obs.strip():
+            if not data_valida:
+                st.error("⚠️ Data inválida. Use o formato DD/MM/AAAA.")
+            elif vencido and not obs.strip():
                 st.error("⚠️ Informe o motivo do atraso antes de salvar.")
             else:
-                hora_str = hora_ag.strftime("%H:%M") if hora_ag else ""
                 save_agendamento(pid, str(data_ag), forma, obs, hora_str)
                 gcal = {
                     "nome":     nome,

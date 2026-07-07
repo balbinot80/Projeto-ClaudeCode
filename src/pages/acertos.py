@@ -281,122 +281,120 @@ def _dialog_gcal_confirm():
     st.caption("Após clicar em **✅ Sim**, feche esta janela clicando em **❌ Não**.")
 
 
-# ── Dialog: agendamento ───────────────────────────────────────────────────────
+# ── Formulário de agendamento (inline — evita z-index da native <dialog>) ─────
 
-@st.dialog("📅 Agendar Acerto", width="large")
 def _dialog_agendar(row: pd.Series):
+    """Renderiza inline (sem @st.dialog) para que date_input e selectbox
+    funcionem corretamente — a native <dialog> cria top-layer isolado."""
     pid     = row["id"]
     nome    = row["Nome"]
     vencido = row["Data acerto"] < date.today()
 
-    st.markdown(f"### {nome}")
-    st.caption(
-        f"Supervisora: **{row['Supervisor']}**  ·  "
-        f"Acerto previsto: **{row['Data acerto'].strftime('%d/%m/%Y')}**  ·  "
-        f"Pré-baixa: **{_R(row['Valor'])}**"
-    )
-
-    if vencido:
-        dias_atraso = (date.today() - row["Data acerto"]).days
-        st.error(f"⚠️ Acerto vencido há **{dias_atraso} dia(s)**. O motivo do atraso é obrigatório.")
-
-    # Fix z-index: calendário e dropdowns devem aparecer na frente do backdrop do dialog
-    st.markdown("""
-<style>
-[data-testid="stDialogScrollableContainer"]{overflow:visible!important;}
-[data-baseweb="popover"],[data-baseweb="calendar"],
-ul[data-baseweb="menu"],[data-baseweb="popover-content"]{
-    z-index:2147483647!important;
-}
-</style>
-""", unsafe_allow_html=True)
-
-    st.divider()
-
-    col_f, col_d, col_h = st.columns(3)
-
-    with col_f:
-        idx = list(FORMAS.keys()).index(row["Forma"]) if row["Forma"] in FORMAS else 0
-        forma = st.selectbox(
-            "Forma de envio",
-            list(FORMAS.keys()),
-            index=idx,
-            format_func=lambda f: f"{FORMAS[f]} {f}",
-            key=f"dlg_forma_{pid}",
-        )
-
-    with col_d:
-        data_ag = st.date_input(
-            "Data agendada",
-            value=date.today(),
-            format="DD/MM/YYYY",
-            key=f"dlg_data_{pid}",
-        )
-
-    with col_h:
-        hora_existente = row.get("Hora agendada", "") or ""
-        if hora_existente:
-            try:
-                h, m        = map(int, hora_existente.split(":"))
-                hora_padrao = time_cls(h, m)
-            except Exception:
-                hora_padrao = time_cls(9, 0)
-        else:
-            hora_padrao = time_cls(9, 0)
-        hora_ag = st.time_input("Horário", value=hora_padrao, key=f"dlg_hora_{pid}")
-
-    obs_label = "Motivo do atraso no agendamento *" if vencido else "Observação (opcional)"
-    obs = st.text_area(
-        obs_label,
-        value=row["Obs"] or "",
-        placeholder="Informe o motivo do atraso..." if vencido else "",
-        key=f"dlg_obs_{pid}",
-        height=80,
-    )
-
-    st.divider()
-    col_s, col_r, col_c = st.columns([3, 1, 1])
-
-    with col_s:
-        if st.button("💾 Salvar agendamento", type="primary",
-                     use_container_width=True, key=f"dlg_salvar_{pid}"):
-            if vencido and not obs.strip():
-                st.error("⚠️ Informe o motivo do atraso antes de salvar.")
-            else:
-                hora_str = hora_ag.strftime("%H:%M") if hora_ag else ""
-                save_agendamento(pid, str(data_ag), forma, obs, hora_str)
-                gcal = {
-                    "nome":     nome,
-                    "data_str": data_ag.strftime("%d/%m/%Y"),
-                    "hora_str": hora_str,
-                    "link":     _gcal_url(nome, data_ag, hora_str, forma, obs, row["Valor"]),
-                }
+    with st.container(border=True):
+        col_titulo, col_fechar = st.columns([6, 1])
+        with col_titulo:
+            st.markdown(f"### 📅 Agendar Acerto — {nome}")
+            st.caption(
+                f"Supervisora: **{row['Supervisor']}**  ·  "
+                f"Acerto previsto: **{row['Data acerto'].strftime('%d/%m/%Y')}**  ·  "
+                f"Pré-baixa: **{_R(row['Valor'])}**"
+            )
+        with col_fechar:
+            st.markdown("<div style='margin-top:18px'></div>", unsafe_allow_html=True)
+            if st.button("✖ Fechar", key=f"dlg_fechar_topo_{pid}", use_container_width=True):
                 st.session_state.pop("_ag_id", None)
-                if forma in _FORMAS_ENVIO:
-                    # Fluxo especial: perguntar se a troca é no mesmo dia
-                    st.session_state["_troca_check"] = {
-                        "pid":   pid,
-                        "nome":  nome,
-                        "valor": row["Valor"],
-                        "forma": forma,
-                        "gcal":  gcal,
-                    }
-                else:
-                    st.session_state["_gcal_dict"] = gcal
+                st.session_state.pop("_ag_id_prev", None)
                 st.rerun()
 
-    with col_r:
-        if row["Data agendada"] and st.button(
-            "🗑️ Remover", use_container_width=True, key=f"dlg_rem_{pid}"
-        ):
-            remove_agendamento(pid)
-            st.session_state.pop("_ag_id", None)
-            st.rerun()
+        if vencido:
+            dias_atraso = (date.today() - row["Data acerto"]).days
+            st.error(f"⚠️ Acerto vencido há **{dias_atraso} dia(s)**. O motivo do atraso é obrigatório.")
 
-    with col_c:
-        if st.button("✖ Cancelar", use_container_width=True, key=f"dlg_cancel_{pid}"):
-            st.session_state.pop("_ag_id", None)
-            st.rerun()
+        st.divider()
+
+        col_f, col_d, col_h = st.columns(3)
+
+        with col_f:
+            idx = list(FORMAS.keys()).index(row["Forma"]) if row["Forma"] in FORMAS else 0
+            forma = st.selectbox(
+                "Forma de envio",
+                list(FORMAS.keys()),
+                index=idx,
+                format_func=lambda f: f"{FORMAS[f]} {f}",
+                key=f"dlg_forma_{pid}",
+            )
+
+        with col_d:
+            data_ag = st.date_input(
+                "Data agendada",
+                value=date.today(),
+                format="DD/MM/YYYY",
+                key=f"dlg_data_{pid}",
+            )
+
+        with col_h:
+            hora_existente = row.get("Hora agendada", "") or ""
+            if hora_existente:
+                try:
+                    h, m        = map(int, hora_existente.split(":"))
+                    hora_padrao = time_cls(h, m)
+                except Exception:
+                    hora_padrao = time_cls(9, 0)
+            else:
+                hora_padrao = time_cls(9, 0)
+            hora_ag = st.time_input("Horário", value=hora_padrao, key=f"dlg_hora_{pid}")
+
+        obs_label = "Motivo do atraso no agendamento *" if vencido else "Observação (opcional)"
+        obs = st.text_area(
+            obs_label,
+            value=row["Obs"] or "",
+            placeholder="Informe o motivo do atraso..." if vencido else "",
+            key=f"dlg_obs_{pid}",
+            height=80,
+        )
+
+        st.divider()
+        col_s, col_r, col_c = st.columns([3, 1, 1])
+
+        with col_s:
+            if st.button("💾 Salvar agendamento", type="primary",
+                         use_container_width=True, key=f"dlg_salvar_{pid}"):
+                if vencido and not obs.strip():
+                    st.error("⚠️ Informe o motivo do atraso antes de salvar.")
+                else:
+                    hora_str = hora_ag.strftime("%H:%M") if hora_ag else ""
+                    save_agendamento(pid, str(data_ag), forma, obs, hora_str)
+                    gcal = {
+                        "nome":     nome,
+                        "data_str": data_ag.strftime("%d/%m/%Y"),
+                        "hora_str": hora_str,
+                        "link":     _gcal_url(nome, data_ag, hora_str, forma, obs, row["Valor"]),
+                    }
+                    st.session_state.pop("_ag_id", None)
+                    if forma in _FORMAS_ENVIO:
+                        st.session_state["_troca_check"] = {
+                            "pid":   pid,
+                            "nome":  nome,
+                            "valor": row["Valor"],
+                            "forma": forma,
+                            "gcal":  gcal,
+                        }
+                    else:
+                        st.session_state["_gcal_dict"] = gcal
+                    st.rerun()
+
+        with col_r:
+            if row["Data agendada"] and st.button(
+                "🗑️ Remover", use_container_width=True, key=f"dlg_rem_{pid}"
+            ):
+                remove_agendamento(pid)
+                st.session_state.pop("_ag_id", None)
+                st.rerun()
+
+        with col_c:
+            if st.button("✖ Cancelar", use_container_width=True, key=f"dlg_cancel_{pid}"):
+                st.session_state.pop("_ag_id", None)
+                st.rerun()
 
 
 # ── Dialog: troca no mesmo dia? ──────────────────────────────────────────────

@@ -180,7 +180,8 @@ def _slide_vendas(todos_pedidos: list, mes: int, ano: int, ultima: str):
     for p in todos_pedidos:
         if p.get("status") == "Aberto":
             rid = p.get("fk_revendedor_id")
-            sup = (p.get("supervisor_nome") or "").split()[0] or None
+            _sn  = (p.get("supervisor_nome") or "").strip()
+            sup  = _sn.split()[0] if _sn else None
             if rid:
                 revs_aberto.setdefault(sup, set()).add(rid)
     n_revs_aberto = sum(len(v) for v in revs_aberto.values())

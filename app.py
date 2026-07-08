@@ -74,12 +74,14 @@ _USUARIOS = {
         "nome": "Yasmim Evellyn Ferreira",
         "role": "supervisora",
         "supervisor_nome": "Yasmim Evellyn Ferreira",
+        "cor": "#00A36C",   # Time Jade
         "secret_key": "YASMIM_SENHA",
     },
     "julia": {
         "nome": "Julia Andreza de Souza",
         "role": "supervisora",
         "supervisor_nome": "Julia Andreza de Souza",
+        "cor": "#1D4ED8",   # Time Julia
         "secret_key": "JULIA_SENHA",
     },
     "dashboard": {

@@ -387,30 +387,9 @@ def _dialog_agendar(row: pd.Series):
 
         st.caption(f"📅 **{data_ag.strftime('%d/%m/%Y')}** selecionado")
 
-    # ── Horário (listbox scrollável via radio+CSS — sem popup/portal) ────────
+    # ── Horário (select nativo HTML — renderiza acima do dialog pelo browser) ─
     with col_hora:
         st.markdown("**Horário**")
-
-        # Radio estilizado como listbox: nativo no DOM do dialog, sem portal
-        st.markdown("""
-<style>
-dialog div[data-testid="stRadio"] div[role="radiogroup"] {
-    max-height: 300px;
-    overflow-y: auto;
-    border: 1px solid rgba(49,51,63,.2);
-    border-radius: 6px;
-    padding: 2px 0;
-    background: #fff;
-}
-dialog div[data-testid="stRadio"] div[role="radiogroup"] label {
-    padding: 4px 10px;
-    cursor: pointer;
-}
-dialog div[data-testid="stRadio"] div[role="radiogroup"] label:hover {
-    background: rgba(171,103,116,.08);
-}
-</style>
-""", unsafe_allow_html=True)
 
         _k_hora = f"_hora_{pid}"
         if _k_hora not in st.session_state:
@@ -425,17 +404,40 @@ dialog div[data-testid="stRadio"] div[role="radiogroup"] label:hover {
             else:
                 st.session_state[_k_hora] = "09:00"
 
-        slots = [f"{h:02d}:{m:02d}" for h in range(7, 22) for m in [0, 15, 30, 45]]
-        idx_def = slots.index(st.session_state[_k_hora]) if st.session_state[_k_hora] in slots else 8
+        hora_atual = st.session_state[_k_hora]
+        slots     = [f"{h:02d}:{m:02d}" for h in range(7, 22) for m in [0, 15, 30, 45]]
+        aria_lbl  = f"hora_sel_{pid}"
 
-        hora_sel = st.radio(
-            "Horário",
-            options=slots,
-            index=idx_def,
-            key=f"dlg_hora_{pid}",
-            label_visibility="collapsed",
+        opts_html = "\n".join(
+            f'<option value="{t}"{" selected" if t == hora_atual else ""}>{t}</option>'
+            for t in slots
         )
-        hora_str_final = hora_sel
+
+        # <select> nativo + JS que sincroniza com o text_input oculto
+        st.markdown(f"""
+<style>
+div[data-testid="stTextInput"]:has(input[aria-label="{aria_lbl}"]) {{
+    display: none !important;
+}}
+</style>
+<select
+    style="width:100%;padding:8px 12px;border:1px solid rgba(49,51,63,.3);
+           border-radius:6px;font-size:14px;background:white;color:#31333F;cursor:pointer"
+    onchange="(function(v){{
+        var inp = document.querySelector('input[aria-label=\\"{aria_lbl}\\"]');
+        if (inp) {{
+            var s = Object.getOwnPropertyDescriptor(
+                        window.HTMLInputElement.prototype, 'value').set;
+            s.call(inp, v);
+            inp.dispatchEvent(new Event('input', {{bubbles: true}}));
+        }}
+    }})(this.value)"
+>{opts_html}</select>
+""", unsafe_allow_html=True)
+
+        hora_str_final = st.text_input(
+            aria_lbl, value=hora_atual, key=_k_hora, label_visibility="collapsed"
+        )
 
     # ── Observação ────────────────────────────────────────────────────────────
     obs_label = "Motivo do atraso no agendamento *" if vencido else "Observação (opcional)"

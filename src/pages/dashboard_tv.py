@@ -168,12 +168,19 @@ def _slide_vendas(todos_pedidos: list, mes: int, ano: int, ultima: str):
 
     df_res, _ = calcular_competencia(todos_pedidos, mes, ano)
 
+    # Cores por supervisora (primeiro nome → cor)
+    _COR_SUP: dict[str, str] = {
+        "Yasmim": "#00A36C",   # Time Jade
+        "Julia":  "#1D4ED8",   # Time Julia
+    }
+    _COR_SEM = "#94A3B8"       # sem supervisora
+
     # Total com pedido aberto (igual ao admin)
     revs_aberto: dict[str, set] = {}
     for p in todos_pedidos:
         if p.get("status") == "Aberto":
             rid = p.get("fk_revendedor_id")
-            sup = (p.get("supervisor_nome") or "—").split()[0]
+            sup = (p.get("supervisor_nome") or "").split()[0] or None
             if rid:
                 revs_aberto.setdefault(sup, set()).add(rid)
     n_revs_aberto = sum(len(v) for v in revs_aberto.values())
@@ -184,25 +191,49 @@ def _slide_vendas(todos_pedidos: list, mes: int, ano: int, ultima: str):
     n_res    = len(df_res) if not df_res.empty else 1
     ticket   = tot_vend / n_res if n_res > 0 else 0.0
 
-    # Supervisoras ordenadas por volume (maior primeiro)
-    sups = sorted(revs_aberto.items(), key=lambda x: -len(x[1]))
+    # Supervisoras ordenadas por volume (None = sem supervisora vai por último)
+    sups = sorted(revs_aberto.items(), key=lambda x: (-len(x[1]), x[0] is None))
 
-    # Layout: [Revendedoras | Sup1 | Sup2 | … | espaço | financeiros]
-    n_sups    = min(len(sups), 3)
-    col_widths = [1.4] + [1.1] * n_sups + [0.6, 1.5, 1.4, 1.4, 1.4]
-    cols = st.columns(col_widths)
+    def _metric_html(label: str, value, cor: str = "#2A1A1F") -> str:
+        return (
+            f'<div style="padding:0 4px">'
+            f'<div style="font-size:0.82rem;color:#6B7280;white-space:nowrap">{label}</div>'
+            f'<div style="font-size:1.9rem;font-weight:700;color:{cor};line-height:1.15">{value}</div>'
+            f'</div>'
+        )
 
-    cols[0].metric("Revendedoras", n_revs_aberto,
-                   help="Total de revendedoras com pelo menos um pedido em aberto")
-    for i, (sup_nome, rids) in enumerate(sups[:3]):
-        cols[1 + i].metric(f"Time {sup_nome}", len(rids))
+    _SEP_V = (
+        '<div style="width:1.5px;background:#D1D5DB;height:52px;'
+        'align-self:center;margin:0 8px;flex-shrink:0"></div>'
+    )
 
-    # espaço + financeiros
-    off = 1 + n_sups + 1   # pula a coluna de espaço
-    cols[off].metric("Total vendido", _R(tot_vend))
-    cols[off + 1].metric("↓ Baixados",    _R(tot_bx))
-    cols[off + 2].metric("↓ Pré-baixa",   _R(tot_pb))
-    cols[off + 3].metric("Ticket médio",  _R(ticket))
+    # Bloco revendedoras (total + por supervisora)
+    partes_rev = [_metric_html("Revendedoras", n_revs_aberto)]
+    for sup_nome, rids in sups[:3]:
+        if sup_nome is None:
+            lbl = "Sem supervisora"
+            cor = _COR_SEM
+        else:
+            lbl = f"Time {sup_nome}"
+            cor = _COR_SUP.get(sup_nome, "#7A6068")
+        partes_rev.append(_metric_html(lbl, len(rids), cor))
+
+    # Bloco financeiro
+    partes_fin = [
+        _metric_html("Total vendido", _R(tot_vend)),
+        _metric_html("↓ Baixados",    _R(tot_bx)),
+        _metric_html("↓ Pré-baixa",   _R(tot_pb)),
+        _metric_html("Ticket médio",  _R(ticket)),
+    ]
+
+    st.markdown(
+        '<div style="display:flex;align-items:flex-start;gap:28px;padding:6px 0 4px;flex-wrap:wrap">'
+        + "".join(partes_rev)
+        + _SEP_V
+        + "".join(partes_fin)
+        + '</div>',
+        unsafe_allow_html=True,
+    )
 
     _sep()
 

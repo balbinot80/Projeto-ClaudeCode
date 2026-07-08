@@ -387,9 +387,30 @@ def _dialog_agendar(row: pd.Series):
 
         st.caption(f"📅 **{data_ag.strftime('%d/%m/%Y')}** selecionado")
 
-    # ── Horário (grade de botões — sem popup/portal) ──────────────────────────
+    # ── Horário (listbox scrollável via radio+CSS — sem popup/portal) ────────
     with col_hora:
         st.markdown("**Horário**")
+
+        # Radio estilizado como listbox: nativo no DOM do dialog, sem portal
+        st.markdown("""
+<style>
+dialog div[data-testid="stRadio"] div[role="radiogroup"] {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid rgba(49,51,63,.2);
+    border-radius: 6px;
+    padding: 2px 0;
+    background: #fff;
+}
+dialog div[data-testid="stRadio"] div[role="radiogroup"] label {
+    padding: 4px 10px;
+    cursor: pointer;
+}
+dialog div[data-testid="stRadio"] div[role="radiogroup"] label:hover {
+    background: rgba(171,103,116,.08);
+}
+</style>
+""", unsafe_allow_html=True)
 
         _k_hora = f"_hora_{pid}"
         if _k_hora not in st.session_state:
@@ -404,19 +425,16 @@ def _dialog_agendar(row: pd.Series):
             else:
                 st.session_state[_k_hora] = "09:00"
 
-        hora_sel = st.session_state[_k_hora]
-        st.caption(f"🕐 Selecionado: **{hora_sel}**")
+        slots = [f"{h:02d}:{m:02d}" for h in range(7, 22) for m in [0, 15, 30, 45]]
+        idx_def = slots.index(st.session_state[_k_hora]) if st.session_state[_k_hora] in slots else 8
 
-        for hh in range(7, 22):
-            tcols = st.columns(4)
-            for ci, mm in enumerate([0, 15, 30, 45]):
-                t = f"{hh:02d}:{mm:02d}"
-                if tcols[ci].button(t, key=f"t_{pid}_{t}",
-                                    type="primary" if t == hora_sel else "secondary",
-                                    use_container_width=True):
-                    st.session_state[_k_hora] = t
-                    st.rerun()
-
+        hora_sel = st.radio(
+            "Horário",
+            options=slots,
+            index=idx_def,
+            key=f"dlg_hora_{pid}",
+            label_visibility="collapsed",
+        )
         hora_str_final = hora_sel
 
     # ── Observação ────────────────────────────────────────────────────────────

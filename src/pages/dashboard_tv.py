@@ -168,22 +168,41 @@ def _slide_vendas(todos_pedidos: list, mes: int, ano: int, ultima: str):
 
     df_res, _ = calcular_competencia(todos_pedidos, mes, ano)
 
-    n_revs   = len(df_res) if not df_res.empty else 0
+    # Total com pedido aberto (igual ao admin)
+    revs_aberto: dict[str, set] = {}
+    for p in todos_pedidos:
+        if p.get("status") == "Aberto":
+            rid = p.get("fk_revendedor_id")
+            sup = (p.get("supervisor_nome") or "—").split()[0]
+            if rid:
+                revs_aberto.setdefault(sup, set()).add(rid)
+    n_revs_aberto = sum(len(v) for v in revs_aberto.values())
+
     tot_vend = df_res["Total"].sum() if not df_res.empty else 0.0
     tot_bx   = df_res["Baixado"].sum() if not df_res.empty else 0.0
     tot_pb   = df_res["Pré-baixa"].sum() if not df_res.empty else 0.0
-    ticket   = tot_vend / n_revs if n_revs > 0 else 0.0
-    n_risco  = 0
-    if not df_res.empty and "Risco" in df_res.columns:
-        n_risco = int(df_res["Risco"].isin(["🔴 Sem vendas", "🟡 Abaixo do mínimo"]).sum())
+    n_res    = len(df_res) if not df_res.empty else 1
+    ticket   = tot_vend / n_res if n_res > 0 else 0.0
 
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
-    c1.metric("Revendedoras", n_revs)
-    c2.metric("Total vendido", _R(tot_vend))
-    c3.metric("↓ Baixados", _R(tot_bx))
-    c4.metric("↓ Pré-baixa", _R(tot_pb))
-    c5.metric("Ticket médio", _R(ticket))
-    c6.metric("⚠️ Em risco", n_risco)
+    # Supervisoras ordenadas por volume (maior primeiro)
+    sups = sorted(revs_aberto.items(), key=lambda x: -len(x[1]))
+
+    # Layout: [Revendedoras | Sup1 | Sup2 | … | espaço | financeiros]
+    n_sups    = min(len(sups), 3)
+    col_widths = [1.4] + [1.1] * n_sups + [0.6, 1.5, 1.4, 1.4, 1.4]
+    cols = st.columns(col_widths)
+
+    cols[0].metric("Revendedoras", n_revs_aberto,
+                   help="Total de revendedoras com pelo menos um pedido em aberto")
+    for i, (sup_nome, rids) in enumerate(sups[:3]):
+        cols[1 + i].metric(f"Time {sup_nome}", len(rids))
+
+    # espaço + financeiros
+    off = 1 + n_sups + 1   # pula a coluna de espaço
+    cols[off].metric("Total vendido", _R(tot_vend))
+    cols[off + 1].metric("↓ Baixados",    _R(tot_bx))
+    cols[off + 2].metric("↓ Pré-baixa",   _R(tot_pb))
+    cols[off + 3].metric("Ticket médio",  _R(ticket))
 
     _sep()
 

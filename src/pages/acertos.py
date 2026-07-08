@@ -387,23 +387,37 @@ def _dialog_agendar(row: pd.Series):
 
         st.caption(f"📅 **{data_ag.strftime('%d/%m/%Y')}** selecionado")
 
-    # ── Horário (number_inputs — sem popup/portal) ────────────────────────────
+    # ── Horário (grade de botões — sem popup/portal) ──────────────────────────
     with col_hora:
         st.markdown("**Horário**")
-        hora_existente = row.get("Hora agendada", "") or ""
-        h_def, m_def = 9, 0
-        if hora_existente:
-            try:
-                h_def, m_def = map(int, hora_existente.split(":"))
-            except Exception:
-                pass
 
-        h_val = st.number_input("Hora", min_value=0, max_value=23,
-                                value=h_def, step=1, key=f"dh_{pid}")
-        m_val = st.number_input("Minutos", min_value=0, max_value=45,
-                                value=m_def, step=15, key=f"dm_{pid}")
-        hora_str_final = f"{int(h_val):02d}:{int(m_val):02d}"
-        st.markdown(f"🕐 **{hora_str_final}**")
+        _k_hora = f"_hora_{pid}"
+        if _k_hora not in st.session_state:
+            hora_existente = row.get("Hora agendada", "") or ""
+            if hora_existente:
+                try:
+                    hh, mm = map(int, hora_existente.split(":"))
+                    mm = (mm // 15) * 15
+                    st.session_state[_k_hora] = f"{hh:02d}:{mm:02d}"
+                except Exception:
+                    st.session_state[_k_hora] = "09:00"
+            else:
+                st.session_state[_k_hora] = "09:00"
+
+        hora_sel = st.session_state[_k_hora]
+        st.caption(f"🕐 Selecionado: **{hora_sel}**")
+
+        for hh in range(7, 22):
+            tcols = st.columns(4)
+            for ci, mm in enumerate([0, 15, 30, 45]):
+                t = f"{hh:02d}:{mm:02d}"
+                if tcols[ci].button(t, key=f"t_{pid}_{t}",
+                                    type="primary" if t == hora_sel else "secondary",
+                                    use_container_width=True):
+                    st.session_state[_k_hora] = t
+                    st.rerun()
+
+        hora_str_final = hora_sel
 
     # ── Observação ────────────────────────────────────────────────────────────
     obs_label = "Motivo do atraso no agendamento *" if vencido else "Observação (opcional)"

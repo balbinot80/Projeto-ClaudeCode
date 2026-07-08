@@ -409,22 +409,12 @@ def _dialog_agendar(row: pd.Series):
             st.session_state[_k_open] = False
 
         hora_sel = st.session_state[_k_hora]
-        slots    = [f"{h:02d}:{m:02d}" for h in range(7, 22) for m in [0, 15, 30, 45]]
+        slots    = [f"{h:02d}:{m:02d}" for h in range(9, 21) for m in [0, 15, 30, 45]]
 
-        # CSS: lista scrollável + botão parece input select
-        st.markdown("""
-<style>
-dialog div[data-testid="stRadio"] div[role="radiogroup"] {
-    max-height: 210px;
-    overflow-y: auto;
-    border: 1px solid rgba(49,51,63,.15);
-    border-top: none;
-    border-radius: 0 0 6px 6px;
-    padding: 4px 0;
-    background: white;
-}
-</style>
-""", unsafe_allow_html=True)
+        # Garante que hora fora do range (ex: 07:xx) caia no default
+        if hora_sel not in slots:
+            hora_sel = "09:00"
+            st.session_state[_k_hora] = hora_sel
 
         arrow = "▲" if st.session_state[_k_open] else "▼"
         if st.button(f"🕐  {hora_sel}  {arrow}", key=f"hora_btn_{pid}",
@@ -433,14 +423,15 @@ dialog div[data-testid="stRadio"] div[role="radiogroup"] {
             st.rerun()
 
         if st.session_state[_k_open]:
-            idx  = slots.index(hora_sel) if hora_sel in slots else 8
-            nova = st.radio(
-                "Horário",
-                options=slots,
-                index=idx,
-                key=f"hora_radio_{pid}",
-                label_visibility="collapsed",
-            )
+            idx = slots.index(hora_sel)
+            with st.container(height=200, border=True):
+                nova = st.radio(
+                    "Horário",
+                    options=slots,
+                    index=idx,
+                    key=f"hora_radio_{pid}",
+                    label_visibility="collapsed",
+                )
             if nova != hora_sel:
                 st.session_state[_k_hora] = nova
                 st.session_state[_k_open] = False

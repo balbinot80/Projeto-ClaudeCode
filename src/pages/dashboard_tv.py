@@ -171,7 +171,7 @@ def _slide_vendas(todos_pedidos: list, mes: int, ano: int, ultima: str):
     # Cores por supervisora (primeiro nome → cor)
     _COR_SUP: dict[str, str] = {
         "Yasmim": "#00A36C",   # Time Jade
-        "Julia":  "#1D4ED8",   # Time Julia
+        "Julia":  "#9B59B6",   # Time Julia — ametista
     }
     _COR_SEM = "#94A3B8"       # sem supervisora
 
@@ -197,7 +197,7 @@ def _slide_vendas(todos_pedidos: list, mes: int, ano: int, ultima: str):
 
     def _metric_html(label: str, value, cor: str = "#2A1A1F") -> str:
         return (
-            f'<div style="padding:0 4px">'
+            f'<div style="flex:1;min-width:90px;text-align:center">'
             f'<div style="font-size:0.82rem;color:#6B7280;white-space:nowrap">{label}</div>'
             f'<div style="font-size:1.9rem;font-weight:700;color:{cor};line-height:1.15">{value}</div>'
             f'</div>'
@@ -205,7 +205,7 @@ def _slide_vendas(todos_pedidos: list, mes: int, ano: int, ultima: str):
 
     _SEP_V = (
         '<div style="width:1.5px;background:#D1D5DB;height:52px;'
-        'align-self:center;margin:0 8px;flex-shrink:0"></div>'
+        'align-self:center;flex-shrink:0"></div>'
     )
 
     # Bloco revendedoras (total + por supervisora)
@@ -228,7 +228,8 @@ def _slide_vendas(todos_pedidos: list, mes: int, ano: int, ultima: str):
     ]
 
     st.markdown(
-        '<div style="display:flex;align-items:flex-start;gap:28px;padding:6px 0 4px;flex-wrap:wrap">'
+        '<div style="display:flex;align-items:flex-start;justify-content:center;'
+        'gap:0;padding:6px 0 4px;width:100%">'
         + "".join(partes_rev)
         + _SEP_V
         + "".join(partes_fin)

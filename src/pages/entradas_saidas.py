@@ -9,9 +9,7 @@ from src.logic.revendedoras import parse_date
 _MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio",
           "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
 
-_ANO_TESTE  = 2026
 _MES_INICIO = 1
-_MES_FIM    = 6
 _MESES_GAP  = 4   # meses sem novo pedido para considerar retorno
 _DIAS_PRAZO = 30  # dias que a supervisora soma na data_baixa
 
@@ -63,7 +61,7 @@ def _historico_por_rev(todos_pedidos: list) -> dict:
     return hist
 
 
-def _calcular(todos_pedidos: list):
+def _calcular(todos_pedidos: list, ano: int, mes_inicio: int, mes_fim: int):
     hist = _historico_por_rev(todos_pedidos)
 
     entradas = defaultdict(list)  # {mes: [row]}
@@ -83,10 +81,10 @@ def _calcular(todos_pedidos: list):
             if not d_entrega:
                 continue  # cancelado sem data ou sem data válida
 
-            # Apenas dentro do período de teste
-            if d_entrega.year != _ANO_TESTE:
+            # Apenas dentro do período
+            if d_entrega.year != ano:
                 continue
-            if not (_MES_INICIO <= d_entrega.month <= _MES_FIM):
+            if not (mes_inicio <= d_entrega.month <= mes_fim):
                 continue
 
             mes = d_entrega.month
@@ -143,7 +141,17 @@ def _calcular(todos_pedidos: list):
         d_baixa = parse_date(p_ultimo.get("data_baixa"))
         if not d_baixa:
             continue
-        if d_baixa.year != _ANO_TESTE or not (_MES_INICIO <= d_baixa.month <= _MES_FIM):
+        if d_baixa.year != ano or not (mes_inicio <= d_baixa.month <= mes_fim):
+            continue
+
+        # Se existir qualquer pedido criado no mesmo mês da baixa ou depois → não é saída
+        inicio_mes_baixa = d_baixa.replace(day=1)
+        tem_pedido_posterior = any(
+            d_cria >= inicio_mes_baixa
+            for j, (d_cria, _) in enumerate(itens_validos)
+            if j < len(itens_validos) - 1
+        )
+        if tem_pedido_posterior:
             continue
 
         comprador  = p_ultimo.get("comprador") or {}
@@ -454,11 +462,16 @@ def _render_insights_periodo(dados_meses: list):
 # ── Render ─────────────────────────────────────────────────────────────────────
 
 def render():
+    _hoje    = date.today()
+    _ANO     = _hoje.year
+    _MES_INI = 1
+    _MES_FIM = _hoje.month
+
     st.title("📊 Entradas e Saídas de Revendedoras")
-    _mes_ini_label = _MESES[_MES_INICIO - 1]
+    _mes_ini_label = _MESES[_MES_INI - 1]
     _mes_fim_label = _MESES[_MES_FIM - 1]
     st.caption(
-        f"Teste — {_mes_ini_label} a {_mes_fim_label} de {_ANO_TESTE} · "
+        f"{_mes_ini_label} a {_mes_fim_label} de {_ANO} · "
         f"Entrada = mês da data de baixa − {_DIAS_PRAZO} dias · "
         f"Retorno = novo pedido após {_MESES_GAP}+ meses sem atividade · "
         f"Pedidos criados e cancelados no mesmo mês são desconsiderados."
@@ -473,7 +486,7 @@ def render():
         st.error(f"Erro ao carregar dados: {e}")
         return
 
-    entradas, saidas = _calcular(todos_pedidos)
+    entradas, saidas = _calcular(todos_pedidos, _ANO, _MES_INI, _MES_FIM)
 
     # ── Filtro ────────────────────────────────────────────────────────────────
     supervisoras = sorted({
@@ -494,8 +507,8 @@ def render():
     st.divider()
 
     # ── Resumo acumulado ──────────────────────────────────────────────────────
-    _rng = range(_MES_INICIO, _MES_FIM + 1)
-    _abrev_ini = _MESES[_MES_INICIO - 1][:3]
+    _rng = range(_MES_INI, _MES_FIM + 1)
+    _abrev_ini = _MESES[_MES_INI - 1][:3]
     _abrev_fim = _MESES[_MES_FIM - 1][:3]
     _periodo   = f"{_abrev_ini}–{_abrev_fim}"
 
@@ -515,11 +528,11 @@ def render():
     st.divider()
 
     # ── Mês a mês (abas) ──────────────────────────────────────────────────────
-    tabs = st.tabs([_MESES[m - 1] for m in range(_MES_INICIO, _MES_FIM + 1)])
+    tabs = st.tabs([_MESES[m - 1] for m in range(_MES_INI, _MES_FIM + 1)])
 
     dados_para_periodo = []
 
-    for tab, mes in zip(tabs, range(_MES_INICIO, _MES_FIM + 1)):
+    for tab, mes in zip(tabs, range(_MES_INI, _MES_FIM + 1)):
         with tab:
             ents = _filtrar(entradas[mes])
             sais = _filtrar(saidas[mes])

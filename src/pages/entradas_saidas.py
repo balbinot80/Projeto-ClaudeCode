@@ -146,6 +146,16 @@ def _calcular(todos_pedidos: list):
         if d_baixa.year != _ANO_TESTE or not (_MES_INICIO <= d_baixa.month <= _MES_FIM):
             continue
 
+        # Se existir qualquer pedido criado no mesmo mês da baixa ou depois → não é saída
+        inicio_mes_baixa = d_baixa.replace(day=1)
+        tem_pedido_posterior = any(
+            d_cria >= inicio_mes_baixa
+            for j, (d_cria, _) in enumerate(itens_validos)
+            if j < len(itens_validos) - 1
+        )
+        if tem_pedido_posterior:
+            continue
+
         comprador  = p_ultimo.get("comprador") or {}
         nome       = comprador.get("nome") or f"Rev {rid}"
         supervisor = p_ultimo.get("supervisor_nome") or "Sem supervisora"

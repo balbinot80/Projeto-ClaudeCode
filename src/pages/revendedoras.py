@@ -1264,21 +1264,71 @@ def _categorizar_profissao(profissao: str) -> str:
     if not profissao:
         return "❓ Não informado"
     p = profissao.lower()
-    if any(k in p for k in ["manicure", "estetic", "cabeleire", "beleza", "maquiagem", "makeup"]):
+
+    # 1. Beleza & Estética
+    if any(k in p for k in [
+        "manicure", "pedicure", "estetic", "cabeleire", "cabeleirei",
+        "beleza", "maquiag", "makeup", "depila", "sobrancelha",
+        "nail", "barbe", "colorist", "podolog", "limpeza de pele",
+        "massagem", "massoter", "designer de sobrancelha", "designer de unha",
+    ]):
         return "✂️ Beleza & Estética"
-    if any(k in p for k in ["vendedor", "vendedora", "caixa", "atendente", "comercio", "comércio"]):
-        return "🛒 Comércio & Vendas"
-    if any(k in p for k in ["analista", "administrat", "faturist", "logistic", "financeiro",
-                              "financeira", "assistente", "contador", "contabil", "auxiliar admin"]):
-        return "💼 Administrativo & Financeiro"
-    if any(k in p for k in ["auxiliar de sala", "professor", "pedagog", "educador", "docente"]):
+
+    # 2. Saúde & Cuidados
+    if any(k in p for k in [
+        "saude", "saúde", "enfermei", "enfermag", "médic", "medic",
+        "nutri", "farmac", "fisio", "terapeu", "psicolog", "dentist",
+        "odontolog", "cuidadora", "agente de saúde", "aux. de enf",
+        "auxiliar de enf", "assistente social", "serviço social",
+        "técnica em enf", "técnico em enf", "home care",
+    ]):
+        return "🏥 Saúde & Cuidados"
+
+    # 3. Educação
+    if any(k in p for k in [
+        "professor", "professora", "pedagog", "educador", "educadora",
+        "docente", "auxiliar de sala", "berçário", "bercario",
+        "instrutor", "instrutora", "tutor", "escola", "coord. pedagog",
+    ]):
         return "📚 Educação"
-    if any(k in p for k in ["costurei", "operador", "operadora", "producao", "produção",
-                              "auxiliar de prod", "confeccao", "confecção"]):
+
+    # 4. Comércio & Vendas
+    if any(k in p for k in [
+        "vendedor", "vendedora", "caixa", "atendente", "comercio",
+        "comércio", "balconista", "repositor", "lojista", "comerciante",
+        "promotor", "promotora", "frente de loja", "auxiliar de loja",
+        "operador de caixa", "operadora de caixa",
+    ]):
+        return "🛒 Comércio & Vendas"
+
+    # 5. Administração & Negócios
+    # "administ" pega tanto "administração" (com ç) quanto "administrativo"
+    if any(k in p for k in [
+        "analista", "administ", "faturist", "logistic",
+        "financeiro", "financeira", "assistente", "contador", "contabil",
+        "secretar", "recepcioni", "escritori", "gerente", "coordenad",
+        "gestor", "gestora", "supervisor", "supervisora",
+        "recursos humanos", "compras", "fiscal", "tributar",
+        "depto pessoal", "departamento pessoal", "microempreend",
+        "empresari", "empreended", "informátic", "informatica",
+        "tecnologia da informação", "desenvolvedor", "programador",
+    ]):
+        return "💼 Administração & Negócios"
+
+    # 6. Produção & Indústria
+    if any(k in p for k in [
+        "costurei", "operador", "operadora", "op. de", "op de",
+        "producao", "produção", "auxiliar de prod", "confeccao", "confecção",
+        "máquina", "maquina", "industrial", "fábrica", "fabrica",
+        "montador", "soldador", "mecanic", "elétric", "eletric",
+        "técnico", "técnica", "torneiro", "serralhei", "carpintei",
+        "pedreiro", "construção", "construcao", "qualidade", "embalagem",
+        "expedição", "expedicao", "tecel", "serigrafia",
+    ]):
         return "🏭 Produção & Indústria"
-    if any(k in p for k in ["saude", "saúde", "enfermei", "médic", "medic", "nutri", "farmac"]):
-        return "🏥 Saúde"
-    return "🔹 Outros"
+
+    # 7. Lar & Serviços — domésticos, autônomos, aposentados, serviços gerais e demais
+    return "🏠 Lar & Serviços"
 
 
 def _tab_perfil(df_res: pd.DataFrame, mes_label: str):

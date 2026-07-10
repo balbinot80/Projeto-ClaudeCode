@@ -1753,18 +1753,55 @@ def _tab_perfil(df_res: pd.DataFrame, mes_label: str):
                     Ticket_medio=("Total", "mean"),
                 )
                 .reset_index()
-                .sort_values(["Categoria", "Total_vendido"], ascending=[True, False])
             )
-            st.caption("Clique no cabeçalho de qualquer coluna para ordenar.")
+
+            _COLS_LABEL = {
+                "Categoria":    "Categoria",
+                "Subcategoria": "Sub-grupo",
+                "Qtd":          "Qtd",
+                "Ticket_medio": "Ticket médio",
+                "Total_vendido":"Total vendido",
+            }
+            _COLS_KEYS = list(_COLS_LABEL.keys())
+
+            sc1, sc2, sc3, sc4 = st.columns([2, 1, 2, 1])
+            with sc1:
+                sort1_label = st.selectbox(
+                    "Ordenar por",
+                    options=[_COLS_LABEL[k] for k in _COLS_KEYS],
+                    index=0,
+                    key="sub_sort1",
+                )
+            with sc2:
+                asc1 = st.selectbox("Direção", ["↑ A→Z / menor", "↓ Z→A / maior"], index=0, key="sub_dir1") == "↑ A→Z / menor"
+            with sc3:
+                sort2_label = st.selectbox(
+                    "Depois por",
+                    options=["(nenhum)"] + [_COLS_LABEL[k] for k in _COLS_KEYS],
+                    index=0,
+                    key="sub_sort2",
+                )
+            with sc4:
+                asc2 = st.selectbox("Direção ", ["↑ A→Z / menor", "↓ Z→A / maior"], index=0, key="sub_dir2") == "↑ A→Z / menor"
+
+            _label_to_key = {v: k for k, v in _COLS_LABEL.items()}
+            sort_cols = [_label_to_key[sort1_label]]
+            sort_dirs = [asc1]
+            if sort2_label != "(nenhum)":
+                sort_cols.append(_label_to_key[sort2_label])
+                sort_dirs.append(asc2)
+
+            df_sub_agg = df_sub_agg.sort_values(sort_cols, ascending=sort_dirs)
+
             st.dataframe(
                 df_sub_agg[["Categoria", "Subcategoria", "Qtd", "Ticket_medio", "Total_vendido"]],
                 hide_index=True,
                 use_container_width=True,
                 column_config={
-                    "Categoria":    st.column_config.TextColumn("Categoria",    width="medium"),
-                    "Subcategoria": st.column_config.TextColumn("Sub-grupo",    width="medium"),
-                    "Qtd":          st.column_config.NumberColumn("Qtd",        width="small", format="%d"),
-                    "Ticket_medio": st.column_config.NumberColumn("Ticket médio", width="small", format="R$ %.2f"),
+                    "Categoria":    st.column_config.TextColumn("Categoria",     width="medium"),
+                    "Subcategoria": st.column_config.TextColumn("Sub-grupo",     width="medium"),
+                    "Qtd":          st.column_config.NumberColumn("Qtd",         width="small", format="%d"),
+                    "Ticket_medio": st.column_config.NumberColumn("Ticket médio",  width="small", format="R$ %.2f"),
                     "Total_vendido":st.column_config.NumberColumn("Total vendido", width="small", format="R$ %.2f"),
                 },
             )

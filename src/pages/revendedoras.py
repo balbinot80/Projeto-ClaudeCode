@@ -1339,6 +1339,100 @@ def _categorizar_profissao(profissao: str) -> str:
     return "🏠 Lar & Serviços"
 
 
+def _subcategorizar_profissao(profissao: str, categoria: str) -> str:
+    """Retorna sub-grupo dentro de uma categoria principal."""
+    if not profissao or profissao == "—":
+        return "—"
+    p = _norm_prof(profissao)
+
+    if "Administração" in categoria:
+        if any(k in p for k in ["analista", "financeiro", "financeira", "contabil",
+                                  "contador", "faturist", "agente financeiro", "s&op",
+                                  "documental", "comex", "junior"]):
+            return "📊 Analítica & Financeiro"
+        if any(k in p for k in ["gerente", "coordenad", "supervisor", "supervisora",
+                                  "gestor", "gestora"]):
+            return "👔 Gestão"
+        if any(k in p for k in ["assistente", "auxiliar", "secretar", "recepcioni",
+                                  "escritori", "administrativo", "administracao",
+                                  "administrat"]):
+            return "📋 Assistência Administrativa"
+        if any(k in p for k in ["logistic", "compras", "fiscal", "tributar",
+                                  "expedicao", "manutencao"]):
+            return "🔗 Logística & Operações"
+        return "💼 Outros Negócios"
+
+    if "Comércio" in categoria:
+        if any(k in p for k in ["vendedor", "vendedora", "promotor", "promotora",
+                                  "revendedor", "revendedora"]):
+            return "👩‍💼 Vendas Ativas"
+        if any(k in p for k in ["atendente", "balconista"]):
+            return "🤝 Atendimento"
+        if any(k in p for k in ["caixa", "operador de caixa", "operadora de caixa"]):
+            return "💳 Operações de Caixa"
+        if any(k in p for k in ["auxiliar", "repositor", "frente de loja", "loja"]):
+            return "📦 Auxiliar & Repositora"
+        return "🏪 Comércio Geral"
+
+    if "Produção" in categoria:
+        if any(k in p for k in ["costurei", "confeccao", "tecel"]):
+            return "✂️ Costura & Confecção"
+        if any(k in p for k in ["operador", "operadora", "maquina", "op. de", "op de"]):
+            return "⚙️ Operação de Máquinas"
+        if any(k in p for k in ["tecnico", "tecnica", "engenheir"]):
+            return "🔧 Técnicas & Engenharia"
+        if any(k in p for k in ["producao", "qualidade", "estoquist", "conferent",
+                                  "montag", "embalagem"]):
+            return "📦 Produção & Qualidade"
+        if any(k in p for k in ["construcao", "artesa", "pedreiro", "serralhei",
+                                  "mecanic", "eletric", "vigilante"]):
+            return "🏗️ Construção & Artesanato"
+        return "🏭 Outras"
+
+    if "Beleza" in categoria:
+        if any(k in p for k in ["cabeleire", "cabeleirei", "colorist", "barbe"]):
+            return "✂️ Cabelo"
+        if any(k in p for k in ["manicure", "pedicure", "nail", "designer de unh",
+                                  "podolog"]):
+            return "💅 Unhas & Pés"
+        if any(k in p for k in ["estetic", "depila", "sobrancelh", "lash",
+                                  "limpeza de pele"]):
+            return "✨ Estética & Pele"
+        if any(k in p for k in ["maquiag", "makeup"]):
+            return "💄 Maquiagem"
+        if any(k in p for k in ["massagem", "massoter"]):
+            return "🧖 Massagem"
+        return "💇 Outros"
+
+    if "Saúde" in categoria:
+        if any(k in p for k in ["enfermei", "enfermag", "tecnica em enf",
+                                  "auxiliar de enf"]):
+            return "🩺 Enfermagem"
+        if any(k in p for k in ["medic", "dentist", "odontolog"]):
+            return "🏥 Medicina & Odonto"
+        if any(k in p for k in ["nutri", "farmac"]):
+            return "💊 Nutrição & Farmácia"
+        if any(k in p for k in ["fisio", "terapeu", "psicolog"]):
+            return "🧠 Terapias"
+        if any(k in p for k in ["cuidadora", "assistente social", "agente de saude",
+                                  "servico social"]):
+            return "🤝 Cuidados Sociais"
+        return "🏥 Outros"
+
+    if "Educação" in categoria:
+        if any(k in p for k in ["professor", "professora", "docente"]):
+            return "👩‍🏫 Docência"
+        if any(k in p for k in ["pedagog", "coord. pedagog"]):
+            return "📚 Pedagogia"
+        if any(k in p for k in ["auxiliar de sala", "monitor", "bercario"]):
+            return "🏫 Suporte Escolar"
+        if any(k in p for k in ["instrutor", "instrutora", "tutor"]):
+            return "📝 Instrutor"
+        return "🎓 Outros"
+
+    return "—"
+
+
 def _tab_perfil(df_res: pd.DataFrame, mes_label: str):
     from src.api.jueri_client import get_revendedores
 
@@ -1399,10 +1493,12 @@ def _tab_perfil(df_res: pd.DataFrame, mes_label: str):
                 "Faixa etária": _faixa_etaria(idade),
             }
             if prof or local:
+                _cat = _categorizar_profissao(prof)
                 prof_map[rid] = {
-                    "Profissão": prof or "—",
-                    "Local":     local or "—",
-                    "Categoria": _categorizar_profissao(prof),
+                    "Profissão":    prof or "—",
+                    "Local":        local or "—",
+                    "Categoria":    _cat,
+                    "Subcategoria": _subcategorizar_profissao(prof, _cat),
                 }
 
     # Distribui df_res em três grupos
@@ -1636,6 +1732,63 @@ def _tab_perfil(df_res: pd.DataFrame, mes_label: str):
 
     for msg in insights:
         st.markdown(f"- {msg}")
+
+    # ── Análise por sub-grupo (detalhamento das categorias) ───────────────────
+    if not df_perf.empty and "Subcategoria" in df_perf.columns:
+        df_sub = df_perf[df_perf["Subcategoria"] != "—"].copy()
+        if not df_sub.empty:
+            st.divider()
+            st.markdown("### 🔎 Detalhamento por sub-grupo")
+            st.caption(
+                "Breakdown interno de cada categoria profissional. "
+                "Apenas revendedoras com profissão preenchida."
+            )
+
+            # Gráfico sunburst: Categoria → Subcategoria (valor = total vendido)
+            fig_sun = px.sunburst(
+                df_sub,
+                path=["Categoria", "Subcategoria"],
+                values="Total",
+                color="Total",
+                color_continuous_scale="RdPu",
+                labels={"Total": "Total vendido (R$)"},
+            )
+            fig_sun.update_traces(
+                textinfo="label+percent parent",
+                insidetextorientation="radial",
+            )
+            fig_sun.update_layout(
+                height=480,
+                coloraxis_showscale=False,
+                margin=dict(t=20, b=20, l=20, r=20),
+            )
+            st.plotly_chart(fig_sun, use_container_width=True)
+
+            # Tabela detalhada por subcategoria
+            df_sub_agg = (
+                df_sub.groupby(["Categoria", "Subcategoria"])
+                .agg(
+                    Qtd=("Nome", "count"),
+                    Total_vendido=("Total", "sum"),
+                    Ticket_medio=("Total", "mean"),
+                )
+                .reset_index()
+                .sort_values(["Categoria", "Total_vendido"], ascending=[True, False])
+            )
+            df_sub_agg["Ticket médio"]  = df_sub_agg["Ticket_medio"].apply(_R)
+            df_sub_agg["Total vendido"] = df_sub_agg["Total_vendido"].apply(_R)
+            st.dataframe(
+                df_sub_agg[["Categoria", "Subcategoria", "Qtd", "Ticket médio", "Total vendido"]],
+                hide_index=True,
+                use_container_width=True,
+                column_config={
+                    "Categoria":     st.column_config.TextColumn("Categoria",     width="medium"),
+                    "Subcategoria":  st.column_config.TextColumn("Sub-grupo",     width="medium"),
+                    "Qtd":           st.column_config.NumberColumn("Qtd",         width="small"),
+                    "Ticket médio":  st.column_config.TextColumn("Ticket médio",  width="small"),
+                    "Total vendido": st.column_config.TextColumn("Total vendido", width="small"),
+                },
+            )
 
     # ── Análise por faixa etária ───────────────────────────────────────────────
     # Usa todas as ativas do mês (com perfil + sem cadastro), exceto inativas

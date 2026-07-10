@@ -1354,30 +1354,30 @@ def _tab_perfil(df_res: pd.DataFrame, mes_label: str):
         _status.error(f"Erro ao carregar perfis: {e}")
         return
 
-    # Monta mapa rev_id → {profissao, local, categoria} — apenas ativas
-    prof_map = {}
+    # Monta mapas separados: ativas com perfil e inativas (com info de cadastro)
+    prof_map     = {}   # ativas com profissão/local preenchidos
+    info_inativas = {}  # inativas → {Profissão, Local} para exibição
+
     for r in revs:
-        if r.get("data_inativacao"):
-            continue  # ignora revendedoras inativas
+        rid  = str(r["id"])
         prof = (r.get("profissao") or "").strip()
         local = (r.get("local") or "").strip()
-        if prof or local:
-            prof_map[str(r["id"])] = {
-                "Profissão":   prof or "—",
-                "Local":       local or "—",
-                "Categoria":   _categorizar_profissao(prof),
+        if r.get("data_inativacao"):
+            info_inativas[rid] = {"Profissão": prof or "—", "Local": local or "—"}
+        elif prof or local:
+            prof_map[rid] = {
+                "Profissão": prof or "—",
+                "Local":     local or "—",
+                "Categoria": _categorizar_profissao(prof),
             }
 
-    if not prof_map:
-        st.info("Nenhuma revendedora com profissão ou local de trabalho preenchidos no Jueri.")
-        return
-
-    # Junta com df_res do mês — separa com perfil e sem perfil
-    rows            = []
-    rows_sem_perfil = []
+    # Distribui df_res em três grupos
+    rows            = []   # ativas com perfil
+    rows_sem_perfil = []   # ativas sem profissão/local
+    rows_inativas   = []   # inativas (contam no financeiro, exibidas separadamente)
 
     for _, row in df_res.iterrows():
-        rid = str(row["fk_revendedor_id"])
+        rid  = str(row["fk_revendedor_id"])
         base = {
             "Nome":       row["Nome"],
             "Supervisor": row["Supervisor"],
@@ -1385,7 +1385,9 @@ def _tab_perfil(df_res: pd.DataFrame, mes_label: str):
             "Baixado":    row["Baixado"],
             "Pré-baixa":  row["Pré-baixa"],
         }
-        if rid in prof_map:
+        if rid in info_inativas:
+            rows_inativas.append({**base, **info_inativas[rid]})
+        elif rid in prof_map:
             rows.append({**base, **prof_map[rid]})
         else:
             rows_sem_perfil.append({
@@ -1398,31 +1400,35 @@ def _tab_perfil(df_res: pd.DataFrame, mes_label: str):
     n_total_mes  = len(df_res)
     n_com_perfil = len(rows)
     n_sem_perfil = len(rows_sem_perfil)
+    n_inativas   = len(rows_inativas)
 
-    if not rows and not rows_sem_perfil:
+    if not rows and not rows_sem_perfil and not rows_inativas:
         st.info("Nenhuma revendedora aparece nos dados do mês selecionado.")
         return
 
-    df_perf     = pd.DataFrame(rows)     if rows            else pd.DataFrame()
-    df_sem      = pd.DataFrame(rows_sem_perfil) if rows_sem_perfil else pd.DataFrame()
-    df_perf_all = pd.concat([df_perf, df_sem], ignore_index=True)
+    df_perf   = pd.DataFrame(rows)            if rows            else pd.DataFrame()
+    df_sem    = pd.DataFrame(rows_sem_perfil) if rows_sem_perfil else pd.DataFrame()
+    df_inat   = pd.DataFrame(rows_inativas)   if rows_inativas   else pd.DataFrame()
+    # Para o gráfico: apenas ativas (com perfil + sem cadastro)
+    df_perf_ativas = pd.concat([df_perf, df_sem], ignore_index=True)
 
     # ── Cabeçalho ─────────────────────────────────────────────────────────────
     p1, p2, p3, p4 = st.columns(4)
     p1.metric("Com perfil no mês", n_com_perfil,
               help=f"{n_com_perfil} de {n_total_mes} revendedoras do mês têm profissão cadastrada")
     p2.metric("⚠️ Sem cadastro", n_sem_perfil,
-              help="Revendedoras do mês sem profissão ou local preenchidos no Jueri")
-    p3.metric("Ticket médio (com perfil)", _R(df_perf["Total"].mean()) if not df_perf.empty else "—")
-    p4.metric("Total vendido (com perfil)", _R(df_perf["Total"].sum()) if not df_perf.empty else "—")
+              help="Ativas sem profissão ou local preenchidos no Jueri")
+    p3.metric("🚫 Inativas no mês", n_inativas,
+              help="Saíram da equipe mas tinham pedido no mês — incluídas apenas no total financeiro")
+    p4.metric("Ticket médio (com perfil)", _R(df_perf["Total"].mean()) if not df_perf.empty else "—")
 
     st.divider()
 
-    # ── Análise por categoria (inclui Sem cadastro) ───────────────────────────
+    # ── Análise por categoria (ativas — com perfil + sem cadastro) ──────────────
     st.markdown("### 📊 Desempenho por categoria profissional")
 
     df_cat = (
-        df_perf_all.groupby("Categoria")
+        df_perf_ativas.groupby("Categoria")
         .agg(
             Revendedoras=("Nome", "count"),
             Total_vendido=("Total", "sum"),
@@ -1518,6 +1524,31 @@ def _tab_perfil(df_res: pd.DataFrame, mes_label: str):
             },
         )
 
+    # ── Tabela — inativas no mês ──────────────────────────────────────────────
+    if not df_inat.empty:
+        st.divider()
+        st.markdown(f"### 🚫 Saíram da equipe — {n_inativas} revendedora(s)")
+        st.caption(
+            "Usuárias inativas no Jueri que tinham pedido neste mês. "
+            "As vendas delas são contabilizadas no total financeiro do mês, "
+            "mas não entram na análise de categorias."
+        )
+        df_inat_show = df_inat[["Nome", "Supervisor", "Profissão", "Local", "Total"]].copy()
+        df_inat_show = df_inat_show.sort_values("Total", ascending=False).reset_index(drop=True)
+        df_inat_show["Total"] = df_inat_show["Total"].apply(_R)
+        st.dataframe(
+            df_inat_show,
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "Nome":       st.column_config.TextColumn("Revendedora",       width="medium"),
+                "Supervisor": st.column_config.TextColumn("Supervisora",       width="medium"),
+                "Profissão":  st.column_config.TextColumn("Profissão",         width="medium"),
+                "Local":      st.column_config.TextColumn("Local de trabalho", width="medium"),
+                "Total":      st.column_config.TextColumn("Total vendido",     width="small"),
+            },
+        )
+
     st.divider()
 
     # ── Insights ──────────────────────────────────────────────────────────────
@@ -1544,18 +1575,25 @@ def _tab_perfil(df_res: pd.DataFrame, mes_label: str):
         f"— {_R(menor_ticket['Ticket_medio'])}/revendedora. "
         "Pode indicar necessidade de acompanhamento mais próximo ou maleta menor.",
 
-        f"📌 **Cobertura atual:** {n_com_perfil} de {n_total_mes} revendedoras do mês têm perfil "
-        f"cadastrado ({n_com_perfil/n_total_mes*100:.0f}%). "
+        f"📌 **Cobertura atual:** {n_com_perfil} de {n_com_perfil + n_sem_perfil} ativas têm perfil "
+        f"cadastrado ({n_com_perfil / (n_com_perfil + n_sem_perfil) * 100:.0f}% das ativas). "
         "Quanto mais perfis preenchidos, mais confiável fica a análise de segmentação.",
     ]
 
+    if n_inativas > 0:
+        insights.append(
+            f"🚫 **{n_inativas} revendedora(s) inativa(s)** tiveram pedido neste mês. "
+            "As vendas foram contabilizadas no total, mas não entram na análise de categorias."
+        )
+
     if n_sem_perfil > 0:
         insights.append(
-            f"⚠️ **{n_sem_perfil} revendedora(s) sem cadastro** no mês — "
+            f"⚠️ **{n_sem_perfil} ativa(s) sem cadastro** no mês — "
             "veja a lista acima e corrija no Jueri para incluí-las na análise."
         )
 
-    if n_com_perfil < n_total_mes * 0.3:
+    n_ativas = n_com_perfil + n_sem_perfil
+    if n_com_perfil < n_ativas * 0.3:
         insights.append(
             "⚠️ **Amostra ainda pequena** — menos de 30% das revendedoras têm perfil preenchido. "
             "Os dados são indicativos, mas podem mudar conforme mais cadastros forem completados."

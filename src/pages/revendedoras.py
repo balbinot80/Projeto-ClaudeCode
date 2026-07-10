@@ -1744,26 +1744,6 @@ def _tab_perfil(df_res: pd.DataFrame, mes_label: str):
                 "Apenas revendedoras com profissão preenchida."
             )
 
-            # Gráfico sunburst: Categoria → Subcategoria (valor = total vendido)
-            fig_sun = px.sunburst(
-                df_sub,
-                path=["Categoria", "Subcategoria"],
-                values="Total",
-                color="Total",
-                color_continuous_scale="RdPu",
-                labels={"Total": "Total vendido (R$)"},
-            )
-            fig_sun.update_traces(
-                textinfo="label+percent parent",
-                insidetextorientation="radial",
-            )
-            fig_sun.update_layout(
-                height=480,
-                coloraxis_showscale=False,
-                margin=dict(t=20, b=20, l=20, r=20),
-            )
-            st.plotly_chart(fig_sun, use_container_width=True)
-
             # Tabela detalhada por subcategoria
             df_sub_agg = (
                 df_sub.groupby(["Categoria", "Subcategoria"])
@@ -1775,18 +1755,17 @@ def _tab_perfil(df_res: pd.DataFrame, mes_label: str):
                 .reset_index()
                 .sort_values(["Categoria", "Total_vendido"], ascending=[True, False])
             )
-            df_sub_agg["Ticket médio"]  = df_sub_agg["Ticket_medio"].apply(_R)
-            df_sub_agg["Total vendido"] = df_sub_agg["Total_vendido"].apply(_R)
+            st.caption("Clique no cabeçalho de qualquer coluna para ordenar.")
             st.dataframe(
-                df_sub_agg[["Categoria", "Subcategoria", "Qtd", "Ticket médio", "Total vendido"]],
+                df_sub_agg[["Categoria", "Subcategoria", "Qtd", "Ticket_medio", "Total_vendido"]],
                 hide_index=True,
                 use_container_width=True,
                 column_config={
-                    "Categoria":     st.column_config.TextColumn("Categoria",     width="medium"),
-                    "Subcategoria":  st.column_config.TextColumn("Sub-grupo",     width="medium"),
-                    "Qtd":           st.column_config.NumberColumn("Qtd",         width="small"),
-                    "Ticket médio":  st.column_config.TextColumn("Ticket médio",  width="small"),
-                    "Total vendido": st.column_config.TextColumn("Total vendido", width="small"),
+                    "Categoria":    st.column_config.TextColumn("Categoria",    width="medium"),
+                    "Subcategoria": st.column_config.TextColumn("Sub-grupo",    width="medium"),
+                    "Qtd":          st.column_config.NumberColumn("Qtd",        width="small", format="%d"),
+                    "Ticket_medio": st.column_config.NumberColumn("Ticket médio", width="small", format="R$ %.2f"),
+                    "Total_vendido":st.column_config.NumberColumn("Total vendido", width="small", format="R$ %.2f"),
                 },
             )
 

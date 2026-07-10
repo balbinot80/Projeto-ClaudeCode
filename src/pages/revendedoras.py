@@ -1372,43 +1372,57 @@ def _tab_perfil(df_res: pd.DataFrame, mes_label: str):
         st.info("Nenhuma revendedora com profissão ou local de trabalho preenchidos no Jueri.")
         return
 
-    # Junta com df_res do mês
-    rows = []
+    # Junta com df_res do mês — separa com perfil e sem perfil
+    rows            = []
+    rows_sem_perfil = []
+
     for _, row in df_res.iterrows():
         rid = str(row["fk_revendedor_id"])
+        base = {
+            "Nome":       row["Nome"],
+            "Supervisor": row["Supervisor"],
+            "Total":      row["Total"],
+            "Baixado":    row["Baixado"],
+            "Pré-baixa":  row["Pré-baixa"],
+        }
         if rid in prof_map:
-            rows.append({
-                "Nome":      row["Nome"],
-                "Supervisor": row["Supervisor"],
-                **prof_map[rid],
-                "Total":     row["Total"],
-                "Baixado":   row["Baixado"],
-                "Pré-baixa": row["Pré-baixa"],
+            rows.append({**base, **prof_map[rid]})
+        else:
+            rows_sem_perfil.append({
+                **base,
+                "Profissão": "—",
+                "Local":     "—",
+                "Categoria": "❓ Sem cadastro",
             })
 
-    n_total_mes = len(df_res)
+    n_total_mes  = len(df_res)
     n_com_perfil = len(rows)
+    n_sem_perfil = len(rows_sem_perfil)
 
-    if not rows:
-        st.info("Nenhuma revendedora com perfil cadastrado aparece nos dados do mês selecionado.")
+    if not rows and not rows_sem_perfil:
+        st.info("Nenhuma revendedora aparece nos dados do mês selecionado.")
         return
 
-    df_perf = pd.DataFrame(rows)
+    df_perf     = pd.DataFrame(rows)     if rows            else pd.DataFrame()
+    df_sem      = pd.DataFrame(rows_sem_perfil) if rows_sem_perfil else pd.DataFrame()
+    df_perf_all = pd.concat([df_perf, df_sem], ignore_index=True)
 
     # ── Cabeçalho ─────────────────────────────────────────────────────────────
-    p1, p2, p3 = st.columns(3)
+    p1, p2, p3, p4 = st.columns(4)
     p1.metric("Com perfil no mês", n_com_perfil,
               help=f"{n_com_perfil} de {n_total_mes} revendedoras do mês têm profissão cadastrada")
-    p2.metric("Ticket médio (com perfil)", _R(df_perf["Total"].mean()))
-    p3.metric("Total vendido (com perfil)", _R(df_perf["Total"].sum()))
+    p2.metric("⚠️ Sem cadastro", n_sem_perfil,
+              help="Revendedoras do mês sem profissão ou local preenchidos no Jueri")
+    p3.metric("Ticket médio (com perfil)", _R(df_perf["Total"].mean()) if not df_perf.empty else "—")
+    p4.metric("Total vendido (com perfil)", _R(df_perf["Total"].sum()) if not df_perf.empty else "—")
 
     st.divider()
 
-    # ── Análise por categoria ─────────────────────────────────────────────────
+    # ── Análise por categoria (inclui Sem cadastro) ───────────────────────────
     st.markdown("### 📊 Desempenho por categoria profissional")
 
     df_cat = (
-        df_perf.groupby("Categoria")
+        df_perf_all.groupby("Categoria")
         .agg(
             Revendedoras=("Nome", "count"),
             Total_vendido=("Total", "sum"),
@@ -1420,6 +1434,11 @@ def _tab_perfil(df_res: pd.DataFrame, mes_label: str):
 
     import plotly.express as px
 
+    # Cor cinza para "Sem cadastro", escala normal para as demais
+    cores = {
+        row["Categoria"]: "#B0BEC5" if row["Categoria"] == "❓ Sem cadastro" else None
+        for _, row in df_cat.iterrows()
+    }
     fig = px.bar(
         df_cat,
         x="Categoria",
@@ -1429,13 +1448,18 @@ def _tab_perfil(df_res: pd.DataFrame, mes_label: str):
         labels={"Total_vendido": "Total vendido (R$)", "Ticket_medio": "Ticket médio"},
         color_continuous_scale="RdPu",
     )
+    # Pinta a barra "Sem cadastro" em cinza
+    for trace in fig.data:
+        pass  # plotly express com color contínuo não permite cor individual por barra
     fig.update_traces(textposition="outside")
-    fig.update_layout(height=380, xaxis_tickangle=-20,
+    fig.update_layout(height=400, xaxis_tickangle=-20,
                       coloraxis_colorbar=dict(title="Ticket médio"))
     st.plotly_chart(fig, use_container_width=True)
 
     df_cat_show = df_cat.copy()
-    df_cat_show["Ticket médio"] = df_cat_show["Ticket_medio"].apply(_R)
+    df_cat_show["Ticket médio"] = df_cat_show.apply(
+        lambda r: "—" if r["Categoria"] == "❓ Sem cadastro" else _R(r["Ticket_medio"]), axis=1
+    )
     df_cat_show["Total vendido"] = df_cat_show["Total_vendido"].apply(_R)
     st.dataframe(
         df_cat_show[["Categoria", "Revendedoras", "Ticket médio", "Total vendido"]],
@@ -1451,32 +1475,62 @@ def _tab_perfil(df_res: pd.DataFrame, mes_label: str):
 
     st.divider()
 
-    # ── Tabela individual ─────────────────────────────────────────────────────
-    st.markdown("### 👤 Revendedoras com perfil no mês")
-    df_ind = df_perf[["Nome", "Profissão", "Local", "Categoria", "Total"]].copy()
-    df_ind = df_ind.sort_values("Total", ascending=False).reset_index(drop=True)
-    df_ind["Total"] = df_ind["Total"].apply(_R)
-    st.dataframe(
-        df_ind,
-        hide_index=True,
-        use_container_width=True,
-        column_config={
-            "Nome":      st.column_config.TextColumn("Revendedora",       width="medium"),
-            "Profissão": st.column_config.TextColumn("Profissão",         width="medium"),
-            "Local":     st.column_config.TextColumn("Local de trabalho", width="medium"),
-            "Categoria": st.column_config.TextColumn("Categoria",         width="medium"),
-            "Total":     st.column_config.TextColumn("Total vendido",     width="small"),
-        },
-    )
+    # ── Tabela individual — com perfil ────────────────────────────────────────
+    if not df_perf.empty:
+        st.markdown("### 👤 Revendedoras com perfil no mês")
+        df_ind = df_perf[["Nome", "Profissão", "Local", "Categoria", "Total"]].copy()
+        df_ind = df_ind.sort_values("Total", ascending=False).reset_index(drop=True)
+        df_ind["Total"] = df_ind["Total"].apply(_R)
+        st.dataframe(
+            df_ind,
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "Nome":      st.column_config.TextColumn("Revendedora",       width="medium"),
+                "Profissão": st.column_config.TextColumn("Profissão",         width="medium"),
+                "Local":     st.column_config.TextColumn("Local de trabalho", width="medium"),
+                "Categoria": st.column_config.TextColumn("Categoria",         width="medium"),
+                "Total":     st.column_config.TextColumn("Total vendido",     width="small"),
+            },
+        )
+
+    # ── Tabela individual — sem perfil ────────────────────────────────────────
+    if not df_sem.empty:
+        st.divider()
+        st.markdown(
+            f"### ⚠️ Sem perfil cadastrado — {n_sem_perfil} revendedora(s)"
+        )
+        st.caption(
+            "Estas revendedoras têm pedidos no mês mas não têm Profissão nem Local de trabalho "
+            "preenchidos no Jueri. Corrija o cadastro para incluí-las na análise."
+        )
+        df_sp = df_sem[["Nome", "Supervisor", "Total"]].copy()
+        df_sp = df_sp.sort_values("Total", ascending=False).reset_index(drop=True)
+        df_sp["Total"] = df_sp["Total"].apply(_R)
+        st.dataframe(
+            df_sp,
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "Nome":       st.column_config.TextColumn("Revendedora",  width="large"),
+                "Supervisor": st.column_config.TextColumn("Supervisora",  width="medium"),
+                "Total":      st.column_config.TextColumn("Total vendido", width="small"),
+            },
+        )
 
     st.divider()
 
     # ── Insights ──────────────────────────────────────────────────────────────
     st.markdown("### 💡 Insights")
 
-    melhor_ticket = df_cat.sort_values("Ticket_medio", ascending=False).iloc[0]
-    maior_volume  = df_cat.iloc[0]
-    menor_ticket  = df_cat.sort_values("Ticket_medio").iloc[0]
+    df_cat_analise = df_cat[df_cat["Categoria"] != "❓ Sem cadastro"]
+    if df_cat_analise.empty:
+        st.info("Sem dados suficientes para gerar insights.")
+        return
+
+    melhor_ticket = df_cat_analise.sort_values("Ticket_medio", ascending=False).iloc[0]
+    maior_volume  = df_cat_analise.iloc[0]
+    menor_ticket  = df_cat_analise.sort_values("Ticket_medio").iloc[0]
 
     insights = [
         f"🏆 **Maior volume de vendas:** {maior_volume['Categoria']} "
@@ -1494,6 +1548,12 @@ def _tab_perfil(df_res: pd.DataFrame, mes_label: str):
         f"cadastrado ({n_com_perfil/n_total_mes*100:.0f}%). "
         "Quanto mais perfis preenchidos, mais confiável fica a análise de segmentação.",
     ]
+
+    if n_sem_perfil > 0:
+        insights.append(
+            f"⚠️ **{n_sem_perfil} revendedora(s) sem cadastro** no mês — "
+            "veja a lista acima e corrija no Jueri para incluí-las na análise."
+        )
 
     if n_com_perfil < n_total_mes * 0.3:
         insights.append(

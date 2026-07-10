@@ -1297,7 +1297,7 @@ def _categorizar_profissao(profissao: str) -> str:
         "vendedor", "vendedora", "caixa", "atendente", "comercio",
         "comércio", "balconista", "repositor", "lojista", "comerciante",
         "promotor", "promotora", "frente de loja", "auxiliar de loja",
-        "operador de caixa", "operadora de caixa",
+        "operador de caixa", "operadora de caixa", "venda",
     ]):
         return "🛒 Comércio & Vendas"
 

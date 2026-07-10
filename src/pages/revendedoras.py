@@ -1354,22 +1354,56 @@ def _tab_perfil(df_res: pd.DataFrame, mes_label: str):
         _status.error(f"Erro ao carregar perfis: {e}")
         return
 
-    # Monta mapas separados: ativas com perfil e inativas (com info de cadastro)
-    prof_map     = {}   # ativas com profissão/local preenchidos
-    info_inativas = {}  # inativas → {Profissão, Local} para exibição
+    # ── Helpers de idade ──────────────────────────────────────────────────────
+    _HOJE = date.today()
+    _ORDEM_FAIXAS = ["18–24", "25–29", "30–34", "35–39", "40–44", "45–49", "50–54", "55+"]
+
+    def _calc_idade(dn_str: str):
+        if not dn_str:
+            return None
+        try:
+            parts = dn_str[:10].split("-")
+            dn = date(int(parts[0]), int(parts[1]), int(parts[2]))
+            idade = _HOJE.year - dn.year - ((_HOJE.month, _HOJE.day) < (dn.month, dn.day))
+            return idade if 16 <= idade <= 80 else None
+        except Exception:
+            return None
+
+    def _faixa_etaria(idade) -> str:
+        if idade is None:
+            return "Não informado"
+        if idade < 25: return "18–24"
+        if idade < 30: return "25–29"
+        if idade < 35: return "30–34"
+        if idade < 40: return "35–39"
+        if idade < 45: return "40–44"
+        if idade < 50: return "45–49"
+        if idade < 55: return "50–54"
+        return "55+"
+
+    # Monta mapas separados: ativas com perfil, inativas e mapa de idades (todas)
+    prof_map      = {}   # ativas com profissão/local preenchidos
+    info_inativas = {}   # inativas → {Profissão, Local} para exibição
+    idade_map     = {}   # todas as ativas → {Idade, Faixa etária}
 
     for r in revs:
-        rid  = str(r["id"])
-        prof = (r.get("profissao") or "").strip()
+        rid   = str(r["id"])
+        prof  = (r.get("profissao") or "").strip()
         local = (r.get("local") or "").strip()
         if r.get("data_inativacao"):
             info_inativas[rid] = {"Profissão": prof or "—", "Local": local or "—"}
-        elif prof or local:
-            prof_map[rid] = {
-                "Profissão": prof or "—",
-                "Local":     local or "—",
-                "Categoria": _categorizar_profissao(prof),
+        else:
+            idade = _calc_idade(r.get("data_nascimento"))
+            idade_map[rid] = {
+                "Idade":        idade,
+                "Faixa etária": _faixa_etaria(idade),
             }
+            if prof or local:
+                prof_map[rid] = {
+                    "Profissão": prof or "—",
+                    "Local":     local or "—",
+                    "Categoria": _categorizar_profissao(prof),
+                }
 
     # Distribui df_res em três grupos
     rows            = []   # ativas com perfil
@@ -1384,6 +1418,7 @@ def _tab_perfil(df_res: pd.DataFrame, mes_label: str):
             "Total":      row["Total"],
             "Baixado":    row["Baixado"],
             "Pré-baixa":  row["Pré-baixa"],
+            **idade_map.get(rid, {"Idade": None, "Faixa etária": "Não informado"}),
         }
         if rid in info_inativas:
             rows_inativas.append({**base, **info_inativas[rid]})
@@ -1601,6 +1636,97 @@ def _tab_perfil(df_res: pd.DataFrame, mes_label: str):
 
     for msg in insights:
         st.markdown(f"- {msg}")
+
+    # ── Análise por faixa etária ───────────────────────────────────────────────
+    # Usa todas as ativas do mês (com perfil + sem cadastro), exceto inativas
+    df_idade_base = pd.concat([df_perf, df_sem], ignore_index=True) if not df_perf.empty or not df_sem.empty else pd.DataFrame()
+
+    if not df_idade_base.empty and "Faixa etária" in df_idade_base.columns:
+        df_idade_valida = df_idade_base[df_idade_base["Faixa etária"] != "Não informado"].copy()
+
+        if not df_idade_valida.empty:
+            st.divider()
+            st.markdown("### 🎂 Desempenho por faixa etária")
+
+            df_fe = (
+                df_idade_valida.groupby("Faixa etária")
+                .agg(
+                    Revendedoras=("Nome", "count"),
+                    Total_vendido=("Total", "sum"),
+                    Ticket_medio=("Total", "mean"),
+                )
+                .reset_index()
+            )
+            # Ordena pelas faixas na sequência correta
+            df_fe["_ordem"] = df_fe["Faixa etária"].map(
+                {f: i for i, f in enumerate(_ORDEM_FAIXAS)}
+            ).fillna(99)
+            df_fe = df_fe.sort_values("_ordem").drop(columns="_ordem").reset_index(drop=True)
+
+            # Gráfico: barras com total vendido + linha de ticket médio
+            fig_fe = px.bar(
+                df_fe,
+                x="Faixa etária",
+                y="Total_vendido",
+                color="Ticket_medio",
+                text="Revendedoras",
+                labels={"Total_vendido": "Total vendido (R$)", "Ticket_medio": "Ticket médio"},
+                color_continuous_scale="RdPu",
+                category_orders={"Faixa etária": _ORDEM_FAIXAS},
+            )
+            fig_fe.update_traces(textposition="outside", texttemplate="%{text} rev.")
+            fig_fe.update_layout(
+                height=380,
+                coloraxis_colorbar=dict(title="Ticket médio"),
+                xaxis_title="Faixa etária",
+            )
+            st.plotly_chart(fig_fe, use_container_width=True)
+
+            # Tabela resumo por faixa
+            df_fe_show = df_fe.copy()
+            df_fe_show["Ticket médio"]  = df_fe_show["Ticket_medio"].apply(_R)
+            df_fe_show["Total vendido"] = df_fe_show["Total_vendido"].apply(_R)
+            st.dataframe(
+                df_fe_show[["Faixa etária", "Revendedoras", "Ticket médio", "Total vendido"]],
+                hide_index=True,
+                use_container_width=True,
+                column_config={
+                    "Faixa etária":  st.column_config.TextColumn("Faixa etária",  width="small"),
+                    "Revendedoras":  st.column_config.NumberColumn("Qtd",         width="small"),
+                    "Ticket médio":  st.column_config.TextColumn("Ticket médio",  width="small"),
+                    "Total vendido": st.column_config.TextColumn("Total vendido", width="small"),
+                },
+            )
+
+            # Top 5 vendedoras por faixa
+            st.markdown("#### 🏆 Maiores vendedoras por faixa etária")
+            cols_top = st.columns(min(4, df_fe["Faixa etária"].nunique()))
+            faixas_ord = [f for f in _ORDEM_FAIXAS if f in df_fe["Faixa etária"].values]
+
+            for col, faixa_label in zip(cols_top * 10, faixas_ord):
+                df_faixa = (
+                    df_idade_valida[df_idade_valida["Faixa etária"] == faixa_label]
+                    .sort_values("Total", ascending=False)
+                    .head(3)
+                    .reset_index(drop=True)
+                )
+                with col:
+                    st.markdown(f"**{faixa_label} anos**")
+                    for i, r_top in df_faixa.iterrows():
+                        medalha = ["🥇", "🥈", "🥉"][i]
+                        nome_curto = r_top["Nome"].split()[0]
+                        st.markdown(f"{medalha} {nome_curto} — {_R(r_top['Total'])}")
+
+            # Insight: melhor faixa
+            melhor_faixa = df_fe.sort_values("Ticket_medio", ascending=False).iloc[0]
+            maior_faixa  = df_fe.sort_values("Total_vendido", ascending=False).iloc[0]
+            st.markdown("")
+            st.info(
+                f"💡 **Melhor ticket médio:** faixa **{melhor_faixa['Faixa etária']} anos** "
+                f"— {_R(melhor_faixa['Ticket_medio'])} por revendedora.   "
+                f"**Maior volume:** faixa **{maior_faixa['Faixa etária']} anos** "
+                f"— {_R(maior_faixa['Total_vendido'])} no total."
+            )
 
 
 # ── Render principal ──────────────────────────────────────────────────────────

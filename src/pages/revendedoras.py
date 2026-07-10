@@ -1354,9 +1354,11 @@ def _tab_perfil(df_res: pd.DataFrame, mes_label: str):
         _status.error(f"Erro ao carregar perfis: {e}")
         return
 
-    # Monta mapa rev_id → {profissao, local, categoria}
+    # Monta mapa rev_id → {profissao, local, categoria} — apenas ativas
     prof_map = {}
     for r in revs:
+        if r.get("data_inativacao"):
+            continue  # ignora revendedoras inativas
         prof = (r.get("profissao") or "").strip()
         local = (r.get("local") or "").strip()
         if prof or local:

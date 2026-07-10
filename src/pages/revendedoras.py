@@ -1260,49 +1260,55 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
 
 # ── Tab: Perfil das Revendedoras (admin) ─────────────────────────────────────
 
+def _norm_prof(s: str) -> str:
+    import unicodedata
+    return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii").lower()
+
+
 def _categorizar_profissao(profissao: str) -> str:
     if not profissao:
         return "❓ Não informado"
-    p = profissao.lower()
+    # Normaliza: remove acentos e converte para minúsculo
+    # Assim "psicóloga" bate com "psicolog", "farmácia" bate com "farmac", etc.
+    p = _norm_prof(profissao)
 
     # 1. Beleza & Estética
     if any(k in p for k in [
         "manicure", "pedicure", "estetic", "cabeleire", "cabeleirei",
-        "beleza", "maquiag", "makeup", "depila", "sobrancelha",
-        "nail", "barbe", "colorist", "podolog", "limpeza de pele",
-        "massagem", "massoter", "designer de sobrancelha", "designer de unha",
+        "beleza", "maquiag", "makeup", "depila", "sobrancelha", "sobrancelh",
+        "nail", "lash", "barbe", "colorist", "podolog", "limpeza de pele",
+        "massagem", "massoter", "designer de sobrancelh", "designer de unh",
     ]):
         return "✂️ Beleza & Estética"
 
     # 2. Saúde & Cuidados
     if any(k in p for k in [
-        "saude", "saúde", "enfermei", "enfermag", "médic", "medic",
-        "nutri", "farmac", "fisio", "terapeu", "psicolog", "dentist",
-        "odontolog", "cuidadora", "agente de saúde", "aux. de enf",
-        "auxiliar de enf", "assistente social", "serviço social",
-        "técnica em enf", "técnico em enf", "home care",
+        "saude", "enfermei", "enfermag", "medic", "nutri", "farmac",
+        "fisio", "terapeu", "psicolog", "dentist", "odontolog",
+        "cuidadora", "agente de saude", "aux. de enf", "auxiliar de enf",
+        "assistente social", "servico social", "tecnica em enf",
+        "tecnico em enf", "home care",
     ]):
         return "🏥 Saúde & Cuidados"
 
     # 3. Educação
     if any(k in p for k in [
         "professor", "professora", "pedagog", "educador", "educadora",
-        "docente", "auxiliar de sala", "berçário", "bercario",
-        "instrutor", "instrutora", "tutor", "escola", "coord. pedagog",
+        "docente", "auxiliar de sala", "bercario", "instrutor", "instrutora",
+        "tutor", "escola", "coord. pedagog",
     ]):
         return "📚 Educação"
 
     # 4. Comércio & Vendas
     if any(k in p for k in [
         "vendedor", "vendedora", "caixa", "atendente", "comercio",
-        "comércio", "balconista", "repositor", "lojista", "comerciante",
+        "balconista", "repositor", "lojista", "comerciante",
         "promotor", "promotora", "frente de loja", "auxiliar de loja",
         "operador de caixa", "operadora de caixa", "venda",
     ]):
         return "🛒 Comércio & Vendas"
 
     # 5. Administração & Negócios
-    # "administ" pega tanto "administração" (com ç) quanto "administrativo"
     if any(k in p for k in [
         "analista", "administ", "faturist", "logistic",
         "financeiro", "financeira", "assistente", "contador", "contabil",
@@ -1310,20 +1316,22 @@ def _categorizar_profissao(profissao: str) -> str:
         "gestor", "gestora", "supervisor", "supervisora",
         "recursos humanos", "compras", "fiscal", "tributar",
         "depto pessoal", "departamento pessoal", "microempreend",
-        "empresari", "empreended", "informátic", "informatica",
-        "tecnologia da informação", "desenvolvedor", "programador",
+        "empresari", "empreended", "informatica", "tecnologia da informacao",
+        "desenvolvedor", "programador", "marketing", "servidora publica",
+        "servidor publico", "design de interior",
     ]):
         return "💼 Administração & Negócios"
 
     # 6. Produção & Indústria
     if any(k in p for k in [
         "costurei", "operador", "operadora", "op. de", "op de",
-        "producao", "produção", "auxiliar de prod", "confeccao", "confecção",
-        "máquina", "maquina", "industrial", "fábrica", "fabrica",
-        "montador", "soldador", "mecanic", "elétric", "eletric",
-        "técnico", "técnica", "torneiro", "serralhei", "carpintei",
-        "pedreiro", "construção", "construcao", "qualidade", "embalagem",
-        "expedição", "expedicao", "tecel", "serigrafia",
+        "producao", "auxiliar de prod", "confeccao",
+        "maquina", "industrial", "fabrica",
+        "montador", "montag", "soldador", "mecanic", "eletric",
+        "tecnico", "tecnica", "torneiro", "serralhei", "carpintei",
+        "pedreiro", "construcao", "qualidade", "embalagem",
+        "expedicao", "tecel", "serigrafia", "engenheir",
+        "estoquist", "conferent", "artesa", "vigilante",
     ]):
         return "🏭 Produção & Indústria"
 

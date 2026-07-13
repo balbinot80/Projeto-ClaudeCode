@@ -923,10 +923,10 @@ def render(filtro_supervisor: str = ""):
 
     df = montar_acertos(todos)
 
-    # ── Dialogs chamados aqui (nível de render, fora de qualquer tab/coluna) ──
+    # ── Dialogs — apenas UM pode abrir por render (if/elif garante exclusividade) ──
+    mid   = st.session_state.get("_motivo_id")
+    ag_id = st.session_state.get("_ag_id")
 
-    # Dialog: motivo do atraso
-    mid = st.session_state.get("_motivo_id")
     if mid is not None:
         rows_m = df[df["id"] == mid]
         if not rows_m.empty:
@@ -934,33 +934,25 @@ def render(filtro_supervisor: str = ""):
         else:
             st.session_state.pop("_motivo_id", None)
 
-    # Dialog: troca no mesmo dia? (Correios / Disk Tenha)
-    if "_troca_check" in st.session_state:
+    elif "_troca_check" in st.session_state:
         _dialog_troca_mesmo_dia()
 
-    # Dialog: agendar envio da maleta
     elif "_envio_maleta" in st.session_state:
         _dialog_agendar_envio_maleta()
 
-    # Google Agenda duplo (acerto + envio da maleta)
     elif "_gcal_duplo" in st.session_state or "_gcal_duplo_active" in st.session_state:
         duplo = st.session_state.pop("_gcal_duplo", None)
         if duplo:
             st.session_state["_gcal_duplo_active"] = duplo
         _dialog_gcal_duplo()
 
-    # Confirmação Google Agenda simples (Presencial / Motoboy)
-    else:
+    elif "_gcal_dict" in st.session_state or "_gcal_active" in st.session_state:
         gcal = st.session_state.pop("_gcal_dict", None)
         if gcal:
             st.session_state["_gcal_active"] = gcal
-            _dialog_gcal_confirm()
+        _dialog_gcal_confirm()
 
-    # Dialog de agendamento
-    ag_id = st.session_state.get("_ag_id")
-    if ag_id is not None:
-        # Limpa a chave de data quando o dialog abre para um pedido diferente do anterior,
-        # garantindo que o date_input sempre inicie com a data de hoje
+    elif ag_id is not None:
         if st.session_state.get("_ag_id_prev") != ag_id:
             st.session_state.pop(f"dlg_data_{ag_id}", None)
             st.session_state["_ag_id_prev"] = ag_id

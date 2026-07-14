@@ -387,57 +387,32 @@ def _dialog_agendar(row: pd.Series):
 
         st.caption(f"📅 **{data_ag.strftime('%d/%m/%Y')}** selecionado")
 
-    # ── Horário (botão-trigger + radio scrollável — sem portal) ──────────────
+    # ── Horário ───────────────────────────────────────────────────────────────
     with col_hora:
         st.markdown("**Horário**")
 
-        _k_hora = f"_hora_{pid}"
-        _k_open = f"_hora_open_{pid}"
+        slots = [f"{h:02d}:{m:02d}" for h in range(9, 21) for m in [0, 15, 30, 45]]
 
-        if _k_hora not in st.session_state:
+        _k_hora_sel = f"hora_sel_{pid}"
+        if _k_hora_sel not in st.session_state:
             hora_existente = row.get("Hora agendada", "") or ""
+            hora_default = "09:00"
             if hora_existente:
                 try:
                     hh, mm = map(int, hora_existente.split(":"))
-                    mm = (mm // 15) * 15
-                    st.session_state[_k_hora] = f"{hh:02d}:{mm:02d}"
+                    candidato = f"{hh:02d}:{(mm // 15) * 15:02d}"
+                    if candidato in slots:
+                        hora_default = candidato
                 except Exception:
-                    st.session_state[_k_hora] = "09:00"
-            else:
-                st.session_state[_k_hora] = "09:00"
-        if _k_open not in st.session_state:
-            st.session_state[_k_open] = False
+                    pass
+            st.session_state[_k_hora_sel] = hora_default
 
-        hora_sel = st.session_state[_k_hora]
-        slots    = [f"{h:02d}:{m:02d}" for h in range(9, 21) for m in [0, 15, 30, 45]]
-
-        # Garante que hora fora do range (ex: 07:xx) caia no default
-        if hora_sel not in slots:
-            hora_sel = "09:00"
-            st.session_state[_k_hora] = hora_sel
-
-        arrow = "▲" if st.session_state[_k_open] else "▼"
-        if st.button(f"🕐  {hora_sel}  {arrow}", key=f"hora_btn_{pid}",
-                     use_container_width=True):
-            st.session_state[_k_open] = not st.session_state[_k_open]
-            st.rerun()
-
-        if st.session_state[_k_open]:
-            idx = slots.index(hora_sel)
-            with st.container(height=200, border=True):
-                nova = st.radio(
-                    "Horário",
-                    options=slots,
-                    index=idx,
-                    key=f"hora_radio_{pid}",
-                    label_visibility="collapsed",
-                )
-            if nova != hora_sel:
-                st.session_state[_k_hora] = nova
-                st.session_state[_k_open] = False
-                st.rerun()
-
-        hora_str_final = st.session_state[_k_hora]
+        hora_str_final = st.selectbox(
+            "Horário",
+            options=slots,
+            key=_k_hora_sel,
+            label_visibility="collapsed",
+        )
 
     # ── Observação ────────────────────────────────────────────────────────────
     obs_label = "Motivo do atraso no agendamento *" if vencido else "Observação (opcional)"

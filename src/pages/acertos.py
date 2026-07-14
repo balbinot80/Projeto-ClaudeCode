@@ -653,16 +653,15 @@ def _grade_semana(df: pd.DataFrame, seg: date, hoje: date, motivos_map: dict = N
                         st.markdown(_card_closed(row), unsafe_allow_html=True)
                         if "Atrasou" in str(row["Situação"]):
                             tem_motivo = (motivos_map or {}).get(str(row["id"]), False)
-                            btn_lbl_m  = "✅ Ver motivo" if tem_motivo else "⚠️ Sem motivo!"
-                            btn_type_m = "secondary" if tem_motivo else "primary"
-                            if st.button(
-                                btn_lbl_m,
-                                key=f"cal_mot_{row['id']}",
-                                use_container_width=True,
-                                type=btn_type_m,
-                            ):
-                                st.session_state["_motivo_id"] = row["id"]
-                                st.rerun()
+                            if tem_motivo:
+                                if st.button(
+                                    "✅ Ver motivo",
+                                    key=f"cal_mot_{row['id']}",
+                                    use_container_width=True,
+                                    type="secondary",
+                                ):
+                                    st.session_state["_motivo_id"] = row["id"]
+                                    st.rerun()
 
 
 # ── Aba: Calendário ───────────────────────────────────────────────────────────
@@ -825,26 +824,33 @@ def _tab_vencidos(df: pd.DataFrame):
                                 f'{agenda_html}',
                                 unsafe_allow_html=True,
                             )
-                            c_ag, c_mot = st.columns(2)
-                            with c_ag:
+                            tem_mot_v = motivos_map_v.get(str(row["id"]), False)
+                            if tem_mot_v:
+                                c_ag, c_mot = st.columns(2)
+                                with c_ag:
+                                    if st.button(
+                                        btn_lbl,
+                                        key=f"venc_{row['id']}",
+                                        use_container_width=True,
+                                    ):
+                                        st.session_state["_ag_id"] = row["id"]
+                                        st.rerun()
+                                with c_mot:
+                                    if st.button(
+                                        "✅ Ver motivo",
+                                        key=f"venc_m_{row['id']}",
+                                        use_container_width=True,
+                                        type="secondary",
+                                    ):
+                                        st.session_state["_motivo_id"] = row["id"]
+                                        st.rerun()
+                            else:
                                 if st.button(
                                     btn_lbl,
                                     key=f"venc_{row['id']}",
                                     use_container_width=True,
                                 ):
                                     st.session_state["_ag_id"] = row["id"]
-                                    st.rerun()
-                            with c_mot:
-                                tem_mot_v  = motivos_map_v.get(str(row["id"]), False)
-                                lbl_mot_v  = "✅ Ver motivo" if tem_mot_v else "⚠️ Sem motivo!"
-                                tipo_mot_v = "secondary" if tem_mot_v else "primary"
-                                if st.button(
-                                    lbl_mot_v,
-                                    key=f"venc_m_{row['id']}",
-                                    use_container_width=True,
-                                    type=tipo_mot_v,
-                                ):
-                                    st.session_state["_motivo_id"] = row["id"]
                                     st.rerun()
 
 

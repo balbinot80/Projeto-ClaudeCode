@@ -36,49 +36,47 @@ def _tab_relatorio_contatos():
 
     st.subheader("📞 Revendedoras com maleta aberta — Contato")
     st.caption(
-        "Revendedoras com **cadastro anterior a junho de 2026** que possuem pedido em aberto. "
+        "Revendedoras com **primeiro pedido anterior a junho de 2026** que possuem maleta em aberto. "
         "Ordenado da mais antiga para a mais nova na equipe."
     )
 
-    corte_cadastro = date(2026, 6, 1)
-    hoje           = date.today()
+    corte = date(2026, 6, 1)
+    hoje  = date.today()
 
-    with st.spinner("Carregando cadastros de revendedoras..."):
-        try:
-            revs = get_revendedores()
-        except Exception as e:
-            st.error(f"Erro ao carregar revendedoras: {e}")
-            return
-
-    # Revendedoras cujo cadastro é anterior a 06/2026
-    rev_map = {}
-    for r in revs:
-        dc = _parse_date(r.get("data_criacao") or r.get("created_at"))
-        if dc and dc < corte_cadastro:
-            rev_map[str(r["id"])] = r
-
-    if not rev_map:
-        st.info("Nenhuma revendedora com cadastro anterior a 06/2026.")
-        return
-
-    with st.spinner("Carregando pedidos..."):
+    with st.spinner("Carregando pedidos e revendedoras..."):
         try:
             todos_pedidos = _get_lista_pedidos()
+            revs          = get_revendedores()
         except Exception as e:
-            st.error(f"Erro ao carregar pedidos: {e}")
+            st.error(f"Erro ao carregar dados: {e}")
             return
 
-    # Pedidos abertos de revendedoras elegíveis
-    rev_pedidos: dict[str, list] = {}
+    rev_map = {str(r["id"]): r for r in revs}
+
+    # Para cada revendedora: data do primeiro pedido e lista de pedidos abertos
+    primeiro_pedido: dict[str, date] = {}
+    abertos_por_rev: dict[str, list] = {}
+
     for p in todos_pedidos:
-        if p.get("status") != "Aberto":
-            continue
         rid = str(p.get("fk_revendedor_id") or "")
-        if rid in rev_map:
-            rev_pedidos.setdefault(rid, []).append(p)
+        if not rid:
+            continue
+        dc = _parse_date(p.get("data_criacao"))
+        if dc:
+            if rid not in primeiro_pedido or dc < primeiro_pedido[rid]:
+                primeiro_pedido[rid] = dc
+        if p.get("status") == "Aberto":
+            abertos_por_rev.setdefault(rid, []).append(p)
+
+    # Elegíveis: primeiro pedido antes de 06/2026 E tem pedido aberto agora
+    rev_pedidos = {
+        rid: abertos_por_rev[rid]
+        for rid in abertos_por_rev
+        if primeiro_pedido.get(rid, date(9999, 1, 1)) < corte
+    }
 
     if not rev_pedidos:
-        st.success("Nenhuma revendedora cadastrada antes de 06/2026 possui pedido aberto no momento.")
+        st.success("Nenhuma revendedora com primeiro pedido anterior a 06/2026 possui maleta em aberto.")
         return
 
     rows = []
@@ -98,10 +96,8 @@ def _tab_relatorio_contatos():
             "—"
         )
 
-        # Data de entrada na empresa (data_criacao do cadastro da revendedora)
-        data_entrada = _parse_date(
-            rev.get("data_criacao") or rev.get("created_at")
-        )
+        # Meses na empresa = desde o primeiro pedido registrado
+        data_entrada = primeiro_pedido.get(rid)
         if data_entrada:
             meses = (hoje.year - data_entrada.year) * 12 + (hoje.month - data_entrada.month)
         else:
@@ -112,7 +108,7 @@ def _tab_relatorio_contatos():
             "Telefone":           str(fone).strip() if fone and fone != "—" else "—",
             "Meses na empresa":   meses,
             "Maletas abertas":    len(pedidos),
-            "_data_entrada":      data_entrada or date(9999, 1, 1),
+            "_data_entrada":      primeiro_pedido.get(rid, date(9999, 1, 1)),
         })
 
     df = (

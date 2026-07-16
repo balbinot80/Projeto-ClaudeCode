@@ -96,6 +96,12 @@ _USUARIOS = {
         "supervisor_nome": "Yasmim Evellyn Ferreira",
         "secret_key": "TESTE_SENHA",
     },
+    "marketing": {
+        "nome": "Marketing",
+        "role": "marketing",
+        "supervisor_nome": "",
+        "secret_key": "MARKETING_SENHA",
+    },
 }
 
 
@@ -266,8 +272,11 @@ with st.sidebar:
             "👥 Revendedoras",
             "📅 Controle de Acertos",
             "📊 Entradas e Saídas",
+            "🎨 Marketing",
             "🔍 Diagnóstico",
         ]
+    elif role == "marketing":
+        paginas_disponiveis = ["🎨 Marketing"]
     elif role == "supervisora_teste":
         paginas_disponiveis = [
             "🏠 Hoje",
@@ -477,6 +486,10 @@ elif pagina == "📅 Controle de Acertos":
 
 elif pagina == "📊 Entradas e Saídas":
     from src.pages.entradas_saidas import render
+    render()
+
+elif pagina == "🎨 Marketing":
+    from src.pages.marketing import render
     render()
 
 elif pagina == "🔍 Diagnóstico":

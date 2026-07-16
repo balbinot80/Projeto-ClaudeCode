@@ -329,6 +329,38 @@ def _tab_diagnostico_api():
     else:
         st.error(f"HTTP {code_rev}: {str(r_rev)[:200]}")
 
+    st.divider()
+    st.subheader("7. Teste de imagens de produtos")
+    st.caption("Busca as fotos das peças BR2615, BR2614 e AN1640 diretamente do Jueri via parâmetro `search`.")
+
+    refs_teste = ["BR2615", "BR2614", "AN1640"]
+    cols = st.columns(len(refs_teste))
+
+    for col, ref in zip(cols, refs_teste):
+        code_img, r_img = _get("produto", {"search": ref})
+        with col:
+            st.markdown(f"**{ref}**")
+            if code_img != 200 or not isinstance(r_img, dict):
+                st.error(f"HTTP {code_img}")
+                continue
+            items = r_img.get("data", [])
+            match = next(
+                (p for p in items if (p.get("referencia") or "").upper() == ref),
+                None,
+            )
+            if not match:
+                st.warning("Não encontrado")
+                continue
+            st.caption(match.get("descricao") or "")
+            img_url = match.get("imagem")
+            if img_url:
+                st.image(img_url, use_container_width=True)
+                fotos_adicionais = match.get("fotos_adicionais") or []
+                if fotos_adicionais:
+                    st.caption(f"{len(fotos_adicionais)} foto(s) adicional(is)")
+            else:
+                st.info("Sem imagem cadastrada")
+
 
 def render():
     st.header("🔍 Diagnóstico")

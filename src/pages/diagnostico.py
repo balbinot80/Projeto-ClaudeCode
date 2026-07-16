@@ -1,7 +1,8 @@
 import streamlit as st
-import json
 import requests
+import pandas as pd
 from collections import Counter
+from datetime import date
 from src.api.jueri_client import BASE_URL, _headers
 
 
@@ -21,10 +22,127 @@ def _get(endpoint: str, params: dict = None) -> tuple:
         return 0, str(e)
 
 
-def render():
-    st.header("🔍 Diagnóstico da API")
+def _parse_date(s: str):
+    if not s:
+        return None
+    try:
+        return date.fromisoformat(str(s)[:10])
+    except Exception:
+        return None
 
-    # ── Paginação ──────────────────────────────────────────────────────────
+
+def _tab_relatorio_contatos():
+    from src.api.jueri_client import _get_lista_pedidos, get_revendedores
+
+    st.subheader("📞 Revendedoras com maleta aberta — Contato")
+    st.caption(
+        "Pedidos com status **Aberto** cuja data de criação é anterior a **junho de 2026**. "
+        "Ordenado da mais antiga para a mais nova na equipe."
+    )
+
+    corte_pedido = date(2026, 6, 1)
+    hoje         = date.today()
+
+    with st.spinner("Carregando pedidos..."):
+        try:
+            todos_pedidos = _get_lista_pedidos()
+        except Exception as e:
+            st.error(f"Erro ao carregar pedidos: {e}")
+            return
+
+    # Pedidos abertos com data_criacao < 2026-06-01
+    pedidos_filtrados = []
+    for p in todos_pedidos:
+        if p.get("status") != "Aberto":
+            continue
+        dc = _parse_date(p.get("data_criacao"))
+        if dc and dc < corte_pedido:
+            pedidos_filtrados.append(p)
+
+    if not pedidos_filtrados:
+        st.success("Nenhum pedido aberto com data de criação anterior a 06/2026.")
+        return
+
+    # Agrupa por revendedora
+    rev_pedidos: dict[str, list] = {}
+    for p in pedidos_filtrados:
+        rid = str(p.get("fk_revendedor_id") or "")
+        if rid:
+            rev_pedidos.setdefault(rid, []).append(p)
+
+    with st.spinner("Carregando cadastros de revendedoras..."):
+        try:
+            revs = get_revendedores()
+        except Exception as e:
+            st.error(f"Erro ao carregar revendedoras: {e}")
+            return
+
+    rev_map = {str(r["id"]): r for r in revs}
+
+    rows = []
+    for rid, pedidos in rev_pedidos.items():
+        rev  = rev_map.get(rid, {})
+        nome = (rev.get("nome") or "").strip() or f"Rev {rid}"
+
+        # Telefone — tenta campos comuns em ordem de preferência
+        fone = (
+            rev.get("celular") or
+            rev.get("telefone") or
+            rev.get("fone") or
+            rev.get("contato") or
+            "—"
+        )
+
+        # Data de entrada na empresa (data_criacao do cadastro da revendedora)
+        data_entrada = _parse_date(
+            rev.get("data_criacao") or rev.get("created_at")
+        )
+        if data_entrada:
+            meses = (hoje.year - data_entrada.year) * 12 + (hoje.month - data_entrada.month)
+        else:
+            meses = None
+
+        rows.append({
+            "Nome completo":      nome,
+            "Telefone":           str(fone).strip() if fone and fone != "—" else "—",
+            "Meses na empresa":   meses,
+            "Maletas abertas":    len(pedidos),
+            "_data_entrada":      data_entrada or date(9999, 1, 1),
+        })
+
+    df = (
+        pd.DataFrame(rows)
+        .sort_values("_data_entrada", ascending=True)
+        .drop(columns=["_data_entrada"])
+        .reset_index(drop=True)
+    )
+
+    col1, col2 = st.columns(2)
+    col1.metric("Revendedoras encontradas", len(df))
+    col2.metric("Total de maletas abertas", df["Maletas abertas"].sum())
+
+    st.dataframe(
+        df,
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "Nome completo":    st.column_config.TextColumn("Nome completo",   width="large"),
+            "Telefone":         st.column_config.TextColumn("Telefone",        width="medium"),
+            "Meses na empresa": st.column_config.NumberColumn("Meses na equipe", width="small", format="%d meses"),
+            "Maletas abertas":  st.column_config.NumberColumn("Maletas abertas",  width="small", format="%d"),
+        },
+    )
+
+    # Aviso se alguma linha ficou sem telefone
+    sem_fone = df[df["Telefone"] == "—"]
+    if not sem_fone.empty:
+        st.warning(
+            f"⚠️ {len(sem_fone)} revendedora(s) sem telefone cadastrado: "
+            + ", ".join(sem_fone["Nome completo"].tolist())
+        )
+
+
+def _tab_diagnostico_api():
     st.subheader("1. Estrutura de paginação do endpoint `pedido`")
 
     code1, r1 = _get("pedido", {"per_page": 15, "page": 1})
@@ -57,7 +175,6 @@ def render():
     else:
         st.warning(f"Página 2: HTTP {code2}")
 
-    # ── Estrutura de produto ───────────────────────────────────────────────
     st.divider()
     st.subheader("2. Estrutura de um produto `/produto` — todos os campos disponíveis")
 
@@ -74,7 +191,6 @@ def render():
     else:
         st.error(f"HTTP {code_p}: {str(r_p)[:200]}")
 
-    # ── Pedido individual (qualquer) ───────────────────────────────────────
     st.divider()
     st.subheader("3. Pedido individual `/pedido/{id}` — campos completos")
 
@@ -96,7 +212,6 @@ def render():
         else:
             st.warning(f"HTTP {code_id}: {str(r_id)[:200]}")
 
-    # ── Pedido BAIXADO individual — campos de quantidade original ─────────
     st.divider()
     st.subheader("4. Pedido BAIXADO — campos de quantidade (diagnóstico de nível)")
     st.caption("Usa a lista completa de pedidos (cacheada) para encontrar o primeiro Baixado e inspecionar seus campos.")
@@ -104,7 +219,6 @@ def render():
     try:
         from src.api.jueri_client import _get_lista_pedidos
         todos = _get_lista_pedidos()
-        # Pega o baixado MAIS RECENTE (maior data_baixa) para ter campos mais atuais
         baixados = [p for p in todos if p.get("status") == "Baixado"]
         pedido_baixado = max(
             baixados,
@@ -120,12 +234,9 @@ def render():
     else:
         pid_bx = pedido_baixado.get("id")
         st.write(f"Pedido baixado encontrado: **ID {pid_bx}**")
-
-        # Todos os campos do resumo (lista)
         st.write("**Todos os campos do pedido baixado (resumo da lista):**")
         st.json(pedido_baixado)
 
-        # Destaca campos de quantidade e valor
         termos_qtd = ["qtd", "quant", "pec", "item", "inicial", "origin", "consign", "maleta"]
         campos_qtd = {k: v for k, v in pedido_baixado.items()
                       if any(x in k.lower() for x in termos_qtd)}
@@ -138,7 +249,6 @@ def render():
         st.write("**Campos relacionados a valor monetário:**")
         st.json(campos_val if campos_val else {"(nenhum encontrado)": None})
 
-        # Campos completos no endpoint individual
         st.write("---")
         st.write(f"**Campos do endpoint individual `/pedido/{pid_bx}`:**")
         code_bx, r_bx = _get(f"pedido/{pid_bx}")
@@ -160,12 +270,10 @@ def render():
         elif code_bx == 429:
             st.error("⛔ HTTP 429 — limite atingido.")
 
-    # ── Pedido ABERTO individual — procura campos de pré-baixa ────────────
     st.divider()
     st.subheader("5. Pedido ABERTO individual — campos de pré-baixa")
     st.caption("Busca o primeiro pedido com status 'Aberto' e exibe todos os seus campos.")
 
-    # Varre páginas até achar um pedido Aberto
     pedido_aberto = None
     for pagina in range(1, 6):
         code_pg, r_pg = _get("pedido", {"page": pagina})
@@ -192,18 +300,42 @@ def render():
                 reg = reg[0]
             if isinstance(reg, dict):
                 st.write("**Campos completos do pedido aberto:**", list(reg.keys()))
-
-                # Destaca campos relacionados a valores / pré-baixa
                 campos_valor = {k: v for k, v in reg.items()
                                 if any(x in k.lower() for x in
                                        ["valor", "pre", "baixa", "vend", "pago", "descont", "total"])}
                 if campos_valor:
                     st.write("**Campos relacionados a valores / pré-baixa:**")
                     st.json(campos_valor)
-
                 st.write("**Registro completo:**")
                 st.json(reg)
         elif code_ab == 429:
             st.error("⛔ HTTP 429 — limite atingido.")
         else:
             st.warning(f"HTTP {code_ab}: {str(r_ab)[:200]}")
+
+    st.divider()
+    st.subheader("6. Revendedor — todos os campos disponíveis")
+    st.caption("Inspeciona o primeiro registro do endpoint `/revendedor` para verificar nomes de campos (telefone, data de entrada, etc.).")
+
+    code_rev, r_rev = _get("revendedor", {"page": 1})
+    if code_rev == 200 and isinstance(r_rev, dict):
+        revs_data = r_rev.get("data", [])
+        if revs_data:
+            st.write("**Todos os campos do primeiro revendedor:**", list(revs_data[0].keys()))
+            st.json(revs_data[0])
+        else:
+            st.warning("Nenhum revendedor retornado.")
+    else:
+        st.error(f"HTTP {code_rev}: {str(r_rev)[:200]}")
+
+
+def render():
+    st.header("🔍 Diagnóstico")
+
+    tab_rel, tab_api = st.tabs(["📋 Relatório de Contatos", "🔧 Diagnóstico da API"])
+
+    with tab_rel:
+        _tab_relatorio_contatos()
+
+    with tab_api:
+        _tab_diagnostico_api()

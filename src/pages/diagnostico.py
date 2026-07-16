@@ -86,12 +86,15 @@ def _tab_relatorio_contatos():
         rev = rev_map[rid]
         nome = (rev.get("nome") or "").strip() or f"Rev {rid}"
 
-        # Telefone — tenta campos comuns em ordem de preferência
+        # Telefone — tenta variações do campo "Telefone 1"
         fone = (
+            rev.get("telefone_1") or
+            rev.get("telefone1") or
+            rev.get("Telefone 1") or
+            rev.get("telefone 1") or
             rev.get("celular") or
             rev.get("telefone") or
             rev.get("fone") or
-            rev.get("contato") or
             "—"
         )
 

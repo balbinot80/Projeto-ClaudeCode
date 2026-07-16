@@ -36,39 +36,12 @@ def _tab_relatorio_contatos():
 
     st.subheader("📞 Revendedoras com maleta aberta — Contato")
     st.caption(
-        "Pedidos com status **Aberto** cuja data de criação é anterior a **junho de 2026**. "
+        "Revendedoras com **cadastro anterior a junho de 2026** que possuem pedido em aberto. "
         "Ordenado da mais antiga para a mais nova na equipe."
     )
 
-    corte_pedido = date(2026, 6, 1)
-    hoje         = date.today()
-
-    with st.spinner("Carregando pedidos..."):
-        try:
-            todos_pedidos = _get_lista_pedidos()
-        except Exception as e:
-            st.error(f"Erro ao carregar pedidos: {e}")
-            return
-
-    # Pedidos abertos com data_criacao < 2026-06-01
-    pedidos_filtrados = []
-    for p in todos_pedidos:
-        if p.get("status") != "Aberto":
-            continue
-        dc = _parse_date(p.get("data_criacao"))
-        if dc and dc < corte_pedido:
-            pedidos_filtrados.append(p)
-
-    if not pedidos_filtrados:
-        st.success("Nenhum pedido aberto com data de criação anterior a 06/2026.")
-        return
-
-    # Agrupa por revendedora
-    rev_pedidos: dict[str, list] = {}
-    for p in pedidos_filtrados:
-        rid = str(p.get("fk_revendedor_id") or "")
-        if rid:
-            rev_pedidos.setdefault(rid, []).append(p)
+    corte_cadastro = date(2026, 6, 1)
+    hoje           = date.today()
 
     with st.spinner("Carregando cadastros de revendedoras..."):
         try:
@@ -77,11 +50,40 @@ def _tab_relatorio_contatos():
             st.error(f"Erro ao carregar revendedoras: {e}")
             return
 
-    rev_map = {str(r["id"]): r for r in revs}
+    # Revendedoras cujo cadastro é anterior a 06/2026
+    rev_map = {}
+    for r in revs:
+        dc = _parse_date(r.get("data_criacao") or r.get("created_at"))
+        if dc and dc < corte_cadastro:
+            rev_map[str(r["id"])] = r
+
+    if not rev_map:
+        st.info("Nenhuma revendedora com cadastro anterior a 06/2026.")
+        return
+
+    with st.spinner("Carregando pedidos..."):
+        try:
+            todos_pedidos = _get_lista_pedidos()
+        except Exception as e:
+            st.error(f"Erro ao carregar pedidos: {e}")
+            return
+
+    # Pedidos abertos de revendedoras elegíveis
+    rev_pedidos: dict[str, list] = {}
+    for p in todos_pedidos:
+        if p.get("status") != "Aberto":
+            continue
+        rid = str(p.get("fk_revendedor_id") or "")
+        if rid in rev_map:
+            rev_pedidos.setdefault(rid, []).append(p)
+
+    if not rev_pedidos:
+        st.success("Nenhuma revendedora cadastrada antes de 06/2026 possui pedido aberto no momento.")
+        return
 
     rows = []
     for rid, pedidos in rev_pedidos.items():
-        rev  = rev_map.get(rid, {})
+        rev = rev_map[rid]
         nome = (rev.get("nome") or "").strip() or f"Rev {rid}"
 
         # Telefone — tenta campos comuns em ordem de preferência

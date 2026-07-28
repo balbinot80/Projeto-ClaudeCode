@@ -273,6 +273,7 @@ with st.sidebar:
             "📅 Controle de Acertos",
             "📊 Entradas e Saídas",
             "🎨 Marketing",
+            "📋 Acompanhamento",
             "🔍 Diagnóstico",
         ]
     elif role == "marketing":
@@ -490,6 +491,10 @@ elif pagina == "📊 Entradas e Saídas":
 
 elif pagina == "🎨 Marketing":
     from src.pages.marketing import render
+    render()
+
+elif pagina == "📋 Acompanhamento":
+    from src.pages.acompanhamento_v2 import render
     render()
 
 elif pagina == "🔍 Diagnóstico":

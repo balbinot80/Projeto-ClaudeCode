@@ -157,6 +157,67 @@ def _urgencia_txt(data_fu: date, hoje: date) -> str:
     return f"em {delta}d ({data_fu.strftime('%d/%m')})"
 
 
+# ── Card individual ───────────────────────────────────────────────────────────
+
+def _render_card(f: dict, feitos: dict, hoje: date):
+    pid      = f["pedido_id"]
+    tipo     = f["tipo"]
+    feito_em = feitos.get((pid, tipo))
+    feito    = feito_em is not None
+    atras    = f["atrasado"] and not feito
+
+    cls       = "feito" if feito else ("atrasado" if atras else "")
+    emoji_n, bg_n, fg_n = BADGE_NIVEL.get(f["nivel"], ("—", "#E5E7EB", "#6B7280"))
+    tipo_cor   = TIPO_COR[tipo]
+    meses_txt  = f"{f['meses']} meses na equipe" if f["meses"] is not None else "—"
+    preval_txt = _fmt_brl(f["preval"]) if f["preval"] > 0 else "—"
+    data_ped_s = f["data_ped"].strftime("%d/%m")
+    data_fu_s  = f["data_fu"].strftime("%d/%m")
+
+    if feito:
+        urgencia_html = (
+            f"<span class='feito-tag'>✅ Feito"
+            + (f" · {_fmt_feito_em(feito_em)}" if feito_em else "")
+            + "</span>"
+        )
+    else:
+        urgencia_html = f"<span class='urgencia'>{_urgencia_txt(f['data_fu'], hoje)}</span>"
+
+    col_card, col_btn = st.columns([6, 1])
+    with col_card:
+        st.markdown(
+            f"<div class='fu-card {cls}'>"
+            f"<div class='top-row'>"
+            f"<span class='tag-tipo' style='background:{tipo_cor}'>{TIPO_LABEL[tipo]}</span>"
+            f"<span class='nome-rev'>{f['nome']}</span>"
+            f"<span class='badge-n' style='background:{bg_n};color:{fg_n}'>"
+            f"{emoji_n} {f['nivel']}</span>"
+            f"{urgencia_html}"
+            f"</div>"
+            f"<div class='meta-row'>"
+            f"<span>📦 Pedido: {data_ped_s}</span>"
+            f"<span>📅 Acomp.: {data_fu_s}</span>"
+            f"<span>💰 Pré-baixa: {preval_txt}</span>"
+            f"<span>🧩 {f['qtd']} peças</span>"
+            f"<span>⏳ {meses_txt}</span>"
+            + (f"<span class='tag-acerto'>📅 Agendar acerto</span>" if tipo == "D20" else "")
+            + f"</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+    with col_btn:
+        if feito:
+            if st.button("↩ Desfazer", key=f"fu_{pid}_{tipo}",
+                         use_container_width=True, type="secondary"):
+                _marcar_feito(pid, tipo, False)
+                st.rerun()
+        else:
+            if st.button("✅ Feito", key=f"fu_{pid}_{tipo}",
+                         use_container_width=True, type="primary"):
+                _marcar_feito(pid, tipo, True)
+                st.rerun()
+
+
 # ── Render principal ──────────────────────────────────────────────────────────
 
 def render():
@@ -330,109 +391,168 @@ def render():
 
     st.divider()
 
-    # ── Filtro ────────────────────────────────────────────────────────────────
-    sups = sorted({f["supervisor"] for f in follow_ups})
-    sup_sel = st.selectbox(
-        "Filtrar por supervisora",
-        options=["Todas"] + sups,
-        key="acomp_sup_filtro",
-        label_visibility="collapsed",
-    )
-    lista = follow_ups if sup_sel == "Todas" else [
-        f for f in follow_ups if f["supervisor"] == sup_sel
-    ]
-
     # ── Agrupar por supervisora ───────────────────────────────────────────────
     por_sup: dict[str, list] = defaultdict(list)
-    for f in lista:
+    for f in follow_ups:
         por_sup[f["supervisor"]].append(f)
 
-    for sup, items in sorted(por_sup.items()):
-        n_f_sup = sum(1 for f in items if (f["pedido_id"], f["tipo"]) in feitos)
-        pct_icon = "✅" if n_f_sup == len(items) else "⏳"
+    tab_det, tab_res = st.tabs(["📋 Por supervisora", "📊 Resumo da semana"])
 
-        st.markdown(
-            f"<div class='sup-header'>"
-            f"<span>👤 {sup}</span>"
-            f"<span style='margin-left:auto;font-weight:400;font-size:.92em'>"
-            f"{pct_icon} {n_f_sup}/{len(items)} feitos</span>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
+    # ════════════════════════════════════════════════════════════════════════
+    # ABA 1 — Por supervisora (collapsible)
+    # ════════════════════════════════════════════════════════════════════════
+    with tab_det:
+        for sup, items in sorted(por_sup.items()):
+            n_f_sup  = sum(1 for f in items if (f["pedido_id"], f["tipo"]) in feitos)
+            n_tot    = len(items)
+            pct_icon = "✅" if n_f_sup == n_tot else ("⏳" if n_f_sup == 0 else "🔄")
+            label_exp = f"👤 {sup}  ·  {pct_icon} {n_f_sup}/{n_tot} feitos"
 
-        # Pendentes/atrasados primeiro; feitos por último
-        items_ord = sorted(items, key=lambda x: (
-            (x["pedido_id"], x["tipo"]) in feitos,
-            not x["atrasado"],
-            x["data_fu"],
-            x["tipo"],
-        ))
+            # Expander fechado por padrão; abre automaticamente se tiver pendentes
+            tem_pendente = n_f_sup < n_tot
+            with st.expander(label_exp, expanded=False):
+                # Pendentes/atrasados primeiro
+                items_ord = sorted(items, key=lambda x: (
+                    (x["pedido_id"], x["tipo"]) in feitos,
+                    not x["atrasado"],
+                    x["data_fu"],
+                    x["tipo"],
+                ))
 
-        for f in items_ord:
-            pid   = f["pedido_id"]
-            tipo  = f["tipo"]
-            feito_em = feitos.get((pid, tipo))    # None = não feito; str = timestamp
-            feito    = feito_em is not None
-            atras    = f["atrasado"] and not feito
+                for f in items_ord:
+                    _render_card(f, feitos, hoje)
 
-            cls       = "feito" if feito else ("atrasado" if atras else "")
-            emoji_n, bg_n, fg_n = BADGE_NIVEL.get(f["nivel"], ("—", "#E5E7EB", "#6B7280"))
-            tipo_cor  = TIPO_COR[tipo]
-            meses_txt = f"{f['meses']} meses na equipe" if f["meses"] is not None else "—"
-            preval_txt = _fmt_brl(f["preval"]) if f["preval"] > 0 else "—"
-            data_ped_s = f["data_ped"].strftime("%d/%m")
-            data_fu_s  = f["data_fu"].strftime("%d/%m")
+    # ════════════════════════════════════════════════════════════════════════
+    # ABA 2 — Resumo da semana (pontualidade)
+    # ════════════════════════════════════════════════════════════════════════
+    with tab_res:
+        st.markdown("#### Acompanhamentos realizados esta semana")
+        st.caption("Mostra apenas os que foram marcados como ✅ Feito, com análise de pontualidade.")
 
-            if feito:
-                urgencia_html = (
-                    f"<span class='feito-tag'>✅ Feito"
-                    + (f" · {_fmt_feito_em(feito_em)}" if feito_em else "")
-                    + "</span>"
-                )
-            else:
-                urgencia_html = (
-                    f"<span class='urgencia'>{_urgencia_txt(f['data_fu'], hoje)}</span>"
-                )
+        concluidos = [
+            f for f in follow_ups
+            if (f["pedido_id"], f["tipo"]) in feitos
+        ]
 
-            col_card, col_btn = st.columns([6, 1])
-            with col_card:
+        if not concluidos:
+            st.info("Nenhum acompanhamento marcado como feito ainda nesta semana.")
+        else:
+            # Agrupa por supervisora
+            por_sup_res: dict[str, list] = defaultdict(list)
+            for f in concluidos:
+                por_sup_res[f["supervisor"]].append(f)
+
+            for sup, items in sorted(por_sup_res.items()):
+                st.markdown(f"**👤 {sup}**")
+
+                rows_html = ""
+                for f in sorted(items, key=lambda x: (x["data_fu"], x["tipo"])):
+                    pid      = f["pedido_id"]
+                    tipo     = f["tipo"]
+                    feito_em = feitos.get((pid, tipo), "")
+                    tipo_cor = TIPO_COR[tipo]
+
+                    data_prev_s = f["data_fu"].strftime("%d/%m")
+                    feito_s     = _fmt_feito_em(feito_em) if feito_em else "—"
+
+                    # Calcular pontualidade
+                    pont_html = "—"
+                    if feito_em:
+                        try:
+                            dt_feito = datetime.fromisoformat(
+                                feito_em.replace("Z", "+00:00")
+                            ).astimezone(timezone(timedelta(hours=-3))).date()
+                            diff = (dt_feito - f["data_fu"]).days
+                            if diff < 0:
+                                pont_html = (
+                                    f"<span style='color:#166534;font-weight:600'>"
+                                    f"✅ {abs(diff)}d antes</span>"
+                                )
+                            elif diff == 0:
+                                pont_html = (
+                                    "<span style='color:#166534;font-weight:600'>"
+                                    "✅ No dia</span>"
+                                )
+                            elif diff <= 2:
+                                pont_html = (
+                                    f"<span style='color:#854d0e;font-weight:600'>"
+                                    f"⚠️ {diff}d depois</span>"
+                                )
+                            else:
+                                pont_html = (
+                                    f"<span style='color:#991b1b;font-weight:600'>"
+                                    f"🔴 {diff}d depois</span>"
+                                )
+                        except Exception:
+                            pass
+
+                    rows_html += (
+                        f"<tr>"
+                        f"<td style='padding:6px 10px'>"
+                        f"<span style='background:{tipo_cor};color:white;border-radius:5px;"
+                        f"padding:1px 8px;font-size:.82em;font-weight:700'>{TIPO_LABEL[tipo]}</span>"
+                        f"</td>"
+                        f"<td style='padding:6px 10px'>{f['nome']}</td>"
+                        f"<td style='padding:6px 10px;color:#7A6068'>{data_prev_s}</td>"
+                        f"<td style='padding:6px 10px;color:#7A6068'>{feito_s}</td>"
+                        f"<td style='padding:6px 10px'>{pont_html}</td>"
+                        f"</tr>"
+                    )
+
                 st.markdown(
-                    f"<div class='fu-card {cls}'>"
-                    f"<div class='top-row'>"
-                    f"<span class='tag-tipo' style='background:{tipo_cor}'>{TIPO_LABEL[tipo]}</span>"
-                    f"<span class='nome-rev'>{f['nome']}</span>"
-                    f"<span class='badge-n' style='background:{bg_n};color:{fg_n}'>"
-                    f"{emoji_n} {f['nivel']}</span>"
-                    f"{urgencia_html}"
-                    f"</div>"
-                    f"<div class='meta-row'>"
-                    f"<span>📦 Pedido: {data_ped_s}</span>"
-                    f"<span>📅 Acomp.: {data_fu_s}</span>"
-                    f"<span>💰 Pré-baixa: {preval_txt}</span>"
-                    f"<span>🧩 {f['qtd']} peças</span>"
-                    f"<span>⏳ {meses_txt}</span>"
-                    + (f"<span class='tag-acerto'>📅 Agendar acerto</span>" if tipo == "D20" else "")
-                    + f"</div>"
-                    f"</div>",
+                    f"<table style='width:100%;border-collapse:collapse;margin-bottom:16px;"
+                    f"background:white;border-radius:10px;overflow:hidden;"
+                    f"box-shadow:0 1px 4px rgba(0,0,0,.06)'>"
+                    f"<thead><tr style='background:#F5EBEC;color:#AB6774;font-size:.85em'>"
+                    f"<th style='padding:7px 10px;text-align:left'>Tipo</th>"
+                    f"<th style='padding:7px 10px;text-align:left'>Revendedora</th>"
+                    f"<th style='padding:7px 10px;text-align:left'>Previsto</th>"
+                    f"<th style='padding:7px 10px;text-align:left'>Realizado</th>"
+                    f"<th style='padding:7px 10px;text-align:left'>Pontualidade</th>"
+                    f"</tr></thead>"
+                    f"<tbody>{rows_html}</tbody>"
+                    f"</table>",
                     unsafe_allow_html=True,
                 )
-            with col_btn:
-                if feito:
-                    if st.button("↩ Desfazer", key=f"fu_{pid}_{tipo}",
-                                 use_container_width=True, type="secondary"):
-                        _marcar_feito(pid, tipo, False)
-                        st.rerun()
-                else:
-                    if st.button("✅ Feito", key=f"fu_{pid}_{tipo}",
-                                 use_container_width=True, type="primary"):
-                        _marcar_feito(pid, tipo, True)
-                        st.rerun()
 
-    st.divider()
-    st.caption(
-        "💡 **Legenda:** "
-        "🔵 D+3 = 3 dias após criação · "
-        "🟣 D+7 = 7 dias · "
-        "🟡 D+20 = 20 dias · "
-        "⚠️ Em atraso = data passou e não foi marcado"
-    )
+        # Pendentes na semana
+        pendentes = [
+            f for f in follow_ups
+            if (f["pedido_id"], f["tipo"]) not in feitos
+        ]
+        if pendentes:
+            st.markdown(f"#### ⏳ Ainda pendentes ({len(pendentes)})")
+            rows_pend = ""
+            for f in sorted(pendentes, key=lambda x: (x["supervisor"], x["data_fu"])):
+                tipo_cor  = TIPO_COR[f["tipo"]]
+                atras_txt = (
+                    f"<span style='color:#991b1b;font-weight:600'>"
+                    f"⚠️ {abs((f['data_fu'] - hoje).days)}d atraso</span>"
+                    if f["atrasado"]
+                    else f"<span style='color:#7A6068'>{f['data_fu'].strftime('%d/%m')}</span>"
+                )
+                rows_pend += (
+                    f"<tr>"
+                    f"<td style='padding:6px 10px'>"
+                    f"<span style='background:{tipo_cor};color:white;border-radius:5px;"
+                    f"padding:1px 8px;font-size:.82em;font-weight:700'>{TIPO_LABEL[f['tipo']]}</span>"
+                    f"</td>"
+                    f"<td style='padding:6px 10px'>{f['nome']}</td>"
+                    f"<td style='padding:6px 10px;color:#7A6068'>{f['supervisor']}</td>"
+                    f"<td style='padding:6px 10px'>{atras_txt}</td>"
+                    f"</tr>"
+                )
+            st.markdown(
+                f"<table style='width:100%;border-collapse:collapse;margin-bottom:16px;"
+                f"background:white;border-radius:10px;overflow:hidden;"
+                f"box-shadow:0 1px 4px rgba(0,0,0,.06)'>"
+                f"<thead><tr style='background:#FEF2F2;color:#991b1b;font-size:.85em'>"
+                f"<th style='padding:7px 10px;text-align:left'>Tipo</th>"
+                f"<th style='padding:7px 10px;text-align:left'>Revendedora</th>"
+                f"<th style='padding:7px 10px;text-align:left'>Supervisora</th>"
+                f"<th style='padding:7px 10px;text-align:left'>Prazo</th>"
+                f"</tr></thead>"
+                f"<tbody>{rows_pend}</tbody>"
+                f"</table>",
+                unsafe_allow_html=True,
+            )

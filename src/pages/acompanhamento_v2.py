@@ -190,6 +190,9 @@ def render():
         .urgencia { margin-left: auto; font-size: .87em; color: #7A6068; white-space: nowrap; }
         .feito-tag { background: #dcfce7; color: #166534; border-radius: 20px;
                      padding: 1px 10px; font-size: .82em; font-weight: 600; white-space: nowrap; }
+        .tag-acerto { background: #fef9c3; color: #854d0e; border-radius: 6px;
+                      padding: 2px 10px; font-size: .82em; font-weight: 700; white-space: nowrap;
+                      border: 1px solid #fde047; }
         .nome-rev { font-weight: 700; font-size: 1.01em; color: #2A1A1F; }
         </style>
         <div class="acomp-hero">
@@ -408,7 +411,8 @@ def render():
                     f"<span>💰 Pré-baixa: {preval_txt}</span>"
                     f"<span>🧩 {f['qtd']} peças</span>"
                     f"<span>⏳ {meses_txt}</span>"
-                    f"</div>"
+                    + (f"<span class='tag-acerto'>📅 Agendar acerto</span>" if tipo == "D20" else "")
+                    + f"</div>"
                     f"</div>",
                     unsafe_allow_html=True,
                 )

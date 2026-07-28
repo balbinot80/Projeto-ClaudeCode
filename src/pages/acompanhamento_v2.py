@@ -9,13 +9,12 @@ from datetime import date, datetime, timedelta, timezone
 import streamlit as st
 
 from src.api.jueri_client import _get_lista_pedidos, get_pedidos_abertos
-from src.logic.niveis import ICONE_NIVEL, _qtd_original, nivel_por_pecas
+from src.logic.niveis import _qtd_original, nivel_por_pecas
 
 # ── Constantes visuais ────────────────────────────────────────────────────────
 
 ROSA  = "#AB6774"
 GOLD  = "#C4985A"
-CREME = "#FAF7F4"
 
 TIPO_LABEL = {"D3": "D+3", "D7": "D+7", "D20": "D+20"}
 TIPO_COR   = {"D3": "#3B82F6", "D7": "#8B5CF6", "D20": "#F59E0B"}
@@ -48,41 +47,75 @@ def _get_client():
     return None
 
 
-@st.cache_data(ttl=60, show_spinner=False)
-def _carregar_feitos() -> set:
-    """Retorna conjunto de (pedido_id, tipo) marcados como feito."""
+@st.cache_data(ttl=30, show_spinner=False)
+def _carregar_feitos_db() -> dict:
+    """
+    Retorna {(pedido_id, tipo): feito_em_iso_str} para todos os registros feito=True.
+    """
     client = _get_client()
     if not client:
-        return set()
+        return {}
     try:
         res = client.table("follow_ups_semana").select(
-            "pedido_id,tipo"
+            "pedido_id,tipo,feito_em"
         ).eq("feito", True).execute()
-        return {(r["pedido_id"], r["tipo"]) for r in (res.data or [])}
+        return {
+            (r["pedido_id"], r["tipo"]): (r.get("feito_em") or "")
+            for r in (res.data or [])
+        }
     except Exception:
-        return set()
+        return {}
 
 
-def _toggle_feito(pedido_id: int, tipo: str, feito: bool) -> bool:
+def _get_feitos() -> dict:
+    """
+    Merge Supabase + overrides de session_state.
+    Retorna {(pedido_id, tipo): feito_em_str}.
+    """
+    db = _carregar_feitos_db()
+    local: dict = st.session_state.get("_fu_overrides", {})
+    merged = dict(db)
+    for key, val in local.items():
+        if val is None:
+            merged.pop(key, None)   # desfeito localmente
+        else:
+            merged[key] = val       # marcado localmente
+    return merged
+
+
+def _marcar_feito(pedido_id: int, tipo: str, feito: bool):
+    """Grava no Supabase e atualiza session_state imediatamente."""
+    agora = datetime.now(timezone.utc).isoformat() if feito else None
+
+    # 1. Atualização local imediata (para o UI não travar)
+    if "_fu_overrides" not in st.session_state:
+        st.session_state["_fu_overrides"] = {}
+    key = (pedido_id, tipo)
+    st.session_state["_fu_overrides"][key] = agora if feito else None
+
+    # 2. Persistência no Supabase
     client = _get_client()
     if not client:
-        st.toast("⚠️ Supabase não configurado — salvo apenas nesta sessão.", icon="⚠️")
-        return False
+        st.toast("⚠️ Salvo apenas localmente — Supabase não configurado.", icon="⚠️")
+        return
+
     try:
-        client.table("follow_ups_semana").upsert(
-            {
+        # Delete + insert é mais confiável que upsert com on_conflict
+        client.table("follow_ups_semana").delete().eq(
+            "pedido_id", pedido_id
+        ).eq("tipo", tipo).execute()
+
+        if feito:
+            client.table("follow_ups_semana").insert({
                 "pedido_id": pedido_id,
-                "tipo": tipo,
-                "feito": feito,
-                "feito_em": datetime.now(timezone.utc).isoformat() if feito else None,
-            },
-            on_conflict="pedido_id,tipo",
-        ).execute()
-        _carregar_feitos.clear()
-        return True
+                "tipo":      tipo,
+                "feito":     True,
+                "feito_em":  agora,
+            }).execute()
+
+        _carregar_feitos_db.clear()
     except Exception as e:
-        st.error(f"Erro ao salvar: {e}")
-        return False
+        st.toast(f"⚠️ Erro ao salvar no Supabase: {e}", icon="⚠️")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -101,9 +134,19 @@ def _fmt_brl(v: float) -> str:
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def _urgencia_txt(data_fu: date, hoje: date, feito: bool) -> str:
-    if feito:
-        return "✅ Feito"
+def _fmt_feito_em(iso: str) -> str:
+    """Formata timestamp ISO para 'DD/MM às HH:MM'."""
+    if not iso:
+        return ""
+    try:
+        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        brt = dt.astimezone(timezone(timedelta(hours=-3)))
+        return brt.strftime("%d/%m às %H:%M")
+    except Exception:
+        return ""
+
+
+def _urgencia_txt(data_fu: date, hoje: date) -> str:
     delta = (data_fu - hoje).days
     if delta == 0:
         return "📌 Hoje"
@@ -136,25 +179,17 @@ def render():
             border-left: 4px solid #AB6774; margin-bottom: 8px;
             box-shadow: 0 1px 4px rgba(0,0,0,.06);
         }
-        .fu-card.feito    { border-left-color: #22c55e; opacity: .65; }
+        .fu-card.feito    { border-left-color: #22c55e; background: #f0fdf4; }
         .fu-card.atrasado { border-left-color: #ef4444; }
-        .fu-card .top-row {
-            display: flex; align-items: center; gap: 10px; margin-bottom: 5px;
-        }
-        .fu-card .meta-row {
-            display: flex; gap: 18px; font-size: .84em; color: #7A6068; flex-wrap: wrap;
-        }
-        .tag-tipo {
-            color: white; border-radius: 6px; padding: 2px 10px;
-            font-weight: 700; font-size: .88em; white-space: nowrap;
-        }
-        .badge-n {
-            border-radius: 20px; padding: 1px 9px;
-            font-size: .77em; font-weight: 700; white-space: nowrap;
-        }
-        .urgencia {
-            margin-left: auto; font-size: .87em; color: #7A6068; white-space: nowrap;
-        }
+        .top-row  { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; flex-wrap: wrap; }
+        .meta-row { display: flex; gap: 18px; font-size: .84em; color: #7A6068; flex-wrap: wrap; }
+        .tag-tipo { color: white; border-radius: 6px; padding: 2px 10px;
+                    font-weight: 700; font-size: .88em; white-space: nowrap; }
+        .badge-n  { border-radius: 20px; padding: 1px 9px;
+                    font-size: .77em; font-weight: 700; white-space: nowrap; }
+        .urgencia { margin-left: auto; font-size: .87em; color: #7A6068; white-space: nowrap; }
+        .feito-tag { background: #dcfce7; color: #166534; border-radius: 20px;
+                     padding: 1px 10px; font-size: .82em; font-weight: 600; white-space: nowrap; }
         .nome-rev { font-weight: 700; font-size: 1.01em; color: #2A1A1F; }
         </style>
         <div class="acomp-hero">
@@ -172,7 +207,7 @@ def render():
         st.session_state.acomp_offset = 0
 
     offset   = st.session_state.acomp_offset
-    seg_base = hoje - timedelta(days=hoje.weekday())  # segunda-feira da semana atual
+    seg_base = hoje - timedelta(days=hoje.weekday())
     inicio   = seg_base + timedelta(weeks=offset)
     fim      = inicio + timedelta(days=6)
     num_sem  = inicio.isocalendar()[1]
@@ -204,13 +239,13 @@ def render():
     # ── Carregar dados ────────────────────────────────────────────────────────
     with st.spinner("Carregando pedidos..."):
         try:
-            abertos      = get_pedidos_abertos()
-            todos        = _get_lista_pedidos()
+            abertos = get_pedidos_abertos()
+            todos   = _get_lista_pedidos()
         except Exception as e:
             st.error(f"Erro ao carregar dados: {e}")
             return
 
-    # Mapa rid → data do primeiro pedido (proxy de "tempo na equipe")
+    # Mapa rid → primeiro pedido (proxy de tempo na equipe)
     primeiro_pedido: dict = {}
     for p in todos:
         rid = p.get("fk_revendedor_id")
@@ -222,7 +257,7 @@ def render():
         except (ValueError, TypeError):
             pass
 
-    # ── Calcular follow-ups da semana selecionada ─────────────────────────────
+    # ── Calcular follow-ups da semana ─────────────────────────────────────────
     follow_ups = []
     for p in abertos:
         dc_str = (p.get("data_criacao") or "")[:10]
@@ -236,28 +271,28 @@ def render():
             if not (inicio <= data_fu <= fim):
                 continue
 
-            rid        = p.get("fk_revendedor_id")
-            comprador  = p.get("comprador") or {}
-            nome       = comprador.get("nome") or f"Rev {rid}"
-            sup        = p.get("supervisor_nome") or "Sem supervisora"
-            nivel      = nivel_por_pecas(_qtd_original(p))
-            preval     = float(p.get("valor_pre_baixa") or 0)
-            p1         = primeiro_pedido.get(rid)
-            meses      = _meses_na_equipe(p1, hoje) if p1 else None
-            qtd_pecas  = _qtd_original(p)
+            rid       = p.get("fk_revendedor_id")
+            comprador = p.get("comprador") or {}
+            nome      = comprador.get("nome") or f"Rev {rid}"
+            sup       = p.get("supervisor_nome") or "Sem supervisora"
+            nivel     = nivel_por_pecas(_qtd_original(p))
+            preval    = float(p.get("valor_pre_baixa") or 0)
+            p1        = primeiro_pedido.get(rid)
+            meses     = _meses_na_equipe(p1, hoje) if p1 else None
+            qtd       = _qtd_original(p)
 
             follow_ups.append({
-                "pedido_id":  p.get("id"),
-                "tipo":       tipo,
-                "nome":       nome,
+                "pedido_id": p.get("id"),
+                "tipo":      tipo,
+                "nome":      nome,
                 "supervisor": sup,
-                "nivel":      nivel,
-                "data_ped":   data_ped,
-                "data_fu":    data_fu,
-                "preval":     preval,
-                "meses":      meses,
-                "qtd_pecas":  qtd_pecas,
-                "atrasado":   data_fu < hoje,
+                "nivel":     nivel,
+                "data_ped":  data_ped,
+                "data_fu":   data_fu,
+                "preval":    preval,
+                "meses":     meses,
+                "qtd":       qtd,
+                "atrasado":  data_fu < hoje,
             })
 
     if not follow_ups:
@@ -267,37 +302,32 @@ def render():
         )
         return
 
-    # ── Status "feito" no Supabase ────────────────────────────────────────────
-    feitos = _carregar_feitos()
+    # ── Feitos (Supabase + session_state) ────────────────────────────────────
+    feitos = _get_feitos()  # {(pid, tipo): feito_em_str}
 
     # ── Resumo ────────────────────────────────────────────────────────────────
-    total     = len(follow_ups)
-    n_feitos  = sum(1 for f in follow_ups if (f["pedido_id"], f["tipo"]) in feitos)
-    n_pend    = total - n_feitos
-    n_atras   = sum(
+    total    = len(follow_ups)
+    n_feitos = sum(1 for f in follow_ups if (f["pedido_id"], f["tipo"]) in feitos)
+    n_pend   = total - n_feitos
+    n_atras  = sum(
         1 for f in follow_ups
         if f["atrasado"] and (f["pedido_id"], f["tipo"]) not in feitos
     )
 
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Total da semana",    total)
-    m2.metric("✅ Feitos",           n_feitos)
-    m3.metric("⏳ Pendentes",        n_pend)
-    m4.metric(
-        "⚠️ Em atraso",
-        n_atras,
-        delta=f"-{n_atras}" if n_atras else None,
-        delta_color="inverse",
-    )
+    m1.metric("Total da semana", total)
+    m2.metric("✅ Feitos",        n_feitos)
+    m3.metric("⏳ Pendentes",     n_pend)
+    m4.metric("⚠️ Em atraso",     n_atras,
+              delta=f"-{n_atras}" if n_atras else None, delta_color="inverse")
 
-    # Barra de progresso
     if total > 0:
         pct = n_feitos / total
         st.progress(pct, text=f"{n_feitos}/{total} concluídos ({pct:.0%})")
 
     st.divider()
 
-    # ── Filtro por supervisora ────────────────────────────────────────────────
+    # ── Filtro ────────────────────────────────────────────────────────────────
     sups = sorted({f["supervisor"] for f in follow_ups})
     sup_sel = st.selectbox(
         "Filtrar por supervisora",
@@ -305,31 +335,29 @@ def render():
         key="acomp_sup_filtro",
         label_visibility="collapsed",
     )
-
     lista = follow_ups if sup_sel == "Todas" else [
         f for f in follow_ups if f["supervisor"] == sup_sel
     ]
 
-    # ── Agrupar e renderizar por supervisora ──────────────────────────────────
+    # ── Agrupar por supervisora ───────────────────────────────────────────────
     por_sup: dict[str, list] = defaultdict(list)
     for f in lista:
         por_sup[f["supervisor"]].append(f)
 
     for sup, items in sorted(por_sup.items()):
-        n_f_sup  = sum(1 for f in items if (f["pedido_id"], f["tipo"]) in feitos)
-        pct_sup  = f"{n_f_sup}/{len(items)}"
+        n_f_sup = sum(1 for f in items if (f["pedido_id"], f["tipo"]) in feitos)
         pct_icon = "✅" if n_f_sup == len(items) else "⏳"
 
         st.markdown(
             f"<div class='sup-header'>"
             f"<span>👤 {sup}</span>"
             f"<span style='margin-left:auto;font-weight:400;font-size:.92em'>"
-            f"{pct_icon} {pct_sup} feitos</span>"
+            f"{pct_icon} {n_f_sup}/{len(items)} feitos</span>"
             f"</div>",
             unsafe_allow_html=True,
         )
 
-        # Ordena: pendentes/atrasados primeiro, depois por data, depois por tipo
+        # Pendentes/atrasados primeiro; feitos por último
         items_ord = sorted(items, key=lambda x: (
             (x["pedido_id"], x["tipo"]) in feitos,
             not x["atrasado"],
@@ -340,17 +368,28 @@ def render():
         for f in items_ord:
             pid   = f["pedido_id"]
             tipo  = f["tipo"]
-            feito = (pid, tipo) in feitos
-            atras = f["atrasado"] and not feito
+            feito_em = feitos.get((pid, tipo))    # None = não feito; str = timestamp
+            feito    = feito_em is not None
+            atras    = f["atrasado"] and not feito
 
-            cls        = "feito" if feito else ("atrasado" if atras else "")
+            cls       = "feito" if feito else ("atrasado" if atras else "")
             emoji_n, bg_n, fg_n = BADGE_NIVEL.get(f["nivel"], ("—", "#E5E7EB", "#6B7280"))
-            tipo_cor   = TIPO_COR[tipo]
-            meses_txt  = f"{f['meses']} meses na equipe" if f["meses"] is not None else "—"
+            tipo_cor  = TIPO_COR[tipo]
+            meses_txt = f"{f['meses']} meses na equipe" if f["meses"] is not None else "—"
             preval_txt = _fmt_brl(f["preval"]) if f["preval"] > 0 else "—"
-            urgencia   = _urgencia_txt(f["data_fu"], hoje, feito)
             data_ped_s = f["data_ped"].strftime("%d/%m")
             data_fu_s  = f["data_fu"].strftime("%d/%m")
+
+            if feito:
+                urgencia_html = (
+                    f"<span class='feito-tag'>✅ Feito"
+                    + (f" · {_fmt_feito_em(feito_em)}" if feito_em else "")
+                    + "</span>"
+                )
+            else:
+                urgencia_html = (
+                    f"<span class='urgencia'>{_urgencia_txt(f['data_fu'], hoje)}</span>"
+                )
 
             col_card, col_btn = st.columns([6, 1])
             with col_card:
@@ -361,41 +400,35 @@ def render():
                     f"<span class='nome-rev'>{f['nome']}</span>"
                     f"<span class='badge-n' style='background:{bg_n};color:{fg_n}'>"
                     f"{emoji_n} {f['nivel']}</span>"
-                    f"<span class='urgencia'>{urgencia}</span>"
+                    f"{urgencia_html}"
                     f"</div>"
                     f"<div class='meta-row'>"
                     f"<span>📦 Pedido: {data_ped_s}</span>"
                     f"<span>📅 Acomp.: {data_fu_s}</span>"
                     f"<span>💰 Pré-baixa: {preval_txt}</span>"
-                    f"<span>🧩 {f['qtd_pecas']} peças</span>"
+                    f"<span>🧩 {f['qtd']} peças</span>"
                     f"<span>⏳ {meses_txt}</span>"
                     f"</div>"
                     f"</div>",
                     unsafe_allow_html=True,
                 )
             with col_btn:
-                lbl = "↩ Desfazer" if feito else "✅ Feito"
-                btn_type = "secondary" if feito else "primary"
-                if st.button(lbl, key=f"fu_{pid}_{tipo}", use_container_width=True, type=btn_type):
-                    ok = _toggle_feito(pid, tipo, not feito)
-                    if ok:
+                if feito:
+                    if st.button("↩ Desfazer", key=f"fu_{pid}_{tipo}",
+                                 use_container_width=True, type="secondary"):
+                        _marcar_feito(pid, tipo, False)
                         st.rerun()
-                    else:
-                        # Fallback: session-state local
-                        key_local = f"_fu_local_{pid}_{tipo}"
-                        st.session_state[key_local] = not feito
+                else:
+                    if st.button("✅ Feito", key=f"fu_{pid}_{tipo}",
+                                 use_container_width=True, type="primary"):
+                        _marcar_feito(pid, tipo, True)
                         st.rerun()
 
     st.divider()
     st.caption(
         "💡 **Legenda:** "
-        "🔵 D+3 = 3 dias após criação do pedido · "
+        "🔵 D+3 = 3 dias após criação · "
         "🟣 D+7 = 7 dias · "
         "🟡 D+20 = 20 dias · "
-        "⚠️ Em atraso = data já passou e não foi marcado como feito"
-    )
-    st.caption(
-        "ℹ️ Os acompanhamentos marcados como ✅ Feito são salvos no Supabase "
-        "e persistem entre sessões. O tempo na equipe é calculado a partir "
-        "do primeiro pedido da revendedora."
+        "⚠️ Em atraso = data passou e não foi marcado"
     )

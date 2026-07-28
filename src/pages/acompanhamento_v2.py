@@ -176,12 +176,25 @@ def _render_card(f: dict, feitos: dict, hoje: date):
 
     if feito:
         urgencia_html = (
-            f"<span class='feito-tag'>✅ Feito"
+            f"<span class='tag-status tag-feito'>✅ Feito"
             + (f" · {_fmt_feito_em(feito_em)}" if feito_em else "")
             + "</span>"
         )
     else:
-        urgencia_html = f"<span class='urgencia'>{_urgencia_txt(f['data_fu'], hoje)}</span>"
+        delta = (f["data_fu"] - hoje).days
+        if delta < 0:
+            cls_urg = "tag-atrasado"
+            txt_urg = f"⚠️ {abs(delta)}d atraso"
+        elif delta == 0:
+            cls_urg = "tag-hoje"
+            txt_urg = "📌 Hoje"
+        elif delta == 1:
+            cls_urg = "tag-futuro"
+            txt_urg = "⏰ Amanhã"
+        else:
+            cls_urg = "tag-futuro"
+            txt_urg = f"em {delta}d ({f['data_fu'].strftime('%d/%m')})"
+        urgencia_html = f"<span class='tag-status {cls_urg}'>{txt_urg}</span>"
 
     col_card, col_btn = st.columns([6, 1])
     with col_card:
@@ -251,6 +264,12 @@ def render():
         .badge-n  { border-radius: 20px; padding: 1px 9px;
                     font-size: .77em; font-weight: 700; white-space: nowrap; }
         .urgencia { margin-left: auto; font-size: .87em; color: #7A6068; white-space: nowrap; }
+        .tag-status { border-radius: 20px; padding: 3px 12px;
+                      font-size: .82em; font-weight: 600; white-space: nowrap; }
+        .tag-feito    { background: #dcfce7; color: #166534; }
+        .tag-atrasado { background: #fee2e2; color: #991b1b; }
+        .tag-hoje     { background: #fef9c3; color: #854d0e; }
+        .tag-futuro   { background: #dbeafe; color: #1e40af; }
         .feito-tag { background: #dcfce7; color: #166534; border-radius: 20px;
                      padding: 1px 10px; font-size: .82em; font-weight: 600; white-space: nowrap; }
         .tag-acerto   { background: #fef9c3; color: #854d0e; border-radius: 6px;

@@ -327,10 +327,12 @@ def _tab_antigos(df: pd.DataFrame, produtos: list):
     """Produtos com total > 0 cadastrados há mais de 15 meses."""
     hoje = date.today()
 
-    # Mapeia id → data_criacao
-    dc_map: dict = {}
+    # Mapeia id → data_criacao e referencia
+    dc_map:  dict = {}
+    ref_map: dict = {}
     for p in produtos:
         pid    = p.get("id")
+        ref_map[pid] = p.get("referencia") or ""
         dc_str = (p.get("data_criacao") or "")[:10]
         try:
             dc_map[pid] = date.fromisoformat(dc_str)
@@ -346,6 +348,7 @@ def _tab_antigos(df: pd.DataFrame, produtos: list):
     df_an["Meses"]           = df_an["_dc"].apply(_meses)
     df_an                    = df_an[df_an["Meses"] >= _MESES_PARADO].copy()
     df_an["Desde"]           = df_an["_dc"].apply(lambda d: d.strftime("%m/%Y"))
+    df_an["Referência"]      = df_an["ID"].map(ref_map)
     df_an                    = df_an.drop(columns=["_dc"])
     df_an                    = df_an.sort_values("Meses", ascending=False)
 
@@ -403,7 +406,7 @@ def _tab_antigos(df: pd.DataFrame, produtos: list):
     st.divider()
     st.markdown("#### Detalhamento por categoria")
 
-    cols_det = ["Produto", "Em estoque", "Na rua", "Total", "Desde", "Meses"]
+    cols_det = ["Referência", "Produto", "Em estoque", "Na rua", "Total", "Desde", "Meses"]
 
     def _cor_meses(val):
         try:

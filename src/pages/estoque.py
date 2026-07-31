@@ -431,6 +431,12 @@ def _tab_antigos(df: pd.DataFrame, produtos: list):
     st.divider()
     st.markdown("#### Detalhamento por categoria")
 
+    valor_fmt_det = f"R$ {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    mc1, mc2, mc3 = st.columns(3)
+    mc1.metric("Produtos",       total_prod)
+    mc2.metric("Total de peças", total_unid)
+    mc3.metric("Valor imobilizado", valor_fmt_det)
+
     cols_det = ["Referência", "Produto", "Em estoque", "Na rua", "Total",
                 "Preço (R$)", "Valor total (R$)", "Desde", "Meses"]
 

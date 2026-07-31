@@ -327,12 +327,25 @@ def _tab_antigos(df: pd.DataFrame, produtos: list):
     """Produtos com total > 0 cadastrados há mais de 15 meses."""
     hoje = date.today()
 
-    # Mapeia id → data_criacao e referencia
-    dc_map:  dict = {}
-    ref_map: dict = {}
+    def _preco_varejo(p: dict) -> float:
+        for tp in (p.get("tipo_preco") or []):
+            if "varejo" in (tp.get("nome") or "").lower():
+                try: return float(tp.get("preco") or 0)
+                except (TypeError, ValueError): pass
+        tipos = p.get("tipo_preco") or []
+        if tipos:
+            try: return float(tipos[0].get("preco") or 0)
+            except (TypeError, ValueError): pass
+        return 0.0
+
+    # Mapeia id → data_criacao, referencia e preco
+    dc_map:    dict = {}
+    ref_map:   dict = {}
+    preco_map: dict = {}
     for p in produtos:
         pid    = p.get("id")
-        ref_map[pid] = p.get("referencia") or ""
+        ref_map[pid]   = p.get("referencia") or ""
+        preco_map[pid] = _preco_varejo(p)
         dc_str = (p.get("data_criacao") or "")[:10]
         try:
             dc_map[pid] = date.fromisoformat(dc_str)
@@ -349,6 +362,8 @@ def _tab_antigos(df: pd.DataFrame, produtos: list):
     df_an                    = df_an[df_an["Meses"] >= _MESES_PARADO].copy()
     df_an["Desde"]           = df_an["_dc"].apply(lambda d: d.strftime("%m/%Y"))
     df_an["Referência"]      = df_an["ID"].map(ref_map)
+    df_an["Preço (R$)"]      = df_an["ID"].map(preco_map)
+    df_an["Valor total (R$)"] = (df_an["Total"] * df_an["Preço (R$)"]).round(2)
     df_an                    = df_an.drop(columns=["_dc"])
     df_an                    = df_an.sort_values("Meses", ascending=False)
 
@@ -361,29 +376,35 @@ def _tab_antigos(df: pd.DataFrame, produtos: list):
     total_unid = int(df_an["Total"].sum())
     total_prod = len(df_an)
 
+    valor_total = df_an["Valor total (R$)"].sum()
+    valor_fmt   = f"R$ {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
     st.warning(
         f"**{total_prod} produtos** no portfólio há mais de **{_MESES_PARADO} meses** "
         f"ainda com estoque (interno + na rua). "
-        f"Total de **{total_unid} unidades** imobilizadas."
+        f"Total de **{total_unid} unidades** · **{valor_fmt}** imobilizados."
     )
 
     # ── Resumo por categoria ──────────────────────────────────────────────
     resumo = (
         df_an.groupby("Categoria", as_index=False)
         .agg(
-            Produtos   = ("Produto",      "count"),
-            Em_estoque = ("Em estoque",   "sum"),
-            Na_rua     = ("Na rua",       "sum"),
-            Total      = ("Total",        "sum"),
-            Mais_antigo = ("Meses",       "max"),
+            Produtos    = ("Produto",          "count"),
+            Em_estoque  = ("Em estoque",       "sum"),
+            Na_rua      = ("Na rua",           "sum"),
+            Total       = ("Total",            "sum"),
+            Valor_total = ("Valor total (R$)", "sum"),
+            Mais_antigo = ("Meses",            "max"),
         )
-        .sort_values("Total", ascending=False)
+        .sort_values("Valor_total", ascending=False)
     )
     resumo.rename(columns={
-        "Em_estoque": "Em estoque",
-        "Na_rua":     "Na rua",
+        "Em_estoque":  "Em estoque",
+        "Na_rua":      "Na rua",
+        "Valor_total": "Valor total (R$)",
         "Mais_antigo": "Mais antigo (meses)",
     }, inplace=True)
+    resumo["Valor total (R$)"] = resumo["Valor total (R$)"].round(2)
 
     fig = px.bar(
         resumo.sort_values("Total"),
@@ -399,14 +420,19 @@ def _tab_antigos(df: pd.DataFrame, produtos: list):
     st.plotly_chart(fig, use_container_width=True)
 
     st.dataframe(
-        resumo[["Categoria", "Produtos", "Em estoque", "Na rua", "Total", "Mais antigo (meses)"]],
+        resumo[["Categoria", "Produtos", "Em estoque", "Na rua", "Total",
+                "Valor total (R$)", "Mais antigo (meses)"]],
         use_container_width=True, hide_index=True,
+        column_config={
+            "Valor total (R$)": st.column_config.NumberColumn("Valor total (R$)", format="R$ %.2f"),
+        },
     )
 
     st.divider()
     st.markdown("#### Detalhamento por categoria")
 
-    cols_det = ["Referência", "Produto", "Em estoque", "Na rua", "Total", "Desde", "Meses"]
+    cols_det = ["Referência", "Produto", "Em estoque", "Na rua", "Total",
+                "Preço (R$)", "Valor total (R$)", "Desde", "Meses"]
 
     def _cor_meses(val):
         try:
@@ -428,10 +454,14 @@ def _tab_antigos(df: pd.DataFrame, produtos: list):
             st.dataframe(
                 df_c[cols_det]
                 .sort_values("Meses", ascending=False)
-                .rename(columns={"Meses": "Meses no estoque"})
-                .style.map(_cor_meses, subset=["Meses no estoque"]),
+                .rename(columns={"Meses": "Meses no estoque"}),
                 use_container_width=True,
                 hide_index=True,
+                column_config={
+                    "Preço (R$)":      st.column_config.NumberColumn("Preço (R$)",      format="R$ %.2f"),
+                    "Valor total (R$)": st.column_config.NumberColumn("Valor total (R$)", format="R$ %.2f"),
+                    "Meses no estoque": st.column_config.NumberColumn("Meses no estoque"),
+                },
             )
 
     csv = df_an[cols_det].rename(columns={"Meses": "Meses no estoque"}).to_csv(

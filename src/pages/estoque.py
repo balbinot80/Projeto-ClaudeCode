@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+from datetime import date
 
 from src.api.jueri_client import (
     get_produtos, get_categorias, get_itens_pedidos_abertos, get_itens_pedidos_baixados
@@ -306,6 +307,141 @@ def _tab_busca(df):
     st.download_button("⬇️ Exportar busca (CSV)", csv, "busca_estoque.csv", "text/csv")
 
 
+# ── Produtos antigos no estoque (15+ meses) ───────────────────────────────
+
+_MESES_PARADO = 15
+
+
+def _meses_produto(p: dict) -> int:
+    """Meses desde data_criacao do produto até hoje."""
+    hoje = date.today()
+    dc_str = (p.get("data_criacao") or "")[:10]
+    try:
+        dc = date.fromisoformat(dc_str)
+        return (hoje.year - dc.year) * 12 + (hoje.month - dc.month)
+    except (ValueError, TypeError):
+        return 0
+
+
+def _tab_antigos(df: pd.DataFrame, produtos: list):
+    """Produtos com total > 0 cadastrados há mais de 15 meses."""
+    hoje = date.today()
+
+    # Mapeia id → data_criacao
+    dc_map: dict = {}
+    for p in produtos:
+        pid    = p.get("id")
+        dc_str = (p.get("data_criacao") or "")[:10]
+        try:
+            dc_map[pid] = date.fromisoformat(dc_str)
+        except (ValueError, TypeError):
+            pass
+
+    def _meses(d: date) -> int:
+        return (hoje.year - d.year) * 12 + (hoje.month - d.month)
+
+    df_an = df[df["Total"] > 0].copy()
+    df_an["_dc"]             = df_an["ID"].map(dc_map)
+    df_an                    = df_an.dropna(subset=["_dc"])
+    df_an["Meses"]           = df_an["_dc"].apply(_meses)
+    df_an                    = df_an[df_an["Meses"] >= _MESES_PARADO].copy()
+    df_an["Desde"]           = df_an["_dc"].apply(lambda d: d.strftime("%m/%Y"))
+    df_an                    = df_an.drop(columns=["_dc"])
+    df_an                    = df_an.sort_values("Meses", ascending=False)
+
+    if df_an.empty:
+        st.success(
+            f"Nenhum produto com estoque cadastrado há mais de {_MESES_PARADO} meses."
+        )
+        return
+
+    total_unid = int(df_an["Total"].sum())
+    total_prod = len(df_an)
+
+    st.warning(
+        f"**{total_prod} produtos** no portfólio há mais de **{_MESES_PARADO} meses** "
+        f"ainda com estoque (interno + na rua). "
+        f"Total de **{total_unid} unidades** imobilizadas."
+    )
+
+    # ── Resumo por categoria ──────────────────────────────────────────────
+    resumo = (
+        df_an.groupby("Categoria", as_index=False)
+        .agg(
+            Produtos   = ("Produto",      "count"),
+            Em_estoque = ("Em estoque",   "sum"),
+            Na_rua     = ("Na rua",       "sum"),
+            Total      = ("Total",        "sum"),
+            Mais_antigo = ("Meses",       "max"),
+        )
+        .sort_values("Total", ascending=False)
+    )
+    resumo.rename(columns={
+        "Em_estoque": "Em estoque",
+        "Na_rua":     "Na rua",
+        "Mais_antigo": "Mais antigo (meses)",
+    }, inplace=True)
+
+    fig = px.bar(
+        resumo.sort_values("Total"),
+        x="Total", y="Categoria", orientation="h",
+        color="Mais antigo (meses)",
+        color_continuous_scale=[[0, "#fbbf24"], [0.5, "#f97316"], [1, "#dc2626"]],
+        title=f"Unidades imobilizadas há +{_MESES_PARADO} meses — por categoria",
+        labels={"Total": "Unidades (estoque + na rua)", "Mais antigo (meses)": "Mais antigo (meses)"},
+        text="Total",
+    )
+    fig.update_traces(textposition="outside")
+    fig.update_layout(coloraxis_colorbar_title="Meses", margin={"l": 160})
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.dataframe(
+        resumo[["Categoria", "Produtos", "Em estoque", "Na rua", "Total", "Mais antigo (meses)"]],
+        use_container_width=True, hide_index=True,
+    )
+
+    st.divider()
+    st.markdown("#### Detalhamento por categoria")
+
+    cols_det = ["Produto", "Em estoque", "Na rua", "Total", "Desde", "Meses"]
+
+    def _cor_meses(val):
+        try:
+            v = int(val)
+            if v >= 30:  return "background-color:#ffd6d6;color:#9b1c1c"
+            if v >= 20:  return "background-color:#fed7aa;color:#7c2d12"
+            return "background-color:#fef9c3;color:#713f12"
+        except (TypeError, ValueError):
+            return ""
+
+    for cat in resumo["Categoria"].tolist():
+        df_c = df_an[df_an["Categoria"] == cat].copy()
+        mais_antigo = int(df_c["Meses"].max())
+        with st.expander(
+            f"**{cat}** — {len(df_c)} produto(s) · {int(df_c['Total'].sum())} un. "
+            f"· mais antigo: {mais_antigo} meses",
+            expanded=False,
+        ):
+            st.dataframe(
+                df_c[cols_det]
+                .sort_values("Meses", ascending=False)
+                .rename(columns={"Meses": "Meses no estoque"})
+                .style.map(_cor_meses, subset=["Meses no estoque"]),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+    csv = df_an[cols_det].rename(columns={"Meses": "Meses no estoque"}).to_csv(
+        index=False
+    ).encode("utf-8")
+    st.download_button(
+        "⬇️ Exportar lista completa (CSV)",
+        csv,
+        f"estoque_antigos_{_MESES_PARADO}meses.csv",
+        "text/csv",
+    )
+
+
 # ── Visão básica (sem velocidade carregada) ────────────────────────────────
 
 def _visao_basica(df_base):
@@ -422,6 +558,9 @@ def render():
             "cobertura em dias, produtos parados, giro de estoque e alertas de ruptura."
         )
         _visao_basica(df_base)
+        st.divider()
+        st.subheader(f"⏳ Produtos no estoque há mais de {_MESES_PARADO} meses")
+        _tab_antigos(df_base, produtos)
         return
 
     df = st.session_state["estoque_enriched"]
@@ -438,10 +577,18 @@ def render():
 
     # ── Abas principais ───────────────────────────────────────────────────
     st.divider()
-    tab_al, tab_cat, tab_par, tab_vel, tab_bus = st.tabs([
+    n_antigos = len([
+        p for p in produtos
+        if _meses_produto(p) >= _MESES_PARADO and (
+            float(p.get("quantidade") or 0) + na_rua_map.get(p.get("id"), 0) > 0
+        )
+    ])
+
+    tab_al, tab_cat, tab_par, tab_ant, tab_vel, tab_bus = st.tabs([
         f"⚠️ Alertas  ({n_rupt + n_aten})",
         "📦 Por categoria",
         f"🐌 Parados  ({n_par})",
+        f"⏳ Antigos  ({n_antigos})",
         "⚡ Velocidade de venda",
         "🔍 Busca",
     ])
@@ -454,6 +601,9 @@ def render():
 
     with tab_par:
         _tab_parados(df)
+
+    with tab_ant:
+        _tab_antigos(df, produtos)
 
     with tab_vel:
         produtos_map = {p["id"]: p for p in produtos}

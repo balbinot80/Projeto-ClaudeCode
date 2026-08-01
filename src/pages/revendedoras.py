@@ -2307,6 +2307,13 @@ def render(filtro_supervisor: str = ""):
         _m("⏳ Pendentes", _n_acertos_pendentes,
            f"Pedidos ainda Abertos com data_acerto previsto em {mes_sel} — aguardando baixa.",
            sub=True),
+        _S,
+        _m("🟡 Abaixo do mínimo", n_abaixo,
+           f"Revendedoras com total vendido entre R$0,01 e R${MINIMO_REV:.0f} no mês.",
+           sub=True),
+        _m("🔴 Zeradas", n_zero + n_sem_res,
+           "Revendedoras sem nenhuma venda registrada no mês (pré-baixa R$0 ou total R$0).",
+           sub=True),
     ])
     st.markdown(
         f'<div class="au-bloco au-bloco-rev">' + f'<div class="au-bloco-titulo">👥 Revendedoras — {mes_sel}</div>' + f'<div class="au-metrics">{_b1}</div></div>',

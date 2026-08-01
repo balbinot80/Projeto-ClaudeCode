@@ -2232,15 +2232,20 @@ def render(filtro_supervisor: str = ""):
             _revs_aberto_total.add(_rid_p)
 
         if _status_p in ("Baixado", "Aberto") and _sup_p:
-            # Acertos no mês — Baixados: usa data_baixa; Abertos: usa data_acerto
+            # Acertos no mês — Baixados: filtra e exibe data_baixa; Abertos: data_acerto
             _d_mes = _d_bx if _status_p == "Baixado" else _d_ac
             if _d_mes and _d_mes.month == mes_num and _d_mes.year == ano_num:
                 _acertos_mes_revs.add(_rid_p)
-                _val_p = float(_p.get("valor_total") or _p.get("valor_pre_baixa") or 0)
+                if _status_p == "Baixado":
+                    _data_str = _d_bx.strftime("%d/%m/%Y") if _d_bx else "—"
+                    _val_p = float(_p.get("valor_total") or 0)
+                else:
+                    _data_str = _d_ac.strftime("%d/%m/%Y") if _d_ac else "—"
+                    _val_p = float(_p.get("valor_pre_baixa") or 0)
                 _rows_acertos_mes.append({
                     "Nome":        _nome_p,
                     "Supervisora": _sup_p or "—",
-                    "Acerto prev.": _d_ac.strftime("%d/%m/%Y") if _d_ac else "—",
+                    "Data":        _data_str,
                     "Status":      _status_p,
                     "Valor":       f"R$ {_val_p:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
                 })
@@ -2305,7 +2310,7 @@ def render(filtro_supervisor: str = ""):
 
     _b1 = "".join([
         _m("📅 Acertos no mês", _n_acertos_mes,
-           f"Revendedoras com data de acerto previsto em {mes_sel} (Abertos e Baixados, sem supervisora excluídos)."),
+           f"Baixados com data de baixa em {mes_sel} + Abertos com data de acerto previsto em {mes_sel}."),
         _m("⏰ Postergados", _n_postergados,
            "Pedidos em aberto com mais de 30 dias entre criação e data de acerto previsto."),
         _m("📈 Potencial s/ postergação", _n_acertos_potenciais,
@@ -2343,6 +2348,7 @@ def render(filtro_supervisor: str = ""):
 
     # ── Tabelas detalhadas (admin) ─────────────────────────────────────────────
     with st.expander(f"📅 Acertos no mês — {_n_acertos_mes} revendedora(s)", expanded=False):
+        st.caption("**Baixados**: Data = data de baixa efetiva · **Abertos**: Data = data de acerto previsto · Valor = vendas realizadas.")
         if _rows_acertos_mes:
             _df_ac = (
                 pd.DataFrame(_rows_acertos_mes)
@@ -2351,7 +2357,7 @@ def render(filtro_supervisor: str = ""):
             )
             st.dataframe(_df_ac, use_container_width=True, hide_index=True)
         else:
-            st.caption("Nenhum acerto previsto para este mês.")
+            st.caption("Nenhum acerto neste mês.")
 
     with st.expander(f"⏰ Postergados — {_n_postergados} pedido(s)", expanded=False):
         if _rows_postergados:

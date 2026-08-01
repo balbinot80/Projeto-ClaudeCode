@@ -51,7 +51,7 @@ def _estilo_total(val):
 # ── Tab 1: Competência ────────────────────────────────────────────────────────
 
 def _tab_competencia(df_res: pd.DataFrame, mes_label: str, df_prom: pd.DataFrame = None, is_admin: bool = False, rows_postergados: list = None):
-    st.subheader(f"Vendas por revendedora — {mes_label}")
+    st.subheader(f"Vendas por supervisora — {mes_label}")
     st.caption(
         "**Baixados no mês** = valor_total dos pedidos com data de baixa no mês. "
         "**Pré-baixa** = soma dos pedidos abertos com data de acerto no mês."

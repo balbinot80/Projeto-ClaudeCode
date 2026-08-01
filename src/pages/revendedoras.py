@@ -2209,7 +2209,6 @@ def render(filtro_supervisor: str = ""):
     n_sem_res   = int((df_res["Total"] == 0).sum()) if not df_res.empty else 0
 
     total_liquido = total_mes - total_promissoria
-    ticket_medio  = total_liquido / n_rev if n_rev > 0 else 0
 
     # ── Métricas: acertos no mês + postergados + potencial ───────────────────
     _rows_postergados   = []
@@ -2282,6 +2281,10 @@ def render(filtro_supervisor: str = ""):
     _n_acertos_potenciais = len(_acertos_potenciais_revs)
     _n_revs_aberto_total  = len(_revs_aberto_total)
 
+    _n_acertos_baixados  = sum(1 for r in _rows_acertos_mes if r["Status"] == "Baixado")
+    ticket_previsto      = (total_bx + total_pb) / _n_acertos_mes if _n_acertos_mes > 0 else 0
+    ticket_baixado       = total_bx / _n_acertos_baixados if _n_acertos_baixados > 0 else 0
+
     # Bloco visuais de metricas
     st.markdown("""
 <style>
@@ -2335,7 +2338,11 @@ def render(filtro_supervisor: str = ""):
         _m("↳ Baixados", _R(total_bx), sub=True),
         _m("↳ Pré-baixa", _R(total_pb), sub=True),
         _S,
-        _m("🎯 Ticket médio", _R(ticket_medio)),
+        _m("🎯 Ticket médio previsto", _R(ticket_previsto),
+           f"(Baixados + Pré-baixa) ÷ {_n_acertos_mes} acertos no mês"),
+        _m("✅ Ticket médio baixado", _R(ticket_baixado),
+           f"Total baixado ÷ {_n_acertos_baixados} acertos já realizados (Baixados)",
+           sub=True),
         _S,
         _m("📄 Inadimplentes", _R(total_promissoria),
            f"{n_inadimplentes} revendedora(s) com pagamento em Promissória",

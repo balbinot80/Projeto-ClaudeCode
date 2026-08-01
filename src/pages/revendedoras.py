@@ -2277,7 +2277,7 @@ def render(filtro_supervisor: str = ""):
                 "Dias":         (_d_ac - _d_cr).days,
             })
 
-    _n_acertos_mes        = len(_acertos_mes_revs)
+    _n_acertos_mes        = len(_rows_acertos_mes)
     _n_postergados        = len(_rows_postergados)
     _n_acertos_potenciais = len(_acertos_potenciais_revs)
     _n_revs_aberto_total  = len(_revs_aberto_total)
@@ -2347,7 +2347,7 @@ def render(filtro_supervisor: str = ""):
     )
 
     # ── Tabelas detalhadas (admin) ─────────────────────────────────────────────
-    with st.expander(f"📅 Acertos no mês — {_n_acertos_mes} revendedora(s)", expanded=False):
+    with st.expander(f"📅 Acertos no mês — {_n_acertos_mes} acerto(s)", expanded=False):
         st.caption("**Baixados**: Data = data de baixa efetiva · **Abertos**: Data = data de acerto previsto · Valor = vendas realizadas.")
         if _rows_acertos_mes:
             _df_ac = (

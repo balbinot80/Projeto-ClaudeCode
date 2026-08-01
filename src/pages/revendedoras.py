@@ -158,7 +158,7 @@ def _tab_competencia(df_res: pd.DataFrame, mes_label: str, df_prom: pd.DataFrame
 
 # ── Tab 2: Alertas ────────────────────────────────────────────────────────────
 
-def _tab_alertas(df_zero: pd.DataFrame, df_res: pd.DataFrame):
+def _tab_alertas(df_zero: pd.DataFrame, df_res: pd.DataFrame, df_bx_zero: pd.DataFrame = None):
     st.subheader("⚠️ Alertas do mês")
 
     # Alerta 1: Pré-baixa R$0
@@ -195,6 +195,23 @@ def _tab_alertas(df_zero: pd.DataFrame, df_res: pd.DataFrame):
                     .format({"Total (R$)": _R, "Pré-baixa (R$)": _R, "Baixado (R$)": _R}),
                 use_container_width=True, hide_index=True,
             )
+
+    # Alerta 3: Baixados com zero vendas
+    if df_bx_zero is not None:
+        st.divider()
+        st.markdown(f"#### 🔴 Baixados com zero vendas — {len(df_bx_zero)} pedido(s)")
+        st.caption("Pedidos já baixados no mês com valor_total = R$0,00 — acerto realizado sem nenhuma venda registrada.")
+        if df_bx_zero.empty:
+            st.success("Nenhum pedido baixado com zero vendas neste mês.")
+        else:
+            for sup in sorted(df_bx_zero["Supervisor"].unique()):
+                df_s = df_bx_zero[df_bx_zero["Supervisor"] == sup]
+                st.markdown(f"**{sup}** — {len(df_s)} pedido(s)")
+                st.dataframe(
+                    df_s[["Nome", "Pedido", "Valor maleta", "Data baixa"]].style
+                        .format({"Valor maleta": _R}),
+                    use_container_width=True, hide_index=True,
+                )
 
 
 
@@ -2171,6 +2188,26 @@ def render(filtro_supervisor: str = ""):
     df_res, df_det = calcular_competencia(todos_pedidos, mes_num, ano_num)
     df_zero = pedidos_abertos_sem_prebaixa(todos_pedidos, mes_num, ano_num)
 
+    # Baixados com zero vendas no mês
+    _bx_zero_rows = []
+    for _p in todos_pedidos:
+        if _p.get("status") != "Baixado":
+            continue
+        _d_bx0 = parse_date(_p.get("data_baixa"))
+        if not (_d_bx0 and _d_bx0.month == mes_num and _d_bx0.year == ano_num):
+            continue
+        if float(_p.get("valor_total") or 0) > 0:
+            continue
+        _comp0 = _p.get("comprador") or {}
+        _bx_zero_rows.append({
+            "Nome":         _comp0.get("nome") or f"Rev {_p.get('fk_revendedor_id')}",
+            "Supervisor":   _p.get("supervisor_nome") or "Sem supervisora",
+            "Pedido":       _p.get("codigo_pedido"),
+            "Valor maleta": float(_p.get("valor_total_antes_baixa") or 0),
+            "Data baixa":   _d_bx0.strftime("%d/%m/%y"),
+        })
+    df_bx_zero = pd.DataFrame(_bx_zero_rows) if _bx_zero_rows else pd.DataFrame()
+
     # ── Promissórias do mês ───────────────────────────────────────────────────
     from src.logic.revendedoras import parse_date as _parse_date
     _prom_map: dict = {}  # {rid: {nome, supervisor, valor}}
@@ -2398,7 +2435,7 @@ def render(filtro_supervisor: str = ""):
                          rows_postergados=_rows_postergados if _is_admin else None)
 
     with tab2:
-        _tab_alertas(df_zero, df_res)
+        _tab_alertas(df_zero, df_res, df_bx_zero)
 
     with tab3:
         _tab_periodo(todos_pedidos, hoje, is_admin=_is_admin)

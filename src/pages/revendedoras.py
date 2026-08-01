@@ -2231,7 +2231,7 @@ def render(filtro_supervisor: str = ""):
             _revs_aberto_total.add(_rid_p)
 
         if _status_p in ("Baixado", "Aberto") and _sup_p:
-            # Acertos no mês — Baixados: filtra e exibe data_baixa; Abertos: data_acerto
+            # data de referência do mês: data_baixa para Baixados, data_acerto para Abertos
             _d_mes = _d_bx if _status_p == "Baixado" else _d_ac
             if _d_mes and _d_mes.month == mes_num and _d_mes.year == ano_num:
                 _acertos_mes_revs.add(_rid_p)
@@ -2241,49 +2241,34 @@ def render(filtro_supervisor: str = ""):
                 else:
                     _data_str = _d_ac.strftime("%d/%m/%Y") if _d_ac else "—"
                     _val_p = float(_p.get("valor_pre_baixa") or 0)
+                _dias_ciclo = (_d_mes - _d_cr).days if _d_cr else 0
                 _rows_acertos_mes.append({
                     "Nome":        _nome_p,
                     "Supervisora": _sup_p or "—",
                     "Data":        _data_str,
                     "Status":      _status_p,
+                    "Dias ciclo":  _dias_ciclo,
                     "Valor":       f"R$ {_val_p:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
                 })
-            # Potencial: Aberto e Baixado, data_criacao + 30 dias no mês, 1 linha por revendedora
-            if _d_cr:
-                _d_natural = _d_cr + timedelta(days=30)
-                if _d_natural.month == mes_num and _d_natural.year == ano_num:
-                    if _rid_p not in _acertos_potenciais_revs:
-                        _postergado_p = _d_ac and (_d_ac - _d_cr).days > 30
-                        _rows_potenciais.append({
-                            "Nome":          _nome_p,
-                            "Supervisora":   _sup_p or "—",
-                            "Criação":       _d_cr.strftime("%d/%m/%Y"),
-                            "Data natural":  _d_natural.strftime("%d/%m/%Y"),
-                            "Acerto atual":  _d_ac.strftime("%d/%m/%Y") if _d_ac else "—",
-                            "Postergado":    "Sim" if _postergado_p else "Não",
-                        })
-                    _acertos_potenciais_revs.add(_rid_p)
-
-        # Postergados: apenas Abertos com ciclo > 30 dias e data_acerto no mês
-        if (_status_p == "Aberto" and _d_ac and _d_cr
-                and (_d_ac - _d_cr).days > 30
-                and _d_ac.month == mes_num and _d_ac.year == ano_num):
-            _rows_postergados.append({
-                "Nome":         _nome_p,
-                "Supervisora":  _sup_p or "—",
-                "Criação":      _d_cr.strftime("%d/%m/%Y"),
-                "Acerto prev.": _d_ac.strftime("%d/%m/%Y"),
-                "Dias":         (_d_ac - _d_cr).days,
-            })
+                # Postergado: ciclo (data ref − criação) acima de 30 dias
+                if _d_cr and _dias_ciclo > 30:
+                    _rows_postergados.append({
+                        "Nome":         _nome_p,
+                        "Supervisora":  _sup_p or "—",
+                        "Status":       _status_p,
+                        "Criação":      _d_cr.strftime("%d/%m/%Y"),
+                        "Acerto prev.": _d_ac.strftime("%d/%m/%Y") if _d_ac else "—",
+                        "Dias":         _dias_ciclo,
+                    })
 
     _n_acertos_mes        = len(_rows_acertos_mes)
     _n_postergados        = len(_rows_postergados)
     _n_acertos_potenciais = len(_acertos_potenciais_revs)
     _n_revs_aberto_total  = len(_revs_aberto_total)
-
-    _n_acertos_baixados  = sum(1 for r in _rows_acertos_mes if r["Status"] == "Baixado")
-    ticket_previsto      = (total_bx + total_pb) / _n_acertos_mes if _n_acertos_mes > 0 else 0
-    ticket_baixado       = total_bx / _n_acertos_baixados if _n_acertos_baixados > 0 else 0
+    _n_acertos_baixados   = sum(1 for r in _rows_acertos_mes if r["Status"] == "Baixado")
+    _n_acertos_pendentes  = _n_acertos_mes - _n_acertos_baixados
+    ticket_previsto       = (total_bx + total_pb) / _n_acertos_mes if _n_acertos_mes > 0 else 0
+    ticket_baixado        = total_bx / _n_acertos_baixados if _n_acertos_baixados > 0 else 0
 
     # Bloco visuais de metricas
     st.markdown("""
@@ -2312,19 +2297,16 @@ def render(filtro_supervisor: str = ""):
     _pct_inad = (total_promissoria / total_mes * 100) if total_mes > 0 else 0
 
     _b1 = "".join([
-        _m("📅 Acertos no mês", _n_acertos_mes,
-           f"Baixados com data de baixa em {mes_sel} + Abertos com data de acerto previsto em {mes_sel}."),
+        _m("📅 Previstos no mês", _n_acertos_mes,
+           f"Baixados com data_baixa em {mes_sel} + Abertos com data_acerto em {mes_sel} (inclusive postergados que permanecem no mês)."),
         _m("⏰ Postergados", _n_postergados,
-           "Pedidos em aberto com mais de 30 dias entre criação e data de acerto previsto."),
-        _m("📈 Potencial s/ postergação", _n_acertos_potenciais,
-           f"Revendedoras que teriam acerto em {mes_sel} se o ciclo padrão de 30 dias fosse respeitado."),
+           f"Subconjunto dos previstos em {mes_sel} com ciclo (data ref. − data criação) acima de 30 dias. Inclui Baixados e Abertos."),
         _S,
-        _m("👥 Total c/ pedido aberto", _n_revs_aberto_total,
-           "Revendedoras com pelo menos um pedido em Aberto, independente do mês."),
-        _S,
-        _m("🟡 Abaixo do mínimo", n_abaixo, sub=True),
-        _m("🔴 Sem vendas", n_zero + n_sem_res,
-           "Pedidos abertos com R$0 + revendedoras com total = R$0", sub=True),
+        _m("✅ Já baixados", _n_acertos_baixados,
+           f"Pedidos efetivamente baixados com data_baixa em {mes_sel} (contagem por pedido, não por pessoa)."),
+        _m("⏳ Pendentes", _n_acertos_pendentes,
+           f"Pedidos ainda Abertos com data_acerto previsto em {mes_sel} — aguardando baixa.",
+           sub=True),
     ])
     st.markdown(
         f'<div class="au-bloco au-bloco-rev">' + f'<div class="au-bloco-titulo">👥 Revendedoras — {mes_sel}</div>' + f'<div class="au-metrics">{_b1}</div></div>',

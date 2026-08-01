@@ -2225,20 +2225,22 @@ def render(filtro_supervisor: str = ""):
         _nome_p   = _comp_p.get("nome") or f"Rev {_p.get('fk_revendedor_id')}"
         _rid_p    = _p.get("fk_revendedor_id")
         _d_ac     = _parse_date(_p.get("data_acerto"))
+        _d_bx     = _parse_date(_p.get("data_baixa"))
         _d_cr     = _parse_date(_p.get("data_criacao"))
 
         if _status_p == "Aberto" and _rid_p:
             _revs_aberto_total.add(_rid_p)
 
         if _status_p in ("Baixado", "Aberto") and _sup_p:
-            # Acertos no mês
-            if _d_ac and _d_ac.month == mes_num and _d_ac.year == ano_num:
+            # Acertos no mês — Baixados: usa data_baixa; Abertos: usa data_acerto
+            _d_mes = _d_bx if _status_p == "Baixado" else _d_ac
+            if _d_mes and _d_mes.month == mes_num and _d_mes.year == ano_num:
                 _acertos_mes_revs.add(_rid_p)
                 _val_p = float(_p.get("valor_total") or _p.get("valor_pre_baixa") or 0)
                 _rows_acertos_mes.append({
                     "Nome":        _nome_p,
                     "Supervisora": _sup_p or "—",
-                    "Acerto prev.": _d_ac.strftime("%d/%m/%Y"),
+                    "Acerto prev.": _d_ac.strftime("%d/%m/%Y") if _d_ac else "—",
                     "Status":      _status_p,
                     "Valor":       f"R$ {_val_p:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
                 })
@@ -2258,14 +2260,13 @@ def render(filtro_supervisor: str = ""):
                         })
                     _acertos_potenciais_revs.add(_rid_p)
 
-        # Postergados: ciclo > 30 dias e data_acerto dentro do mês selecionado
-        if (_status_p in ("Aberto", "Baixado") and _d_ac and _d_cr
+        # Postergados: apenas Abertos com ciclo > 30 dias e data_acerto no mês
+        if (_status_p == "Aberto" and _d_ac and _d_cr
                 and (_d_ac - _d_cr).days > 30
                 and _d_ac.month == mes_num and _d_ac.year == ano_num):
             _rows_postergados.append({
                 "Nome":         _nome_p,
                 "Supervisora":  _sup_p or "—",
-                "Status":       _status_p,
                 "Criação":      _d_cr.strftime("%d/%m/%Y"),
                 "Acerto prev.": _d_ac.strftime("%d/%m/%Y"),
                 "Dias":         (_d_ac - _d_cr).days,

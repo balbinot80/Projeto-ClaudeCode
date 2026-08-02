@@ -309,7 +309,8 @@ def _tab_busca(df):
 
 # ── Produtos antigos no estoque (15+ meses) ───────────────────────────────
 
-_MESES_PARADO = 15
+_MESES_PARADO  = 15
+_MESES_RECENTE = 6   # referência com entrada mais nova que N meses → excluída dos antigos
 
 
 def _meses_produto(p: dict) -> int:
@@ -339,16 +340,23 @@ def _tab_antigos(df: pd.DataFrame, produtos: list):
         return 0.0
 
     # Mapeia id → data_criacao, referencia e preco
-    dc_map:    dict = {}
-    ref_map:   dict = {}
-    preco_map: dict = {}
+    # Também detecta referências com entrada recente (estoque reposto nos últimos _MESES_RECENTE meses)
+    dc_map:             dict = {}
+    ref_map:            dict = {}
+    preco_map:          dict = {}
+    referencias_recentes: set = set()
     for p in produtos:
         pid    = p.get("id")
-        ref_map[pid]   = p.get("referencia") or ""
+        ref    = p.get("referencia") or ""
+        ref_map[pid]   = ref
         preco_map[pid] = _preco_varejo(p)
         dc_str = (p.get("data_criacao") or "")[:10]
         try:
-            dc_map[pid] = date.fromisoformat(dc_str)
+            dc = date.fromisoformat(dc_str)
+            dc_map[pid] = dc
+            meses_dc = (hoje.year - dc.year) * 12 + (hoje.month - dc.month)
+            if ref and meses_dc < _MESES_RECENTE:
+                referencias_recentes.add(ref)
         except (ValueError, TypeError):
             pass
 
@@ -365,7 +373,20 @@ def _tab_antigos(df: pd.DataFrame, produtos: list):
     df_an["Preço (R$)"]      = df_an["ID"].map(preco_map)
     df_an["Valor total (R$)"] = (df_an["Total"] * df_an["Preço (R$)"]).round(2)
     df_an                    = df_an.drop(columns=["_dc"])
-    df_an                    = df_an.sort_values("Meses", ascending=False)
+
+    # Exclui referências que tiveram estoque adicionado recentemente
+    mask_recente = df_an["Referência"].isin(referencias_recentes) & (df_an["Referência"] != "")
+    n_excluidos  = int(mask_recente.sum())
+    df_an        = df_an[~mask_recente].copy()
+
+    df_an = df_an.sort_values("Meses", ascending=False)
+
+    if n_excluidos > 0:
+        st.info(
+            f"ℹ️ **{n_excluidos} produto(s) excluído(s)** da análise: referência com "
+            f"entrada de estoque nos últimos {_MESES_RECENTE} meses. "
+            "Referências com reposição recente não são contabilizadas como paradas."
+        )
 
     if df_an.empty:
         st.success(

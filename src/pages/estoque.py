@@ -408,7 +408,11 @@ def _tab_antigos(df: pd.DataFrame, produtos: list):
 
     # ── Lista para impressão ──────────────────────────────────────────────
     def _html_impressao(df: pd.DataFrame) -> str:
-        hoje_str = date.today().strftime("%d/%m/%Y")
+        # Apenas itens fisicamente disponíveis no depósito
+        df = df[df["Em estoque"] > 0].copy()
+        hoje_str  = date.today().strftime("%d/%m/%Y")
+        n_imp     = len(df)
+        unid_imp  = int(df["Em estoque"].sum())
         linhas_cat = []
         for cat in sorted(df["Categoria"].unique()):
             df_c = df[df["Categoria"] == cat].sort_values("Meses", ascending=False)
@@ -419,9 +423,7 @@ def _tab_antigos(df: pd.DataFrame, produtos: list):
                     f"<tr>"
                     f"<td class='ref'>{r['Referência'] or '—'}</td>"
                     f"<td>{r['Produto']}</td>"
-                    f"<td class='num'>{int(r['Em estoque'])}</td>"
-                    f"<td class='num'>{int(r['Na rua'])}</td>"
-                    f"<td class='num'><b>{int(r['Total'])}</b></td>"
+                    f"<td class='num'><b>{int(r['Em estoque'])}</b></td>"
                     f"<td class='num'>{r['Desde']}</td>"
                     f"<td class='num'>{int(r['Meses'])}m</td>"
                     f"<td class='num'>{val_fmt}</td>"
@@ -429,22 +431,26 @@ def _tab_antigos(df: pd.DataFrame, produtos: list):
                     f"</tr>"
                 )
             n_c   = len(df_c)
-            tot_c = int(df_c["Total"].sum())
+            tot_c = int(df_c["Em estoque"].sum())
             linhas_cat.append(
-                f"<tr class='cat-header'><td colspan='9'>{cat} — {n_c} produto(s) · {tot_c} peças</td></tr>"
+                f"<tr class='cat-header'><td colspan='7'>{cat} — {n_c} produto(s) · {tot_c} peças no depósito</td></tr>"
                 + linhas
             )
 
         corpo = "\n".join(linhas_cat)
+        if not corpo:
+            corpo = "<tr><td colspan='7' style='text-align:center;padding:20px'>Nenhum item disponível no depósito no momento.</td></tr>"
+
         return f"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>Estoque parado — {hoje_str}</title>
+<title>Separação de estoque parado — {hoje_str}</title>
 <style>
   body {{ font-family: Arial, sans-serif; font-size: 11px; margin: 20px; color: #111; }}
-  h1   {{ font-size: 15px; margin-bottom: 4px; }}
-  p.sub{{ font-size: 11px; color: #555; margin-top: 0; margin-bottom: 12px; }}
+  h1   {{ font-size: 15px; margin-bottom: 2px; }}
+  p.sub{{ font-size: 10px; color: #555; margin-top: 2px; margin-bottom: 12px; }}
+  p.obs{{ font-size: 10px; color: #888; font-style: italic; margin-bottom: 10px; border-left: 3px solid #AB6774; padding-left: 8px; }}
   table{{ border-collapse: collapse; width: 100%; }}
   th   {{ background: #3a3a3a; color: #fff; padding: 5px 7px; text-align: left; font-size: 10px; }}
   td   {{ padding: 4px 7px; border-bottom: 1px solid #ddd; vertical-align: middle; }}
@@ -464,14 +470,15 @@ def _tab_antigos(df: pd.DataFrame, produtos: list):
 </style>
 </head>
 <body>
-<h1>Estoque parado há +{_MESES_PARADO} meses — {hoje_str}</h1>
-<p class="sub">{total_prod} produto(s) · {total_unid} peças · {valor_fmt} imobilizados</p>
+<h1>Separação de estoque parado há +{_MESES_PARADO} meses — {hoje_str}</h1>
+<p class="sub">{n_imp} produto(s) · {unid_imp} peças disponíveis no depósito</p>
+<p class="obs">Esta lista considera apenas peças fisicamente no depósito (não inclui itens que já estão na rua com revendedoras). Gere uma nova lista a cada semana — peças devolvidas pelas revendedoras aparecerão automaticamente.</p>
 <table>
   <thead>
     <tr>
       <th>Referência</th><th>Produto</th>
-      <th>Estoque</th><th>Na rua</th><th>Total</th>
-      <th>Desde</th><th>Tempo</th><th>Valor total</th><th>✓</th>
+      <th>Qtd. depósito</th><th>Desde</th><th>Tempo</th>
+      <th>Valor total</th><th>✓</th>
     </tr>
   </thead>
   <tbody>

@@ -406,6 +406,90 @@ def _tab_antigos(df: pd.DataFrame, produtos: list):
         f"Total de **{total_unid} unidades** · **{valor_fmt}** imobilizados."
     )
 
+    # ── Lista para impressão ──────────────────────────────────────────────
+    def _html_impressao(df: pd.DataFrame) -> str:
+        hoje_str = date.today().strftime("%d/%m/%Y")
+        linhas_cat = []
+        for cat in sorted(df["Categoria"].unique()):
+            df_c = df[df["Categoria"] == cat].sort_values("Meses", ascending=False)
+            linhas = ""
+            for _, r in df_c.iterrows():
+                val_fmt = f"R$ {r['Valor total (R$)']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                linhas += (
+                    f"<tr>"
+                    f"<td class='ref'>{r['Referência'] or '—'}</td>"
+                    f"<td>{r['Produto']}</td>"
+                    f"<td class='num'>{int(r['Em estoque'])}</td>"
+                    f"<td class='num'>{int(r['Na rua'])}</td>"
+                    f"<td class='num'><b>{int(r['Total'])}</b></td>"
+                    f"<td class='num'>{r['Desde']}</td>"
+                    f"<td class='num'>{int(r['Meses'])}m</td>"
+                    f"<td class='num'>{val_fmt}</td>"
+                    f"<td class='cb'><input type='checkbox'></td>"
+                    f"</tr>"
+                )
+            n_c   = len(df_c)
+            tot_c = int(df_c["Total"].sum())
+            linhas_cat.append(
+                f"<tr class='cat-header'><td colspan='9'>{cat} — {n_c} produto(s) · {tot_c} peças</td></tr>"
+                + linhas
+            )
+
+        corpo = "\n".join(linhas_cat)
+        return f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Estoque parado — {hoje_str}</title>
+<style>
+  body {{ font-family: Arial, sans-serif; font-size: 11px; margin: 20px; color: #111; }}
+  h1   {{ font-size: 15px; margin-bottom: 4px; }}
+  p.sub{{ font-size: 11px; color: #555; margin-top: 0; margin-bottom: 12px; }}
+  table{{ border-collapse: collapse; width: 100%; }}
+  th   {{ background: #3a3a3a; color: #fff; padding: 5px 7px; text-align: left; font-size: 10px; }}
+  td   {{ padding: 4px 7px; border-bottom: 1px solid #ddd; vertical-align: middle; }}
+  tr:nth-child(even) td {{ background: #f7f7f7; }}
+  tr.cat-header td {{
+    background: #AB6774; color: #fff; font-weight: bold;
+    padding: 5px 7px; font-size: 11px; border-bottom: none;
+  }}
+  .ref {{ font-weight: bold; white-space: nowrap; }}
+  .num {{ text-align: right; white-space: nowrap; }}
+  .cb  {{ text-align: center; width: 28px; }}
+  input[type=checkbox] {{ width: 14px; height: 14px; }}
+  @media print {{
+    body {{ margin: 10px; }}
+    input[type=checkbox] {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+  }}
+</style>
+</head>
+<body>
+<h1>Estoque parado há +{_MESES_PARADO} meses — {hoje_str}</h1>
+<p class="sub">{total_prod} produto(s) · {total_unid} peças · {valor_fmt} imobilizados</p>
+<table>
+  <thead>
+    <tr>
+      <th>Referência</th><th>Produto</th>
+      <th>Estoque</th><th>Na rua</th><th>Total</th>
+      <th>Desde</th><th>Tempo</th><th>Valor total</th><th>✓</th>
+    </tr>
+  </thead>
+  <tbody>
+{corpo}
+  </tbody>
+</table>
+</body>
+</html>"""
+
+    html_bytes = _html_impressao(df_an).encode("utf-8")
+    st.download_button(
+        label="🖨️ Gerar lista para impressão",
+        data=html_bytes,
+        file_name=f"estoque_parado_{date.today().strftime('%Y%m%d')}.html",
+        mime="text/html",
+        help="Baixe o arquivo, abra no navegador e use Ctrl+P para imprimir.",
+    )
+
     # ── Resumo por categoria ──────────────────────────────────────────────
     resumo = (
         df_an.groupby("Categoria", as_index=False)

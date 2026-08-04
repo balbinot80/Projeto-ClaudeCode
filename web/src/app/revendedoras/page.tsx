@@ -1,0 +1,302 @@
+'use client'
+
+import { useEffect, useState, useMemo } from 'react'
+import Nav from '@/components/Nav'
+import { calcularMes, mesesDisponiveis, RevendedorasMetrics } from '@/lib/revendedoras'
+import { Pedido } from '@/types/pedido'
+
+function R(v: number) {
+  return `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function Metric({ label, value, sub, color }: { label: string; value: string | number; sub?: boolean; color?: string }) {
+  return (
+    <div className={`flex flex-col gap-0.5 ${sub ? 'pl-4' : ''}`}>
+      <span className="text-xs" style={{ color: 'var(--au-text-muted)' }}>{label}</span>
+      <span className={`font-semibold ${sub ? 'text-sm' : 'text-base'}`} style={{ color: color || 'var(--au-text)' }}>
+        {value}
+      </span>
+    </div>
+  )
+}
+
+function MetricCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div
+      className="rounded-xl p-4 flex flex-col gap-3"
+      style={{ background: 'var(--au-surface)', border: '1px solid var(--au-border)' }}
+    >
+      <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--au-primary)' }}>
+        {title}
+      </span>
+      {children}
+    </div>
+  )
+}
+
+export default function RevendedorasPage() {
+  const meses = useMemo(() => mesesDisponiveis(), [])
+  const [mesSel, setMesSel] = useState(0)
+  const [pedidos, setPedidos] = useState<Pedido[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [tab, setTab] = useState<'visao' | 'acertos' | 'alertas'>('visao')
+
+  useEffect(() => {
+    fetch('/api/pedidos')
+      .then(r => r.json())
+      .then(data => { setPedidos(data); setLoading(false) })
+      .catch(e => { setError(String(e)); setLoading(false) })
+  }, [])
+
+  const { mes, ano, label: mesLabel } = meses[mesSel]
+  const metrics: RevendedorasMetrics | null = useMemo(
+    () => pedidos.length > 0 ? calcularMes(pedidos, mes, ano) : null,
+    [pedidos, mes, ano]
+  )
+
+  const tabs = [
+    { id: 'visao' as const,   label: 'Visão geral'  },
+    { id: 'acertos' as const, label: 'Acertos do mês' },
+    { id: 'alertas' as const, label: 'Alertas'       },
+  ]
+
+  return (
+    <div className="min-h-screen flex flex-col" style={{ background: 'var(--au-bg)' }}>
+      <Nav />
+
+      <main className="flex-1 p-6 flex flex-col gap-5 max-w-7xl mx-auto w-full">
+        {/* Header + seletor de mês */}
+        <div className="flex items-center justify-between">
+          <h1 className="text-lg font-semibold" style={{ color: 'var(--au-text)' }}>
+            Vendas por supervisora
+          </h1>
+          <select
+            value={mesSel}
+            onChange={e => setMesSel(Number(e.target.value))}
+            className="rounded-lg px-3 py-2 text-sm outline-none"
+            style={{ border: '1px solid var(--au-border)', background: 'var(--au-surface)', color: 'var(--au-text)' }}
+          >
+            {meses.map((m, i) => (
+              <option key={i} value={i}>{m.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {loading && (
+          <div className="flex items-center justify-center py-20">
+            <p style={{ color: 'var(--au-text-muted)' }}>Carregando pedidos da API Jueri…</p>
+          </div>
+        )}
+
+        {error && (
+          <div className="rounded-lg p-4" style={{ background: '#FEE2E2', color: '#B91C1C' }}>
+            Erro ao carregar: {error}
+          </div>
+        )}
+
+        {!loading && !error && metrics && (
+          <>
+            {/* Blocos de métricas */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <MetricCard title="Acertos — {mesLabel}">
+                <Metric label="📅 Previstos no mês"  value={metrics.nAcertosMes} />
+                <Metric label="⏰ Postergados"        value={metrics.nPostergados} sub />
+                <Metric label="✅ Já baixados"         value={metrics.nAcertosBaixados} />
+                <Metric label="⏳ Pendentes"           value={metrics.nAcertosPendentes} sub />
+                <Metric label="🟡 Abaixo do mínimo"   value={metrics.nAbaixoMin} sub color="var(--au-accent)" />
+                <Metric label="🔴 Zeradas"             value={metrics.nZeradas} sub color="#B91C1C" />
+              </MetricCard>
+
+              <MetricCard title="Financeiro">
+                <Metric label="💰 Total vendido"      value={R(metrics.totalLiquido)} />
+                <Metric label="↳ Baixados"            value={R(metrics.totalBx)} sub />
+                <Metric label="↳ Pré-baixa"           value={R(metrics.totalPb)} sub />
+                <Metric label="🎯 Ticket médio previsto" value={R(metrics.ticketPrevisto)} />
+                <Metric label="✅ Ticket médio baixado"  value={R(metrics.ticketBaixado)} sub />
+              </MetricCard>
+
+              <MetricCard title="Alertas rápidos">
+                {metrics.rowsBxZero.length > 0
+                  ? <Metric label="🔴 Baixados c/ zero vendas" value={metrics.rowsBxZero.length} color="#B91C1C" />
+                  : <span className="text-xs" style={{ color: 'var(--au-text-muted)' }}>Nenhum alerta crítico</span>
+                }
+                {metrics.nPostergados > 0 && (
+                  <Metric label="⏰ Postergados (+30 dias)" value={metrics.nPostergados} color="var(--au-accent)" />
+                )}
+              </MetricCard>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex gap-1 border-b" style={{ borderColor: 'var(--au-border)' }}>
+              {tabs.map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  className="px-4 py-2 text-sm font-medium transition border-b-2 -mb-px"
+                  style={{
+                    color: tab === t.id ? 'var(--au-primary)' : 'var(--au-text-muted)',
+                    borderColor: tab === t.id ? 'var(--au-primary)' : 'transparent',
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Tab: Visão geral por supervisora */}
+            {tab === 'visao' && (
+              <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--au-border)' }}>
+                <table className="w-full text-sm">
+                  <thead style={{ background: 'var(--au-primary-pale)' }}>
+                    <tr>
+                      {['Supervisora','Revendedoras','Baixado','Pré-baixa','Total','Abaixo mín.','Zeradas'].map(h => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold"
+                            style={{ color: 'var(--au-primary)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {metrics.porSupervisora.map((s, i) => (
+                      <tr key={s.supervisora}
+                          style={{ background: i % 2 === 0 ? 'var(--au-surface)' : 'var(--au-bg)' }}>
+                        <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--au-text)' }}>{s.supervisora}</td>
+                        <td className="px-4 py-2.5 text-center" style={{ color: 'var(--au-text-muted)' }}>{s.revendedoras}</td>
+                        <td className="px-4 py-2.5" style={{ color: 'var(--au-text)' }}>{R(s.baixado)}</td>
+                        <td className="px-4 py-2.5" style={{ color: 'var(--au-text-muted)' }}>{R(s.preBaixa)}</td>
+                        <td className="px-4 py-2.5 font-semibold" style={{ color: 'var(--au-text)' }}>{R(s.total)}</td>
+                        <td className="px-4 py-2.5 text-center" style={{ color: s.abaixoMin > 0 ? '#C4985A' : 'var(--au-text-muted)' }}>{s.abaixoMin}</td>
+                        <td className="px-4 py-2.5 text-center" style={{ color: s.zeradas > 0 ? '#B91C1C' : 'var(--au-text-muted)' }}>{s.zeradas}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Tab: Acertos do mês */}
+            {tab === 'acertos' && (
+              <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--au-border)' }}>
+                <table className="w-full text-sm">
+                  <thead style={{ background: 'var(--au-primary-pale)' }}>
+                    <tr>
+                      {['Nome','Supervisora','Data','Status','Dias ciclo','Valor'].map(h => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold"
+                            style={{ color: 'var(--au-primary)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {metrics.rowsAcertosMes.map((r, i) => (
+                      <tr key={i} style={{ background: i % 2 === 0 ? 'var(--au-surface)' : 'var(--au-bg)' }}>
+                        <td className="px-4 py-2.5" style={{ color: 'var(--au-text)' }}>{r.nome}</td>
+                        <td className="px-4 py-2.5" style={{ color: 'var(--au-text-muted)' }}>{r.supervisora}</td>
+                        <td className="px-4 py-2.5" style={{ color: 'var(--au-text-muted)' }}>{r.data}</td>
+                        <td className="px-4 py-2.5">
+                          <span className="px-2 py-0.5 rounded-full text-xs font-medium"
+                                style={{ background: r.status === 'Baixado' ? '#DCFCE7' : '#FEF9C3',
+                                         color: r.status === 'Baixado' ? '#166534' : '#854D0E' }}>
+                            {r.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-center"
+                            style={{ color: r.diasCiclo > 30 ? '#C4985A' : 'var(--au-text-muted)' }}>
+                          {r.diasCiclo}d
+                        </td>
+                        <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--au-text)' }}>{R(r.valor)}</td>
+                      </tr>
+                    ))}
+                    {metrics.rowsAcertosMes.length === 0 && (
+                      <tr><td colSpan={6} className="px-4 py-8 text-center text-sm"
+                              style={{ color: 'var(--au-text-muted)' }}>Nenhum acerto em {mesLabel}</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Tab: Alertas */}
+            {tab === 'alertas' && (
+              <div className="flex flex-col gap-4">
+                {/* Baixados com zero vendas */}
+                <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--au-border)' }}>
+                  <div className="px-4 py-3" style={{ background: '#FEE2E2' }}>
+                    <span className="text-sm font-semibold" style={{ color: '#991B1B' }}>
+                      🔴 Baixados com zero vendas — {metrics.rowsBxZero.length} pedido(s)
+                    </span>
+                  </div>
+                  {metrics.rowsBxZero.length > 0 ? (
+                    <table className="w-full text-sm">
+                      <thead style={{ background: 'var(--au-primary-pale)' }}>
+                        <tr>
+                          {['Nome','Supervisora','Pedido','Valor maleta','Data baixa'].map(h => (
+                            <th key={h} className="px-4 py-3 text-left text-xs font-semibold"
+                                style={{ color: 'var(--au-primary)' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {metrics.rowsBxZero.map((r, i) => (
+                          <tr key={i} style={{ background: i % 2 === 0 ? 'var(--au-surface)' : 'var(--au-bg)' }}>
+                            <td className="px-4 py-2.5" style={{ color: 'var(--au-text)' }}>{r.nome}</td>
+                            <td className="px-4 py-2.5" style={{ color: 'var(--au-text-muted)' }}>{r.supervisora}</td>
+                            <td className="px-4 py-2.5" style={{ color: 'var(--au-text-muted)' }}>{r.codigoPedido}</td>
+                            <td className="px-4 py-2.5" style={{ color: 'var(--au-text)' }}>{R(r.valorMaleta)}</td>
+                            <td className="px-4 py-2.5" style={{ color: 'var(--au-text-muted)' }}>{r.dataBaixa}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <p className="px-4 py-6 text-sm" style={{ color: 'var(--au-text-muted)' }}>
+                      Nenhum pedido baixado com zero vendas em {mesLabel}.
+                    </p>
+                  )}
+                </div>
+
+                {/* Postergados */}
+                {metrics.rowsPostergados.length > 0 && (
+                  <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--au-border)' }}>
+                    <div className="px-4 py-3" style={{ background: '#FEF9C3' }}>
+                      <span className="text-sm font-semibold" style={{ color: '#854D0E' }}>
+                        ⏰ Postergados (+30 dias) — {metrics.rowsPostergados.length}
+                      </span>
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead style={{ background: 'var(--au-primary-pale)' }}>
+                        <tr>
+                          {['Nome','Supervisora','Status','Criação','Acerto prev.','Dias'].map(h => (
+                            <th key={h} className="px-4 py-3 text-left text-xs font-semibold"
+                                style={{ color: 'var(--au-primary)' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {metrics.rowsPostergados.map((r, i) => (
+                          <tr key={i} style={{ background: i % 2 === 0 ? 'var(--au-surface)' : 'var(--au-bg)' }}>
+                            <td className="px-4 py-2.5" style={{ color: 'var(--au-text)' }}>{r.nome}</td>
+                            <td className="px-4 py-2.5" style={{ color: 'var(--au-text-muted)' }}>{r.supervisora}</td>
+                            <td className="px-4 py-2.5">
+                              <span className="px-2 py-0.5 rounded-full text-xs font-medium"
+                                    style={{ background: r.status === 'Baixado' ? '#DCFCE7' : '#FEF9C3',
+                                             color: r.status === 'Baixado' ? '#166534' : '#854D0E' }}>
+                                {r.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5" style={{ color: 'var(--au-text-muted)' }}>{r.criacao}</td>
+                            <td className="px-4 py-2.5" style={{ color: 'var(--au-text-muted)' }}>{r.acertoPrev}</td>
+                            <td className="px-4 py-2.5 font-semibold" style={{ color: '#C4985A' }}>{r.dias}d</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </main>
+    </div>
+  )
+}

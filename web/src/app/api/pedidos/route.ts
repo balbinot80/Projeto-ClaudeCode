@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { getAllPages } from '@/lib/jueri'
 import { createClient } from '@/lib/supabase/server'
 
+export const maxDuration = 60 // segundos — necessário para buscar muitas páginas da Jueri
+
 export async function GET() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

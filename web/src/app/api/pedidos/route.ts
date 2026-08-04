@@ -1,35 +1,51 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
-const BASE_URL = process.env.JUERI_BASE_URL!
-const TOKEN    = process.env.JUERI_TOKEN!
-
-// Busca uma única página — rápido o suficiente para o limite de 10s do Hobby
-export async function GET(req: NextRequest) {
+export async function GET() {
   const supabase = await createClient()
+
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const page = req.nextUrl.searchParams.get('page') ?? '1'
-  const url  = `${BASE_URL}/pedido?page=${page}`
+  // Busca todos os pedidos do cache (query única, < 1s)
+  const { data, error } = await supabase
+    .from('pedidos_cache')
+    .select('id,codigo_pedido,status,fk_revendedor_id,supervisor_nome,data_acerto,data_baixa,data_criacao,valor_total,valor_pre_baixa,valor_total_antes_baixa,comprador_nome,synced_at')
+    .order('id')
 
-  try {
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${TOKEN}`, Accept: 'application/json' },
-      cache: 'no-store',
-    })
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    if (res.status === 429) return NextResponse.json({ error: 'rate_limit' }, { status: 429 })
-    if (!res.ok)            return NextResponse.json({ error: `Jueri ${res.status}` }, { status: 500 })
-
-    const json = await res.json()
-    return NextResponse.json({
-      data:          json.data          ?? [],
-      next_page_url: json.next_page_url ?? null,
-      last_page:     json.last_page     ?? 1,
-      current_page:  json.current_page  ?? Number(page),
-    })
-  } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 })
+  if (!data || data.length === 0) {
+    return NextResponse.json({ error: 'cache_empty' }, { status: 503 })
   }
+
+  // Reconstrói o shape esperado pelo front (Pedido type)
+  const pedidos = data.map(r => ({
+    id:                      r.id,
+    codigo_pedido:           r.codigo_pedido,
+    status:                  r.status,
+    fk_revendedor_id:        r.fk_revendedor_id,
+    supervisor_nome:         r.supervisor_nome,
+    data_acerto:             r.data_acerto,
+    data_baixa:              r.data_baixa,
+    data_criacao:            r.data_criacao,
+    valor_total:             r.valor_total,
+    valor_pre_baixa:         r.valor_pre_baixa,
+    valor_total_antes_baixa: r.valor_total_antes_baixa,
+    comprador:               r.comprador_nome ? { nome: r.comprador_nome } : null,
+  }))
+
+  // Pega o timestamp do último sync
+  const { data: logRow } = await supabase
+    .from('sync_log')
+    .select('synced_at')
+    .eq('tabela', 'pedidos_cache')
+    .order('synced_at', { ascending: false })
+    .limit(1)
+    .single()
+
+  return NextResponse.json({
+    pedidos,
+    synced_at: logRow?.synced_at ?? null,
+  })
 }

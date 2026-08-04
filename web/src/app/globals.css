@@ -23,7 +23,11 @@
 body {
   background-color: var(--au-bg);
   color: var(--au-text);
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: var(--font-jost), 'Jost', system-ui, sans-serif;
+}
+
+.font-display {
+  font-family: var(--font-cormorant), 'Cormorant Garamond', Georgia, serif;
 }
 
 * { box-sizing: border-box; }

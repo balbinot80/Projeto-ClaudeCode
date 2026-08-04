@@ -61,61 +61,38 @@ export default function RevendedorasPage() {
   const [mesSel, setMesSel] = useState(0)
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
-  const [loadingInfo, setLoadingInfo] = useState('Iniciando...')
+  const [syncedAt, setSyncedAt] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [tab, setTab] = useState<'visao' | 'acertos' | 'alertas'>('visao')
 
   useEffect(() => {
     let cancelled = false
 
-    async function fetchAll() {
-      const all: Pedido[] = []
-      let page = 1
-      let lastPage = 1
-
-      while (true) {
-        if (cancelled) return
-
-        setLoadingInfo(`Carregando pedidos… página ${page}${lastPage > 1 ? ` de ${lastPage}` : ''}`)
-
-        let res
-        try {
-          res = await fetch(`/api/pedidos?page=${page}`)
-        } catch (e) {
-          setError(`Erro de rede: ${e}`)
-          setLoading(false)
-          return
-        }
-
-        if (res.status === 429) {
-          setLoadingInfo('Aguardando limite da API (10s)…')
-          await new Promise(r => setTimeout(r, 10000))
-          continue
-        }
-
+    async function fetchPedidos() {
+      try {
+        const res = await fetch('/api/pedidos')
         if (!res.ok) {
           const body = await res.json().catch(() => ({}))
-          setError(`Erro ${res.status}: ${body?.error ?? res.statusText}`)
-          setLoading(false)
+          if (body?.error === 'cache_empty') {
+            setError('Dados ainda não sincronizados. Execute o sync manualmente ou aguarde o próximo ciclo automático.')
+          } else {
+            setError(`Erro ${res.status}: ${body?.error ?? res.statusText}`)
+          }
           return
         }
-
         const json = await res.json()
-        all.push(...(json.data ?? []))
-        lastPage = json.last_page ?? 1
-
-        if (!json.next_page_url) break
-        page++
-        await new Promise(r => setTimeout(r, 300)) // pausa entre páginas
-      }
-
-      if (!cancelled) {
-        setPedidos(all)
-        setLoading(false)
+        if (!cancelled) {
+          setPedidos(json.pedidos ?? [])
+          setSyncedAt(json.synced_at ?? null)
+        }
+      } catch (e) {
+        if (!cancelled) setError(`Erro de rede: ${e}`)
+      } finally {
+        if (!cancelled) setLoading(false)
       }
     }
 
-    fetchAll()
+    fetchPedidos()
     return () => { cancelled = true }
   }, [])
 
@@ -138,11 +115,18 @@ export default function RevendedorasPage() {
       <main className="flex-1 p-6 flex flex-col gap-5 max-w-7xl mx-auto w-full">
         {/* Header + seletor de mês */}
         <div className="flex items-center justify-between">
-          <h1
-            style={{ fontFamily: 'var(--font-cormorant, "Cormorant Garamond", Georgia, serif)', fontSize: 26, fontWeight: 600, color: 'var(--au-primary)', letterSpacing: '-0.01em' }}
-          >
-            Vendas por supervisora
-          </h1>
+          <div className="flex flex-col gap-0.5">
+            <h1
+              style={{ fontFamily: 'var(--font-cormorant, "Cormorant Garamond", Georgia, serif)', fontSize: 26, fontWeight: 600, color: 'var(--au-primary)', letterSpacing: '-0.01em' }}
+            >
+              Vendas por supervisora
+            </h1>
+            {syncedAt && (
+              <span style={{ fontSize: 11, color: 'var(--au-text-muted)', fontFamily: 'var(--font-jost, Jost, sans-serif)' }}>
+                Dados de {new Date(syncedAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </div>
           <select
             value={mesSel}
             onChange={e => setMesSel(Number(e.target.value))}
@@ -159,7 +143,7 @@ export default function RevendedorasPage() {
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin"
                  style={{ borderColor: 'var(--au-primary)', borderTopColor: 'transparent' }} />
-            <p className="text-sm" style={{ color: 'var(--au-text-muted)' }}>{loadingInfo}</p>
+            <p className="text-sm" style={{ color: 'var(--au-text-muted)' }}>Carregando…</p>
           </div>
         )}
 

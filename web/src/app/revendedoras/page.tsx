@@ -44,7 +44,12 @@ export default function RevendedorasPage() {
 
   useEffect(() => {
     fetch('/api/pedidos')
-      .then(r => r.json())
+      .then(async r => {
+        const data = await r.json()
+        if (!r.ok) throw new Error(`API ${r.status}: ${data?.error || r.statusText}`)
+        if (!Array.isArray(data)) throw new Error(`Resposta inesperada da API: ${JSON.stringify(data).slice(0, 120)}`)
+        return data
+      })
       .then(data => { setPedidos(data); setLoading(false) })
       .catch(e => { setError(String(e)); setLoading(false) })
   }, [])

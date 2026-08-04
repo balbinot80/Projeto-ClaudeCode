@@ -39,19 +39,62 @@ export default function RevendedorasPage() {
   const [mesSel, setMesSel] = useState(0)
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingInfo, setLoadingInfo] = useState('Iniciando...')
   const [error, setError] = useState('')
   const [tab, setTab] = useState<'visao' | 'acertos' | 'alertas'>('visao')
 
   useEffect(() => {
-    fetch('/api/pedidos')
-      .then(async r => {
-        const data = await r.json()
-        if (!r.ok) throw new Error(`API ${r.status}: ${data?.error || r.statusText}`)
-        if (!Array.isArray(data)) throw new Error(`Resposta inesperada da API: ${JSON.stringify(data).slice(0, 120)}`)
-        return data
-      })
-      .then(data => { setPedidos(data); setLoading(false) })
-      .catch(e => { setError(String(e)); setLoading(false) })
+    let cancelled = false
+
+    async function fetchAll() {
+      const all: Pedido[] = []
+      let page = 1
+      let lastPage = 1
+
+      while (true) {
+        if (cancelled) return
+
+        setLoadingInfo(`Carregando pedidos… página ${page}${lastPage > 1 ? ` de ${lastPage}` : ''}`)
+
+        let res
+        try {
+          res = await fetch(`/api/pedidos?page=${page}`)
+        } catch (e) {
+          setError(`Erro de rede: ${e}`)
+          setLoading(false)
+          return
+        }
+
+        if (res.status === 429) {
+          setLoadingInfo('Aguardando limite da API (10s)…')
+          await new Promise(r => setTimeout(r, 10000))
+          continue
+        }
+
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}))
+          setError(`Erro ${res.status}: ${body?.error ?? res.statusText}`)
+          setLoading(false)
+          return
+        }
+
+        const json = await res.json()
+        all.push(...(json.data ?? []))
+        lastPage = json.last_page ?? 1
+
+        if (!json.next_page_url) break
+        page++
+        await new Promise(r => setTimeout(r, 300)) // pausa entre páginas
+      }
+
+      if (!cancelled) {
+        setPedidos(all)
+        setLoading(false)
+      }
+    }
+
+    fetchAll()
+    return () => { cancelled = true }
   }, [])
 
   const { mes, ano, label: mesLabel } = meses[mesSel]
@@ -89,8 +132,10 @@ export default function RevendedorasPage() {
         </div>
 
         {loading && (
-          <div className="flex items-center justify-center py-20">
-            <p style={{ color: 'var(--au-text-muted)' }}>Carregando pedidos da API Jueri…</p>
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin"
+                 style={{ borderColor: 'var(--au-primary)', borderTopColor: 'transparent' }} />
+            <p className="text-sm" style={{ color: 'var(--au-text-muted)' }}>{loadingInfo}</p>
           </div>
         )}
 

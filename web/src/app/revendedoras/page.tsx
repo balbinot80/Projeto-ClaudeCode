@@ -9,26 +9,48 @@ function R(v: number) {
   return `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-function Metric({ label, value, sub, color }: { label: string; value: string | number; sub?: boolean; color?: string }) {
+function KpiPrimary({ label, value, color }: { label: string; value: string | number; color?: string }) {
   return (
-    <div className={`flex flex-col gap-0.5 ${sub ? 'pl-4' : ''}`}>
-      <span className="text-xs" style={{ color: 'var(--au-text-muted)' }}>{label}</span>
-      <span className={`font-semibold ${sub ? 'text-sm' : 'text-base'}`} style={{ color: color || 'var(--au-text)' }}>
+    <div className="flex flex-col gap-0.5">
+      <span style={{ fontFamily: 'var(--font-jost, Jost, sans-serif)', fontSize: 11, letterSpacing: '0.06em', color: 'var(--au-text-muted)', textTransform: 'uppercase' }}>
+        {label}
+      </span>
+      <span style={{ fontFamily: 'var(--font-cormorant, "Cormorant Garamond", Georgia, serif)', fontSize: 32, fontWeight: 600, lineHeight: 1.1, color: color || 'var(--au-text)' }}>
         {value}
       </span>
     </div>
   )
 }
 
-function MetricCard({ title, children }: { title: string; children: React.ReactNode }) {
+function KpiSub({ label, value, color }: { label: string; value: string | number; color?: string }) {
+  return (
+    <div className="flex items-center justify-between py-1.5" style={{ borderTop: '1px solid var(--au-border)' }}>
+      <span style={{ fontFamily: 'var(--font-jost, Jost, sans-serif)', fontSize: 12, color: 'var(--au-text-muted)' }}>
+        {label}
+      </span>
+      <span style={{ fontFamily: 'var(--font-cormorant, "Cormorant Garamond", Georgia, serif)', fontSize: 18, fontWeight: 600, color: color || 'var(--au-text)' }}>
+        {value}
+      </span>
+    </div>
+  )
+}
+
+function MetricCard({ title, accent, children }: { title: string; accent?: string; children: React.ReactNode }) {
   return (
     <div
-      className="rounded-xl p-4 flex flex-col gap-3"
-      style={{ background: 'var(--au-surface)', border: '1px solid var(--au-border)' }}
+      className="rounded-2xl p-5 flex flex-col gap-4"
+      style={{
+        background: 'var(--au-surface)',
+        border: '1px solid var(--au-border)',
+        boxShadow: '0 2px 16px rgba(171,103,116,.07)',
+      }}
     >
-      <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--au-primary)' }}>
-        {title}
-      </span>
+      <div className="flex items-center gap-2">
+        <div className="w-1 h-4 rounded-full" style={{ background: accent || 'var(--au-primary)' }} />
+        <span style={{ fontFamily: 'var(--font-jost, Jost, sans-serif)', fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: accent || 'var(--au-primary)' }}>
+          {title}
+        </span>
+      </div>
       {children}
     </div>
   )
@@ -116,14 +138,16 @@ export default function RevendedorasPage() {
       <main className="flex-1 p-6 flex flex-col gap-5 max-w-7xl mx-auto w-full">
         {/* Header + seletor de mês */}
         <div className="flex items-center justify-between">
-          <h1 className="text-lg font-semibold" style={{ color: 'var(--au-text)' }}>
+          <h1
+            style={{ fontFamily: 'var(--font-cormorant, "Cormorant Garamond", Georgia, serif)', fontSize: 26, fontWeight: 600, color: 'var(--au-primary)', letterSpacing: '-0.01em' }}
+          >
             Vendas por supervisora
           </h1>
           <select
             value={mesSel}
             onChange={e => setMesSel(Number(e.target.value))}
-            className="rounded-lg px-3 py-2 text-sm outline-none"
-            style={{ border: '1px solid var(--au-border)', background: 'var(--au-surface)', color: 'var(--au-text)' }}
+            className="rounded-xl px-4 py-2 text-sm outline-none"
+            style={{ border: '1px solid var(--au-border)', background: 'var(--au-surface)', color: 'var(--au-text)', fontFamily: 'var(--font-jost, Jost, sans-serif)', boxShadow: '0 1px 4px rgba(171,103,116,.08)' }}
           >
             {meses.map((m, i) => (
               <option key={i} value={i}>{m.label}</option>
@@ -149,30 +173,41 @@ export default function RevendedorasPage() {
           <>
             {/* Blocos de métricas */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <MetricCard title="Acertos — {mesLabel}">
-                <Metric label="📅 Previstos no mês"  value={metrics.nAcertosMes} />
-                <Metric label="⏰ Postergados"        value={metrics.nPostergados} sub />
-                <Metric label="✅ Já baixados"         value={metrics.nAcertosBaixados} />
-                <Metric label="⏳ Pendentes"           value={metrics.nAcertosPendentes} sub />
-                <Metric label="🟡 Abaixo do mínimo"   value={metrics.nAbaixoMin} sub color="var(--au-accent)" />
-                <Metric label="🔴 Zeradas"             value={metrics.nZeradas} sub color="#B91C1C" />
+              <MetricCard title={`Acertos — ${mesLabel}`}>
+                <KpiPrimary label="Previstos no mês" value={metrics.nAcertosMes} />
+                <div className="flex flex-col">
+                  <KpiSub label="Já baixados"       value={metrics.nAcertosBaixados} color="var(--au-primary)" />
+                  <KpiSub label="Pendentes"          value={metrics.nAcertosPendentes} />
+                  <KpiSub label="Postergados +30d"   value={metrics.nPostergados} color="var(--au-accent)" />
+                  <KpiSub label="Abaixo do mínimo"   value={metrics.nAbaixoMin} color="var(--au-accent)" />
+                  <KpiSub label="Zeradas"            value={metrics.nZeradas} color="#B91C1C" />
+                </div>
               </MetricCard>
 
-              <MetricCard title="Financeiro">
-                <Metric label="💰 Total vendido"      value={R(metrics.totalLiquido)} />
-                <Metric label="↳ Baixados"            value={R(metrics.totalBx)} sub />
-                <Metric label="↳ Pré-baixa"           value={R(metrics.totalPb)} sub />
-                <Metric label="🎯 Ticket médio previsto" value={R(metrics.ticketPrevisto)} />
-                <Metric label="✅ Ticket médio baixado"  value={R(metrics.ticketBaixado)} sub />
+              <MetricCard title="Financeiro" accent="var(--au-accent)">
+                <KpiPrimary label="Total vendido" value={R(metrics.totalLiquido)} color="var(--au-accent)" />
+                <div className="flex flex-col">
+                  <KpiSub label="Baixados"              value={R(metrics.totalBx)} />
+                  <KpiSub label="Pré-baixa"             value={R(metrics.totalPb)} />
+                  <KpiSub label="Ticket médio previsto"  value={R(metrics.ticketPrevisto)} color="var(--au-primary)" />
+                  <KpiSub label="Ticket médio baixado"   value={R(metrics.ticketBaixado)} />
+                </div>
               </MetricCard>
 
-              <MetricCard title="Alertas rápidos">
+              <MetricCard title="Alertas" accent="#B91C1C">
                 {metrics.rowsBxZero.length > 0
-                  ? <Metric label="🔴 Baixados c/ zero vendas" value={metrics.rowsBxZero.length} color="#B91C1C" />
-                  : <span className="text-xs" style={{ color: 'var(--au-text-muted)' }}>Nenhum alerta crítico</span>
+                  ? <KpiPrimary label="Baixados c/ zero vendas" value={metrics.rowsBxZero.length} color="#B91C1C" />
+                  : (
+                    <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                      <div style={{ fontSize: 28, opacity: .4 }}>✦</div>
+                      <p style={{ fontFamily: 'var(--font-cormorant, "Cormorant Garamond", serif)', fontSize: 16, color: 'var(--au-text-muted)', marginTop: 8 }}>
+                        Nenhum alerta crítico
+                      </p>
+                    </div>
+                  )
                 }
                 {metrics.nPostergados > 0 && (
-                  <Metric label="⏰ Postergados (+30 dias)" value={metrics.nPostergados} color="var(--au-accent)" />
+                  <KpiSub label="Postergados +30 dias" value={metrics.nPostergados} color="var(--au-accent)" />
                 )}
               </MetricCard>
             </div>

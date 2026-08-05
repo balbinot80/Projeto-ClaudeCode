@@ -50,7 +50,7 @@ export interface RevendedoraDetalhe {
   baixado: number
   preBaixa: number
   total: number
-  ticketMedio: number
+  ticketMedio: number  // total / nAcertos
   abaixoMin: boolean
   zerada: boolean
 }
@@ -61,7 +61,7 @@ export interface SupervisoraRow {
   baixado: number
   preBaixa: number
   total: number
-  ticketMedio: number
+  ticketMedio: number  // total / nAcertosSup
   abaixoMin: number
   zeradas: number
   detalhes: RevendedoraDetalhe[]
@@ -86,9 +86,9 @@ export interface RevendedorasMetrics {
 }
 
 export function calcularMes(pedidos: Pedido[], mes: number, ano: number): RevendedorasMetrics {
-  const rowsAcertosMes: AcertoRow[]    = []
+  const rowsAcertosMes: AcertoRow[]     = []
   const rowsPostergados: PostergadoRow[] = []
-  const rowsBxZero: BxZeroRow[]         = []
+  const rowsBxZero: BxZeroRow[]          = []
 
   const supMap: Record<string, {
     revIds: Set<number>; baixado: number; preBaixa: number;
@@ -96,12 +96,14 @@ export function calcularMes(pedidos: Pedido[], mes: number, ano: number): Revend
   }> = {}
 
   const revTotais: Record<number, number> = {}
-  const revData: Record<number, { nome: string; baixado: number; preBaixa: number; nAcertos: number }> = {}
+  const revData: Record<number, {
+    nome: string; baixado: number; preBaixa: number; nAcertos: number
+  }> = {}
 
   for (const p of pedidos) {
-    const rid  = p.fk_revendedor_id
-    const sup  = p.supervisor_nome || 'Sem supervisora'
-    const nome = p.comprador?.nome || `Rev ${rid}`
+    const rid    = p.fk_revendedor_id
+    const sup    = p.supervisor_nome || 'Sem supervisora'
+    const nome   = p.comprador?.nome || `Rev ${rid}`
     const status = p.status
 
     if (!supMap[sup]) {
@@ -112,28 +114,26 @@ export function calcularMes(pedidos: Pedido[], mes: number, ano: number): Revend
     const dBx = parseDate(p.data_baixa)
     const dCr = parseDate(p.data_criacao)
 
-    // Acertos do mês (usa UTC para evitar shift com UTC-3)
     if (status === 'Baixado' || status === 'Aberto') {
       const dMes = status === 'Baixado' ? dBx : dAc
       if (dMes && dMes.getUTCMonth() + 1 === mes && dMes.getUTCFullYear() === ano) {
         supMap[sup].revIds.add(rid)
 
-        // Rastreia dados por revendedora
         if (!revData[rid]) revData[rid] = { nome, baixado: 0, preBaixa: 0, nAcertos: 0 }
         revData[rid].nAcertos++
 
-        const val = status === 'Baixado' ? n(p.valor_total) : n(p.valor_pre_baixa)
+        const val       = status === 'Baixado' ? n(p.valor_total) : n(p.valor_pre_baixa)
         const diasCiclo = dCr ? Math.floor((dMes.getTime() - dCr.getTime()) / 86400000) : 0
 
         rowsAcertosMes.push({ nome, supervisora: sup, data: fmtDate(dMes), status, diasCiclo, valor: val })
 
         if (status === 'Baixado') {
-          supMap[sup].baixado += val
-          revTotais[rid] = (revTotais[rid] || 0) + val
+          supMap[sup].baixado  += val
+          revTotais[rid]        = (revTotais[rid] || 0) + val
           revData[rid].baixado += val
         } else {
-          supMap[sup].preBaixa += val
-          revTotais[rid] = (revTotais[rid] || 0) + val
+          supMap[sup].preBaixa  += val
+          revTotais[rid]         = (revTotais[rid] || 0) + val
           revData[rid].preBaixa += val
         }
 
@@ -148,7 +148,6 @@ export function calcularMes(pedidos: Pedido[], mes: number, ano: number): Revend
       }
     }
 
-    // Baixados com zero vendas
     if (status === 'Baixado' && dBx &&
         dBx.getUTCMonth() + 1 === mes && dBx.getUTCFullYear() === ano &&
         n(p.valor_total) === 0) {
@@ -161,7 +160,6 @@ export function calcularMes(pedidos: Pedido[], mes: number, ano: number): Revend
     }
   }
 
-  // Abaixo do mínimo e zeradas
   for (const [, s] of Object.entries(supMap)) {
     for (const rid of s.revIds) {
       const t = revTotais[rid] || 0
@@ -170,10 +168,10 @@ export function calcularMes(pedidos: Pedido[], mes: number, ano: number): Revend
     }
   }
 
-  const nAcertosBaixados = rowsAcertosMes.filter(r => r.status === 'Baixado').length
+  const nAcertosBaixados  = rowsAcertosMes.filter(r => r.status === 'Baixado').length
   const nAcertosPendentes = rowsAcertosMes.length - nAcertosBaixados
-  const totalBx = rowsAcertosMes.filter(r => r.status === 'Baixado').reduce((s, r) => s + r.valor, 0)
-  const totalPb = rowsAcertosMes.filter(r => r.status === 'Aberto').reduce((s, r) => s + r.valor, 0)
+  const totalBx    = rowsAcertosMes.filter(r => r.status === 'Baixado').reduce((s, r) => s + r.valor, 0)
+  const totalPb    = rowsAcertosMes.filter(r => r.status === 'Aberto').reduce((s, r) => s + r.valor, 0)
   const nAbaixoMin = Object.values(supMap).reduce((s, v) => s + v.abaixoMin.size, 0)
   const nZeradas   = Object.values(supMap).reduce((s, v) => s + v.zeradas.size, 0)
 
@@ -193,8 +191,8 @@ export function calcularMes(pedidos: Pedido[], mes: number, ano: number): Revend
       }
     }).sort((a, b) => b.total - a.total)
 
-    const total = s.baixado + s.preBaixa
-    const nAcertosSup = detalhes.reduce((acc, d) => acc + d.nAcertos, 0)
+    const total        = s.baixado + s.preBaixa
+    const nAcertosSup  = detalhes.reduce((acc, d) => acc + d.nAcertos, 0)
 
     return {
       supervisora: sup,

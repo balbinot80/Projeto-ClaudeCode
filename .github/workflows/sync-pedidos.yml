@@ -2,8 +2,10 @@ name: Sync Jueri → Supabase
 
 on:
   schedule:
-    # Roda a cada 2 horas (mesmo intervalo do cache do Streamlit)
-    - cron: '0 */2 * * *'
+    # Horário comercial (7h–20h, horário de Brasília = 10h–23h UTC): a cada hora
+    - cron: '0 10-23 * * *'
+    # Fora do horário comercial (20h–7h BRT = 0h, 3h, 6h, 9h UTC): a cada 3 horas
+    - cron: '0 0,3,6,9 * * *'
   workflow_dispatch:
     # Permite disparo manual pelo GitHub Actions UI
 

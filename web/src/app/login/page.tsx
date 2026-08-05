@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Image from 'next/image'
+
 import { createClient } from '@/lib/supabase/client'
 
 export default function LoginPage() {
@@ -41,15 +41,17 @@ export default function LoginPage() {
       >
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="relative w-44 h-20 mb-2">
-            <Image
-              src="/brand/logo-rosa.png"
-              alt="Aureum Joias"
-              fill
-              style={{ objectFit: 'contain' }}
-              priority
-            />
-          </div>
+          <div
+            aria-label="Aureum Joias"
+            style={{
+              height: 80,
+              width: 220,
+              backgroundImage: 'url("/brand/logo-rosa.png")',
+              backgroundSize: 'auto 280px',
+              backgroundPosition: 'center center',
+              backgroundRepeat: 'no-repeat',
+            }}
+          />
         </div>
 
         <form onSubmit={handleLogin} className="flex flex-col gap-4">

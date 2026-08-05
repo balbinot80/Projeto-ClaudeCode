@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import Image from 'next/image'
+
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { LogOut, Users } from 'lucide-react'
@@ -27,15 +27,18 @@ export default function Nav() {
     >
       {/* Logo */}
       <div className="flex items-center gap-8">
-        <div className="relative h-14 w-40 shrink-0" style={{ border: 'none', outline: 'none' }}>
-          <Image
-            src="/brand/logo-branco.png"
-            alt="Aureum Joias"
-            fill
-            style={{ objectFit: 'contain', objectPosition: 'left center', border: 'none', outline: 'none' }}
-            priority
-          />
-        </div>
+        <div
+          aria-label="Aureum Joias"
+          style={{
+            height: 52,
+            width: 200,
+            flexShrink: 0,
+            backgroundImage: 'url("/brand/logo-branco.png")',
+            backgroundSize: 'auto 190px',
+            backgroundPosition: 'center center',
+            backgroundRepeat: 'no-repeat',
+          }}
+        />
 
         {/* Links de navegação */}
         <nav className="flex items-center gap-1">

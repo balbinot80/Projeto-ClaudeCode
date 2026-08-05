@@ -19,20 +19,21 @@ if (!JUERI_BASE_URL || !JUERI_TOKEN || !SUPABASE_URL || !SUPABASE_KEY) {
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 async function fetchPage(page, retries = 3) {
-  const url = `${JUERI_BASE_URL}/pedido?page=${page}`
+  // per_page=100 reduz numero de chamadas (API padrao retorna 15/pagina)
+  const url = `${JUERI_BASE_URL}/pedido?page=${page}&per_page=100`
   for (let i = 0; i < retries; i++) {
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${JUERI_TOKEN}`, Accept: 'application/json' },
     })
     if (res.status === 429) {
-      console.log(`  Rate limit na página ${page}, aguardando 15s...`)
+      console.log(`  Rate limit na pagina ${page}, aguardando 15s...`)
       await new Promise(r => setTimeout(r, 15000))
       continue
     }
-    if (!res.ok) throw new Error(`Jueri retornou ${res.status} na página ${page}`)
+    if (!res.ok) throw new Error(`Jueri retornou ${res.status} na pagina ${page}`)
     return await res.json()
   }
-  throw new Error(`Falhou após ${retries} tentativas na página ${page}`)
+  throw new Error(`Falhou apos ${retries} tentativas na pagina ${page}`)
 }
 
 function mapRow(p) {
@@ -61,15 +62,25 @@ async function upsertBatch(rows) {
 }
 
 async function main() {
-  console.log('=== Sync Jueri → Supabase iniciado ===')
+  console.log('=== Sync Jueri -> Supabase iniciado ===')
   const startedAt = Date.now()
   let page = 1
   let lastPage = 1
+  let totalAPI = null
   let total = 0
 
   while (true) {
-    process.stdout.write(`Página ${page}/${lastPage > 1 ? lastPage : '?'}... `)
+    process.stdout.write(`Pagina ${page}/${lastPage > 1 ? lastPage : '?'}... `)
     const json = await fetchPage(page)
+
+    // Loga metadados na primeira pagina para diagnostico
+    if (page === 1) {
+      totalAPI = json.total ?? null
+      lastPage = json.last_page ?? 1
+      console.log(`\n  API: total=${totalAPI ?? '?'} registros, ${lastPage} paginas (per_page=100)`)
+    } else {
+      lastPage = json.last_page ?? lastPage
+    }
 
     const rows = (json.data ?? []).map(mapRow)
     if (rows.length > 0) {
@@ -77,19 +88,23 @@ async function main() {
       total += rows.length
     }
 
-    lastPage = json.last_page ?? 1
     console.log(`${rows.length} registros`)
 
     if (!json.next_page_url) break
     page++
-    await new Promise(r => setTimeout(r, 200)) // pausa gentil entre páginas
+    await new Promise(r => setTimeout(r, 200)) // pausa gentil entre paginas
   }
 
-  // Registra no log de sincronização
+  if (totalAPI !== null && total < totalAPI) {
+    console.warn(`AVISO: API reporta ${totalAPI} registros mas so recebemos ${total}`)
+    console.warn('       O Jueri pode estar limitando o retorno — verifique a API.')
+  }
+
+  // Registra no log de sincronizacao
   await supabase.from('sync_log').insert({ tabela: 'pedidos_cache', total_rows: total })
 
   const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1)
-  console.log(`\n=== Concluído: ${total} pedidos em ${elapsed}s ===`)
+  console.log(`\n=== Concluido: ${total} pedidos em ${elapsed}s ===`)
 }
 
 main().catch(err => {

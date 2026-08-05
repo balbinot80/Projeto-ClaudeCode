@@ -27,7 +27,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
   if (user && request.nextUrl.pathname === '/login') {
-    return NextResponse.redirect(new URL('/kanban', request.url))
+    return NextResponse.redirect(new URL('/revendedoras', request.url))
   }
 
   return supabaseResponse

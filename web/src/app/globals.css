@@ -36,7 +36,7 @@ body {
 }
 
 .font-display {
-  font-family: var(--font-cormorant), 'Cormorant Garamond', Georgia, serif;
+  font-family: var(--font-display), 'Playfair Display', Georgia, serif;
 }
 
 * { box-sizing: border-box; }

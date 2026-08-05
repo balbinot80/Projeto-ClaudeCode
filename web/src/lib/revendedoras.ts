@@ -99,10 +99,10 @@ export function calcularMes(pedidos: Pedido[], mes: number, ano: number): Revend
     const dBx = parseDate(p.data_baixa)
     const dCr = parseDate(p.data_criacao)
 
-    // Acertos do mês (regra central de datas)
+    // Acertos do mês (regra central de datas — usa UTC para evitar shift com UTC-3)
     if (status === 'Baixado' || status === 'Aberto') {
       const dMes = status === 'Baixado' ? dBx : dAc
-      if (dMes && dMes.getMonth() + 1 === mes && dMes.getFullYear() === ano) {
+      if (dMes && dMes.getUTCMonth() + 1 === mes && dMes.getUTCFullYear() === ano) {
         supMap[sup].revIds.add(rid) // só conta revendedoras com acerto no mês
         const val = status === 'Baixado' ? n(p.valor_total) : n(p.valor_pre_baixa)
         const diasCiclo = dCr ? Math.floor((dMes.getTime() - dCr.getTime()) / 86400000) : 0
@@ -134,7 +134,7 @@ export function calcularMes(pedidos: Pedido[], mes: number, ano: number): Revend
 
     // Baixados com zero vendas
     if (status === 'Baixado' && dBx &&
-        dBx.getMonth() + 1 === mes && dBx.getFullYear() === ano &&
+        dBx.getUTCMonth() + 1 === mes && dBx.getUTCFullYear() === ano &&
         n(p.valor_total) === 0) {
       rowsBxZero.push({
         nome, supervisora: sup,

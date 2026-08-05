@@ -1,12 +1,12 @@
 import type { Metadata } from 'next'
-import { Cormorant_Garamond, Jost } from 'next/font/google'
+import { Playfair_Display, Jost } from 'next/font/google'
 import './globals.css'
 
-const cormorant = Cormorant_Garamond({
+const playfair = Playfair_Display({
   subsets: ['latin'],
-  weight: ['400', '600'],
-  style: ['normal', 'italic'],
-  variable: '--font-cormorant',
+  weight: ['400', '600', '700'],
+  style: ['normal'],
+  variable: '--font-display',
 })
 
 const jost = Jost({
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR" className="h-full">
-      <body className={`${cormorant.variable} ${jost.variable} h-full`}>{children}</body>
+      <body className={`${playfair.variable} ${jost.variable} h-full`}>{children}</body>
     </html>
   )
 }

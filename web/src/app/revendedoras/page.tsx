@@ -56,7 +56,7 @@ function KpiPrimary({ label, value, color, animate = true }: {
       <span style={{ fontFamily: 'var(--font-jost, Jost, sans-serif)', fontSize: 10, letterSpacing: '0.08em', color: 'var(--au-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
         {label}
       </span>
-      <span style={{ fontFamily: 'var(--font-cormorant, "Cormorant Garamond", Georgia, serif)', fontSize: 36, fontWeight: 600, lineHeight: 1, color: color || 'var(--au-text)' }}>
+      <span style={{ fontFamily: 'var(--font-display, "Playfair Display", Georgia, serif)', fontSize: 36, fontWeight: 600, lineHeight: 1, color: color || 'var(--au-text)' }}>
         {animate && isNum
           ? <AnimatedNumber value={value as number} />
           : animate && isR
@@ -74,7 +74,7 @@ function KpiSub({ label, value, color }: { label: string; value: string | number
       <span style={{ fontFamily: 'var(--font-jost, Jost, sans-serif)', fontSize: 12, color: 'var(--au-text-muted)' }}>
         {label}
       </span>
-      <span style={{ fontFamily: 'var(--font-cormorant, "Cormorant Garamond", Georgia, serif)', fontSize: 19, fontWeight: 600, color: color || 'var(--au-text)' }}>
+      <span style={{ fontFamily: 'var(--font-display, "Playfair Display", Georgia, serif)', fontSize: 19, fontWeight: 600, color: color || 'var(--au-text)' }}>
         {typeof value === 'number' ? <AnimatedNumber value={value} /> : value}
       </span>
     </div>

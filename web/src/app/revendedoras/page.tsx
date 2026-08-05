@@ -44,38 +44,37 @@ function AnimatedNumber({ value, prefix = '', suffix = '', decimals = 0 }: {
   return <>{prefix}{formatted}{suffix}</>
 }
 
-/* ── KPI Primary ──────────────────────────────────────────────────────── */
-function KpiPrimary({ label, value, color, animate = true }: {
-  label: string; value: number | string; color?: string; animate?: boolean
+/* ── KPI Row — label esquerda, valor direita, sempre alinhado ─────────── */
+function KpiRow({ label, value, color, primary = false, animate = false }: {
+  label: string; value: number | string; color?: string; primary?: boolean; animate?: boolean
 }) {
-  const isNum = typeof value === 'number'
-  const isR   = typeof value === 'string' && value.startsWith('R$')
-
   return (
-    <div className="flex flex-col gap-1">
-      <span style={{ fontFamily: 'var(--font-jost, Jost, sans-serif)', fontSize: 10, letterSpacing: '0.08em', color: 'var(--au-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+    <div
+      className="flex items-center justify-between"
+      style={primary
+        ? { paddingBottom: 12, borderBottom: '1px solid var(--au-border)', marginBottom: 2 }
+        : { paddingTop: 10, paddingBottom: 10, borderTop: '1px solid var(--au-border)' }
+      }
+    >
+      <span style={{
+        fontFamily: 'var(--font-jost, Jost, sans-serif)',
+        fontSize: primary ? 11 : 12,
+        color: 'var(--au-text-muted)',
+        letterSpacing: primary ? '0.07em' : 0,
+        textTransform: primary ? 'uppercase' as const : 'none' as const,
+        fontWeight: primary ? 600 : 400,
+      }}>
         {label}
       </span>
-      <span style={{ fontFamily: 'var(--font-display, "Playfair Display", Georgia, serif)', fontSize: 36, fontWeight: 600, lineHeight: 1, color: color || 'var(--au-text)' }}>
-        {animate && isNum
-          ? <AnimatedNumber value={value as number} />
-          : animate && isR
-          ? <>R$ <AnimatedNumber value={parseFloat(String(value).replace(/[^0-9,]/g, '').replace(',', '.'))} decimals={2} /></>
+      <span style={{
+        fontFamily: 'var(--font-display, "Playfair Display", Georgia, serif)',
+        fontSize: primary ? 22 : 15,
+        fontWeight: 600,
+        color: color || 'var(--au-text)',
+      }}>
+        {animate && typeof value === 'number'
+          ? <AnimatedNumber value={value} />
           : value}
-      </span>
-    </div>
-  )
-}
-
-/* ── KPI Sub ──────────────────────────────────────────────────────────── */
-function KpiSub({ label, value, color }: { label: string; value: string | number; color?: string }) {
-  return (
-    <div className="flex items-center justify-between py-2" style={{ borderTop: '1px solid var(--au-border)' }}>
-      <span style={{ fontFamily: 'var(--font-jost, Jost, sans-serif)', fontSize: 12, color: 'var(--au-text-muted)' }}>
-        {label}
-      </span>
-      <span style={{ fontFamily: 'var(--font-display, "Playfair Display", Georgia, serif)', fontSize: 19, fontWeight: 600, color: color || 'var(--au-text)' }}>
-        {typeof value === 'number' ? <AnimatedNumber value={value} /> : value}
       </span>
     </div>
   )
@@ -195,7 +194,7 @@ function AuTable({ headers, children, empty }: {
       {empty && (
         <div className="py-10 flex flex-col items-center gap-2" style={{ color: 'var(--au-text-muted)' }}>
           <span style={{ fontSize: 22, opacity: .35 }}>✦</span>
-          <p style={{ fontFamily: 'var(--font-cormorant, "Cormorant Garamond", serif)', fontSize: 15 }}>{empty}</p>
+          <p style={{ fontFamily: 'var(--font-jost, Jost, sans-serif)', fontSize: 14, color: 'var(--au-text-muted)' }}>{empty}</p>
         </div>
       )}
     </div>
@@ -322,35 +321,35 @@ export default function RevendedorasPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {[
                 <MetricCard key="acertos" title={`Acertos — ${mesLabel}`} icon={BarChart2}>
-                  <KpiPrimary label="Previstos no mês" value={metrics.nAcertosMes} color="var(--au-primary)" />
                   <div className="flex flex-col">
-                    <KpiSub label="Já baixados"      value={metrics.nAcertosBaixados}  color="var(--au-primary)" />
-                    <KpiSub label="Pendentes"         value={metrics.nAcertosPendentes} />
-                    <KpiSub label="Postergados +30d"  value={metrics.nPostergados}      color="#C4985A" />
-                    <KpiSub label="Abaixo do mínimo"  value={metrics.nAbaixoMin}        color="#C4985A" />
-                    <KpiSub label="Zeradas"           value={metrics.nZeradas}          color="#B91C1C" />
+                    <KpiRow label="Previstos no mês"  value={metrics.nAcertosMes}       color="var(--au-primary)" primary animate />
+                    <KpiRow label="Já baixados"        value={metrics.nAcertosBaixados}  color="var(--au-primary)" animate />
+                    <KpiRow label="Pendentes"          value={metrics.nAcertosPendentes} animate />
+                    <KpiRow label="Postergados +30d"   value={metrics.nPostergados}      color="#C4985A" animate />
+                    <KpiRow label="Abaixo do mínimo"   value={metrics.nAbaixoMin}        color="#C4985A" animate />
+                    <KpiRow label="Zeradas"            value={metrics.nZeradas}          color="#B91C1C" animate />
                   </div>
                 </MetricCard>,
 
                 <MetricCard key="financeiro" title="Financeiro" accent="#C4985A" icon={TrendingUp}>
-                  <KpiPrimary label="Total vendido" value={R(metrics.totalLiquido)} color="#C4985A" animate={false} />
                   <div className="flex flex-col">
-                    <KpiSub label="Baixados"               value={R(metrics.totalBx)}       color="var(--au-text)" />
-                    <KpiSub label="Pré-baixa"              value={R(metrics.totalPb)}        />
-                    <KpiSub label="Ticket médio previsto"  value={R(metrics.ticketPrevisto)} color="var(--au-primary)" />
-                    <KpiSub label="Ticket médio baixado"   value={R(metrics.ticketBaixado)}  />
+                    <KpiRow label="Total vendido"         value={R(metrics.totalLiquido)}  color="#C4985A" primary />
+                    <KpiRow label="Baixados"              value={R(metrics.totalBx)} />
+                    <KpiRow label="Pré-baixa"             value={R(metrics.totalPb)} />
+                    <KpiRow label="Ticket médio previsto" value={R(metrics.ticketPrevisto)} color="var(--au-primary)" />
+                    <KpiRow label="Ticket médio baixado"  value={R(metrics.ticketBaixado)} />
                   </div>
                 </MetricCard>,
 
                 <MetricCard key="alertas" title="Alertas" accent="#B91C1C" icon={AlertTriangle}>
-                  {metrics.rowsBxZero.length > 0
-                    ? <>
-                        <KpiPrimary label="Baixados c/ zero vendas" value={metrics.rowsBxZero.length} color="#B91C1C" />
-                        {metrics.nPostergados > 0 && <KpiSub label="Postergados +30d" value={metrics.nPostergados} color="#C4985A" />}
-                      </>
+                  {metrics.rowsBxZero.length > 0 || metrics.nPostergados > 0
+                    ? <div className="flex flex-col">
+                        <KpiRow label="Baixados c/ zero vendas" value={metrics.rowsBxZero.length} color="#B91C1C" primary animate />
+                        {metrics.nPostergados > 0 && <KpiRow label="Postergados +30d" value={metrics.nPostergados} color="#C4985A" animate />}
+                      </div>
                     : <div className="flex-1 flex flex-col items-center justify-center py-4 gap-2">
                         <span style={{ fontSize: 24, opacity: .3 }}>✦</span>
-                        <p className="font-display" style={{ fontSize: 15, color: 'var(--au-text-muted)', textAlign: 'center' }}>
+                        <p style={{ fontSize: 15, color: 'var(--au-text-muted)', textAlign: 'center', fontFamily: 'var(--font-jost, Jost, sans-serif)' }}>
                           Nenhum alerta crítico
                         </p>
                       </div>

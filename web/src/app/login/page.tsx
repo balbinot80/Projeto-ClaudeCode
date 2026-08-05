@@ -2,16 +2,17 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 
 export default function LoginPage() {
   const router = useRouter()
-  const [email, setEmail] = useState('')
+  const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [error,    setError]    = useState('')
+  const [loading,  setLoading]  = useState(false)
 
-  async function handleLogin(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setLoading(true)
     setError('')
@@ -25,44 +26,36 @@ export default function LoginPage() {
       return
     }
 
-    router.push('/kanban')
+    router.push('/revendedoras')
     router.refresh()
   }
 
   return (
     <div
       className="min-h-screen flex items-center justify-center"
-      style={{ background: 'var(--au-bg)' }}
+      style={{ background: 'var(--au-primary)' }}
     >
       <div
-        className="w-full max-w-sm rounded-2xl shadow-lg p-8"
-        style={{ background: 'var(--au-surface)', border: '1px solid var(--au-border)' }}
+        className="w-full max-w-sm rounded-2xl shadow-2xl p-8"
+        style={{ background: 'var(--au-surface)', border: '1px solid rgba(255,255,255,0.15)' }}
       >
-        {/* Logo / marca */}
-        <div className="text-center mb-8">
-          <div
-            className="inline-flex items-center justify-center w-14 h-14 rounded-full mb-4"
-            style={{ background: 'var(--au-primary-pale)' }}
-          >
-            <span style={{ fontSize: 28 }}>💎</span>
+        {/* Logo */}
+        <div className="flex flex-col items-center mb-8">
+          <div className="relative w-44 h-20 mb-2">
+            <Image
+              src="/brand/logo-rosa.png"
+              alt="Aureum Joias"
+              fill
+              style={{ objectFit: 'contain' }}
+              priority
+            />
           </div>
-          <h1
-            className="text-2xl font-semibold tracking-tight"
-            style={{ color: 'var(--au-primary)', fontFamily: 'Georgia, serif' }}
-          >
-            Aureum
-          </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--au-text-muted)' }}>
-            Gestão de projetos
-          </p>
         </div>
 
         <form onSubmit={handleLogin} className="flex flex-col gap-4">
-          <div>
-            <label
-              className="block text-sm font-medium mb-1"
-              style={{ color: 'var(--au-text)' }}
-            >
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold uppercase tracking-widest"
+                   style={{ color: 'var(--au-text-muted)', fontFamily: 'var(--font-jost, Jost, sans-serif)' }}>
               E-mail
             </label>
             <input
@@ -70,21 +63,20 @@ export default function LoginPage() {
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
-              className="w-full rounded-lg px-3 py-2 text-sm outline-none transition"
+              className="w-full rounded-xl px-4 py-2.5 text-sm outline-none transition-all"
               style={{
-                border: '1px solid var(--au-border)',
+                border:     '1px solid var(--au-border)',
                 background: 'var(--au-bg)',
-                color: 'var(--au-text)',
+                color:      'var(--au-text)',
+                fontFamily: 'var(--font-jost, Jost, sans-serif)',
               }}
               placeholder="seu@email.com"
             />
           </div>
 
-          <div>
-            <label
-              className="block text-sm font-medium mb-1"
-              style={{ color: 'var(--au-text)' }}
-            >
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold uppercase tracking-widest"
+                   style={{ color: 'var(--au-text-muted)', fontFamily: 'var(--font-jost, Jost, sans-serif)' }}>
               Senha
             </label>
             <input
@@ -92,18 +84,20 @@ export default function LoginPage() {
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
-              className="w-full rounded-lg px-3 py-2 text-sm outline-none transition"
+              className="w-full rounded-xl px-4 py-2.5 text-sm outline-none transition-all"
               style={{
-                border: '1px solid var(--au-border)',
+                border:     '1px solid var(--au-border)',
                 background: 'var(--au-bg)',
-                color: 'var(--au-text)',
+                color:      'var(--au-text)',
+                fontFamily: 'var(--font-jost, Jost, sans-serif)',
               }}
               placeholder="••••••••"
             />
           </div>
 
           {error && (
-            <p className="text-sm text-center" style={{ color: '#B91C1C' }}>
+            <p className="text-sm text-center rounded-lg py-2"
+               style={{ color: '#B91C1C', background: '#FEF2F2', fontFamily: 'var(--font-jost, Jost, sans-serif)' }}>
               {error}
             </p>
           )}
@@ -111,14 +105,16 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg py-2.5 text-sm font-semibold text-white transition-opacity"
+            className="w-full rounded-xl py-3 text-sm font-semibold text-white transition-opacity mt-1"
             style={{
               background: 'var(--au-primary)',
-              opacity: loading ? 0.7 : 1,
-              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity:    loading ? 0.7 : 1,
+              cursor:     loading ? 'not-allowed' : 'pointer',
+              fontFamily: 'var(--font-jost, Jost, sans-serif)',
+              letterSpacing: '0.06em',
             }}
           >
-            {loading ? 'Entrando...' : 'Entrar'}
+            {loading ? 'Entrando…' : 'Entrar'}
           </button>
         </form>
       </div>

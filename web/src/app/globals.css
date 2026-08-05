@@ -1,15 +1,23 @@
 @import "tailwindcss";
 
-/* ── Tema Aureum — altere aqui para mudar todas as cores do sistema ── */
+/* ── Tema Aureum — altere as variáveis aqui para mudar todas as cores ── */
 :root {
-  --au-primary:       #AB6774;
+  /* Paleta oficial da marca */
+  --au-primary:       #AB6774;   /* Rosa Aureum */
   --au-primary-light: #C89199;
   --au-primary-pale:  #F5EBEC;
-  --au-accent:        #C4985A;
-  --au-accent-light:  #E8D5A3;
-  --au-bg:            #FAF7F4;
-  --au-surface:       #FFFFFF;
-  --au-border:        rgba(171, 103, 116, 0.18);
+  --au-primary-deep:  #8C505C;
+
+  /* Complementares funcionais (não são da marca oficial) */
+  --au-accent:        #C4985A;   /* Gold — usado em KPIs financeiros e destaques */
+  --au-accent-light:  #EAD9B8;
+
+  /* Superfícies */
+  --au-bg:            #FAF7F4;   /* Creme — fundo de página */
+  --au-surface:       #FFFFFF;   /* Branco — cards e tabelas */
+  --au-border:        rgba(171, 103, 116, 0.15);
+
+  /* Tipografia */
   --au-text:          #2A1A1F;
   --au-text-muted:    #7A6068;
 
@@ -24,6 +32,7 @@ body {
   background-color: var(--au-bg);
   color: var(--au-text);
   font-family: var(--font-jost), 'Jost', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 .font-display {
@@ -31,3 +40,20 @@ body {
 }
 
 * { box-sizing: border-box; }
+
+/* ── Skeleton shimmer ─────────────────────────────────────────────── */
+.au-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--au-primary-pale) 25%,
+    #EFE5E7 50%,
+    var(--au-primary-pale) 75%
+  );
+  background-size: 200% 100%;
+  animation: au-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes au-shimmer {
+  0%   { background-position:  200% 0; }
+  100% { background-position: -200% 0; }
+}

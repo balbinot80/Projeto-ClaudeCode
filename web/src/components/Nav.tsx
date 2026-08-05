@@ -4,11 +4,10 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { LogOut, Users, LayoutGrid } from 'lucide-react'
+import { LogOut, Users } from 'lucide-react'
 
 const links = [
   { href: '/revendedoras', label: 'Revendedoras', icon: Users },
-  { href: '/kanban',       label: 'Projetos',     icon: LayoutGrid },
 ]
 
 export default function Nav() {

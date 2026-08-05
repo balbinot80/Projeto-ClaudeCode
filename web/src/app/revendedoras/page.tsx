@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChevronDown, TrendingUp, AlertTriangle, BarChart2, RefreshCw } from 'lucide-react'
+import { ChevronDown, ChevronRight, TrendingUp, AlertTriangle, BarChart2, RefreshCw } from 'lucide-react'
 import Nav from '@/components/Nav'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { Badge, statusVariant } from '@/components/ui/badge'
@@ -235,6 +235,7 @@ export default function RevendedorasPage() {
   const [syncedAt, setSyncedAt] = useState<string | null>(null)
   const [error,    setError]    = useState('')
   const [tab,      setTab]      = useState<'visao' | 'acertos' | 'alertas'>('visao')
+  const [expandedSup, setExpandedSup] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -379,28 +380,104 @@ export default function RevendedorasPage() {
                 {/* ── Visão geral ── */}
                 {tab === 'visao' && (
                   <AuTable
-                    headers={['Supervisora', 'Revendedoras', 'Baixado', 'Pré-baixa', 'Total', 'Abaixo mín.', 'Zeradas']}
+                    headers={['Supervisora', 'Revendedoras', 'Baixado', 'Pré-baixa', 'Total', 'Ticket Médio', 'Abaixo mín.', 'Zeradas']}
                     empty={metrics.porSupervisora.length === 0 ? `Nenhum acerto em ${mesLabel}` : undefined}
                   >
-                    {metrics.porSupervisora.map((s, i) => (
-                      <AuTr key={s.supervisora} i={i}>
-                        <Td><span style={{ fontWeight: 500 }}>{s.supervisora}</span></Td>
-                        <Td muted center>{s.revendedoras}</Td>
-                        <Td>{R(s.baixado)}</Td>
-                        <Td muted>{R(s.preBaixa)}</Td>
-                        <Td><span style={{ fontWeight: 600 }}>{R(s.total)}</span></Td>
-                        <Td center>
-                          {s.abaixoMin > 0
-                            ? <Badge label={String(s.abaixoMin)} variant="alerta" />
-                            : <span style={{ color: 'var(--au-text-muted)' }}>—</span>}
-                        </Td>
-                        <Td center>
-                          {s.zeradas > 0
-                            ? <Badge label={String(s.zeradas)} variant="alerta" />
-                            : <span style={{ color: 'var(--au-text-muted)' }}>—</span>}
-                        </Td>
-                      </AuTr>
-                    ))}
+                    {metrics.porSupervisora.map((s, i) => {
+                      const isOpen = expandedSup === s.supervisora
+                      return (
+                        <tr key={s.supervisora}>
+                          {/* Linha da supervisora — clicável */}
+                          <td colSpan={8} style={{ padding: 0 }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                              <tbody>
+                                <tr
+                                  className="transition-colors duration-100 cursor-pointer select-none"
+                                  style={{ background: isOpen ? 'var(--au-primary-pale)' : i % 2 === 0 ? 'var(--au-surface)' : 'var(--au-bg)' }}
+                                  onClick={() => setExpandedSup(isOpen ? null : s.supervisora)}
+                                  onMouseEnter={e => { if (!isOpen) (e.currentTarget as HTMLElement).style.background = 'var(--au-primary-pale)' }}
+                                  onMouseLeave={e => { if (!isOpen) (e.currentTarget as HTMLElement).style.background = i % 2 === 0 ? 'var(--au-surface)' : 'var(--au-bg)' }}
+                                >
+                                  <td className="px-4 py-2.5" style={{ width: '22%' }}>
+                                    <div className="flex items-center gap-2">
+                                      <ChevronRight size={14} strokeWidth={2}
+                                        style={{ color: 'var(--au-primary)', flexShrink: 0, transition: 'transform 0.2s', transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)' }} />
+                                      <span style={{ fontWeight: 500 }}>{s.supervisora}</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-2.5 text-center" style={{ width: '10%', color: 'var(--au-text-muted)', fontSize: 13 }}>{s.revendedoras}</td>
+                                  <td className="px-4 py-2.5" style={{ width: '14%', fontSize: 13 }}>{R(s.baixado)}</td>
+                                  <td className="px-4 py-2.5" style={{ width: '14%', color: 'var(--au-text-muted)', fontSize: 13 }}>{R(s.preBaixa)}</td>
+                                  <td className="px-4 py-2.5" style={{ width: '14%', fontWeight: 600, fontSize: 13 }}>{R(s.total)}</td>
+                                  <td className="px-4 py-2.5" style={{ width: '12%', color: 'var(--au-primary)', fontSize: 13 }}>{R(s.ticketMedio)}</td>
+                                  <td className="px-4 py-2.5 text-center" style={{ width: '7%' }}>
+                                    {s.abaixoMin > 0 ? <Badge label={String(s.abaixoMin)} variant="alerta" /> : <span style={{ color: 'var(--au-text-muted)' }}>—</span>}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-center" style={{ width: '7%' }}>
+                                    {s.zeradas > 0 ? <Badge label={String(s.zeradas)} variant="alerta" /> : <span style={{ color: 'var(--au-text-muted)' }}>—</span>}
+                                  </td>
+                                </tr>
+
+                                {/* Linha expandida com lista de revendedoras */}
+                                <tr>
+                                  <td colSpan={8} style={{ padding: 0, border: 'none' }}>
+                                    <div style={{
+                                      maxHeight: isOpen ? 2000 : 0,
+                                      overflow: 'hidden',
+                                      transition: 'max-height 0.3s ease-out, opacity 0.2s',
+                                      opacity: isOpen ? 1 : 0,
+                                    }}>
+                                      <div style={{ background: 'var(--au-bg)', padding: '10px 16px 14px 48px', borderTop: '1px solid var(--au-border)' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                                          <thead>
+                                            <tr>
+                                              {['Revendedora', 'Acertos', 'Baixado', 'Pré-baixa', 'Total', 'Ticket Médio'].map(h => (
+                                                <th key={h} style={{
+                                                  textAlign: h === 'Revendedora' ? 'left' : 'right',
+                                                  paddingBottom: 8, paddingLeft: 8, paddingRight: 8,
+                                                  color: 'var(--au-text-muted)', fontWeight: 600,
+                                                  letterSpacing: '0.06em', textTransform: 'uppercase',
+                                                  fontSize: 10, fontFamily: 'var(--font-jost, Jost, sans-serif)',
+                                                  borderBottom: '1px solid var(--au-border)',
+                                                }}>
+                                                  {h}
+                                                </th>
+                                              ))}
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {s.detalhes.map((rev, j) => (
+                                              <tr key={j} style={{ borderBottom: j < s.detalhes.length - 1 ? '1px solid var(--au-border)' : 'none' }}>
+                                                <td style={{ padding: '7px 8px', textAlign: 'left' }}>
+                                                  <div className="flex items-center gap-2">
+                                                    <div style={{
+                                                      width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+                                                      background: rev.zerada ? '#B91C1C' : rev.abaixoMin ? '#C4985A' : '#4A7C59',
+                                                    }} />
+                                                    <span style={{ fontWeight: rev.total > 0 ? 500 : 400, color: rev.zerada ? '#B91C1C' : 'var(--au-text)' }}>
+                                                      {rev.nome}
+                                                    </span>
+                                                  </div>
+                                                </td>
+                                                <td style={{ padding: '7px 8px', textAlign: 'right', color: 'var(--au-text-muted)' }}>{rev.nAcertos}</td>
+                                                <td style={{ padding: '7px 8px', textAlign: 'right' }}>{R(rev.baixado)}</td>
+                                                <td style={{ padding: '7px 8px', textAlign: 'right', color: 'var(--au-text-muted)' }}>{R(rev.preBaixa)}</td>
+                                                <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 600 }}>{R(rev.total)}</td>
+                                                <td style={{ padding: '7px 8px', textAlign: 'right', color: 'var(--au-primary)' }}>{R(rev.ticketMedio)}</td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </AuTable>
                 )}
 

@@ -94,7 +94,6 @@ export function calcularMes(pedidos: Pedido[], mes: number, ano: number): Revend
     if (!supMap[sup]) {
       supMap[sup] = { revIds: new Set(), baixado: 0, preBaixa: 0, abaixoMin: new Set(), zeradas: new Set() }
     }
-    supMap[sup].revIds.add(rid)
 
     const dAc = parseDate(p.data_acerto)
     const dBx = parseDate(p.data_baixa)
@@ -104,6 +103,7 @@ export function calcularMes(pedidos: Pedido[], mes: number, ano: number): Revend
     if (status === 'Baixado' || status === 'Aberto') {
       const dMes = status === 'Baixado' ? dBx : dAc
       if (dMes && dMes.getMonth() + 1 === mes && dMes.getFullYear() === ano) {
+        supMap[sup].revIds.add(rid) // só conta revendedoras com acerto no mês
         const val = status === 'Baixado' ? n(p.valor_total) : n(p.valor_pre_baixa)
         const diasCiclo = dCr ? Math.floor((dMes.getTime() - dCr.getTime()) / 86400000) : 0
         rowsAcertosMes.push({

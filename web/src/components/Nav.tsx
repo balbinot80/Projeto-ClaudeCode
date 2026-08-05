@@ -27,12 +27,12 @@ export default function Nav() {
     >
       {/* Logo */}
       <div className="flex items-center gap-8">
-        <div className="relative h-10 w-32 shrink-0">
+        <div className="relative h-14 w-40 shrink-0" style={{ border: 'none', outline: 'none' }}>
           <Image
             src="/brand/logo-branco.png"
             alt="Aureum Joias"
             fill
-            style={{ objectFit: 'contain', objectPosition: 'left center' }}
+            style={{ objectFit: 'contain', objectPosition: 'left center', border: 'none', outline: 'none' }}
             priority
           />
         </div>

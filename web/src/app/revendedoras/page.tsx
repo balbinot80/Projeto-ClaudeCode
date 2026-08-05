@@ -229,7 +229,7 @@ function Td({ children, muted, center }: { children: React.ReactNode; muted?: bo
 /* ══════════════════════════════════════════════════════════════════════ */
 export default function RevendedorasPage() {
   const meses  = useMemo(() => mesesDisponiveis(), [])
-  const [mesSel, setMesSel] = useState(0)
+  const [mesSel, setMesSel] = useState(1) // índice 1 = mês atual (índice 0 é o futuro)
   const [pedidos,  setPedidos]  = useState<Pedido[]>([])
   const [loading,  setLoading]  = useState(true)
   const [syncedAt, setSyncedAt] = useState<string | null>(null)

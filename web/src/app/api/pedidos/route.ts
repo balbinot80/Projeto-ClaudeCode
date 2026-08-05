@@ -1,26 +1,38 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
+const COLS = 'id,codigo_pedido,status,fk_revendedor_id,supervisor_nome,data_acerto,data_baixa,data_criacao,valor_total,valor_pre_baixa,valor_total_antes_baixa,comprador_nome,synced_at'
+const BATCH = 1000
+
 export async function GET() {
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Busca todos os pedidos do cache (query única, < 1s)
-  const { data, error } = await supabase
-    .from('pedidos_cache')
-    .select('id,codigo_pedido,status,fk_revendedor_id,supervisor_nome,data_acerto,data_baixa,data_criacao,valor_total,valor_pre_baixa,valor_total_antes_baixa,comprador_nome,synced_at')
-    .order('id')
+  // Busca todos os pedidos paginando em lotes de 1000 (Supabase limita 1000/chamada)
+  const allRows: Record<string, unknown>[] = []
+  let from = 0
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  while (true) {
+    const { data: batch, error } = await supabase
+      .from('pedidos_cache')
+      .select(COLS)
+      .order('id')
+      .range(from, from + BATCH - 1)
 
-  if (!data || data.length === 0) {
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (!batch || batch.length === 0) break
+    allRows.push(...batch)
+    if (batch.length < BATCH) break
+    from += BATCH
+  }
+
+  if (allRows.length === 0) {
     return NextResponse.json({ error: 'cache_empty' }, { status: 503 })
   }
 
-  // Reconstrói o shape esperado pelo front (Pedido type)
-  const pedidos = data.map(r => ({
+  const pedidos = allRows.map(r => ({
     id:                      r.id,
     codigo_pedido:           r.codigo_pedido,
     status:                  r.status,
@@ -35,7 +47,6 @@ export async function GET() {
     comprador:               r.comprador_nome ? { nome: r.comprador_nome } : null,
   }))
 
-  // Pega o timestamp do último sync
   const { data: logRow } = await supabase
     .from('sync_log')
     .select('synced_at')

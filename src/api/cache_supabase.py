@@ -34,11 +34,19 @@ def _ler_secrets_toml(*chaves: str) -> dict:
             conteudo = path.read_text(encoding="utf-8")
             resultado = {}
             for chave in chaves:
+                # Tenta com aspas: KEY = "valor" ou KEY = 'valor'
                 m = re.search(
                     rf'^{re.escape(chave)}\s*=\s*["\']([^"\']+)["\']',
                     conteudo,
                     re.MULTILINE,
                 )
+                # Fallback: sem aspas — KEY = valor (sem espaços)
+                if not m:
+                    m = re.search(
+                        rf'^{re.escape(chave)}\s*=\s*(\S+)',
+                        conteudo,
+                        re.MULTILINE,
+                    )
                 if m:
                     resultado[chave] = m.group(1)
             if resultado:
@@ -48,30 +56,44 @@ def _ler_secrets_toml(*chaves: str) -> dict:
     return {}
 
 
-def _get_client():
+def _get_client(service_role: bool = False):
+    """
+    Retorna um client Supabase.
+
+    service_role=True  → usa SUPABASE_SERVICE_KEY (bypassa RLS).
+                         Necessário para gravações em tabelas com RLS ativo.
+    service_role=False → usa SUPABASE_KEY (anon); seguro para leituras.
+    """
     url = ""
     key = ""
 
-    # 1. st.secrets — funciona tanto no Streamlit quanto em scripts externos
-    #    (o Streamlit ≥ 1.28 lê do secrets.toml mesmo sem servidor ativo)
+    # Chaves a buscar dependendo do modo
+    key_names = (
+        ["SUPABASE_URL", "SUPABASE_SERVICE_KEY"]
+        if service_role
+        else ["SUPABASE_URL", "SUPABASE_KEY"]
+    )
+    url_name, key_name = key_names
+
+    # 1. st.secrets (Streamlit ≥ 1.28 lê do secrets.toml mesmo sem servidor)
     try:
         import streamlit as st
-        url = st.secrets.get("SUPABASE_URL", "")
-        key = st.secrets.get("SUPABASE_KEY", "")
+        url = st.secrets.get(url_name, "")
+        key = st.secrets.get(key_name, "")
     except Exception:
         pass
 
     # 2. Variáveis de ambiente (via .env ou sistema)
     if not url:
-        url = os.getenv("SUPABASE_URL", "")
+        url = os.getenv(url_name, "")
     if not key:
-        key = os.getenv("SUPABASE_KEY", "")
+        key = os.getenv(key_name, "")
 
-    # 3. Lê .streamlit/secrets.toml diretamente — fallback para FastAPI/scripts
+    # 3. Leitura direta do .streamlit/secrets.toml — fallback para FastAPI/scripts
     if not url or not key:
-        extra = _ler_secrets_toml("SUPABASE_URL", "SUPABASE_KEY")
-        url = url or extra.get("SUPABASE_URL", "")
-        key = key or extra.get("SUPABASE_KEY", "")
+        extra = _ler_secrets_toml(url_name, key_name)
+        url = url or extra.get(url_name, "")
+        key = key or extra.get(key_name, "")
 
     if url and key:
         try:
@@ -94,7 +116,7 @@ def ler_cache(chave: str, max_idade_horas: float = 4.0):
     dados = None quando: cache não existe, erro, ou mais antigo que max_idade_horas.
     atualizado_em é retornado mesmo quando expirado (útil para mostrar quando foi a última sync).
     """
-    client = _get_client()
+    client = _get_client(service_role=True)
     if client is None:
         return None, None
     try:
@@ -127,7 +149,7 @@ def ler_cache(chave: str, max_idade_horas: float = 4.0):
 
 def escrever_cache(chave: str, dados: list) -> bool:
     """Grava/atualiza a lista de dados para a chave fornecida."""
-    client = _get_client()
+    client = _get_client(service_role=True)
     if client is None:
         return False
     try:
@@ -142,7 +164,7 @@ def escrever_cache(chave: str, dados: list) -> bool:
 
 def ultima_sincronizacao(chave: str) -> datetime | None:
     """Retorna quando o cache foi atualizado pela última vez, ou None."""
-    client = _get_client()
+    client = _get_client(service_role=True)
     if client is None:
         return None
     try:
@@ -169,7 +191,7 @@ def ler_cache_pedidos_batch(pedido_ids: list) -> dict:
     Retorna {pedido_id: dados_dict} para os IDs que estão no cache.
     IDs ausentes simplesmente não aparecem no resultado.
     """
-    client = _get_client()
+    client = _get_client(service_role=True)
     if client is None or not pedido_ids:
         return {}
     try:
@@ -196,7 +218,7 @@ def escrever_cache_pedidos(pedidos_map: dict) -> bool:
     pedidos_map = {pedido_id: dados_dict}
     Grava em lotes de 200 para não estourar o limite de payload do Supabase.
     """
-    client = _get_client()
+    client = _get_client(service_role=True)
     if client is None or not pedidos_map:
         return False
     try:

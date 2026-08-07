@@ -68,7 +68,7 @@ def _get_all_pages(endpoint: str, params: dict = None, _status_placeholder=None)
 
 
 def _fetch_pedido_raw(pedido_id: int) -> dict:
-    """Busca pedido individual sem cache (seguro para uso em threads)."""
+    """Busca pedido individual direto na API Jueri (sem cache — para uso em threads)."""
     try:
         data = _req(f"pedido/{pedido_id}")
         registro = data.get("data", data)
@@ -81,33 +81,65 @@ def _fetch_pedido_raw(pedido_id: int) -> dict:
 
 def _fetch_em_paralelo(pedido_ids: list, max_workers: int = 6) -> dict:
     """
-    Busca detalhes de múltiplos pedidos em paralelo.
-    Retorna {pedido_id: detalhes_dict}.
+    Busca detalhes de múltiplos pedidos.
+    Estratégia em 3 camadas:
+      1. st.cache_data (in-memory, por pedido individual — já via get_pedido_detalhado)
+      2. Supabase cache (persistente entre restarts)
+      3. Jueri API (para os que faltam — em paralelo com max_workers threads)
     """
-    resultados = {}
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futuros = {executor.submit(_fetch_pedido_raw, pid): pid for pid in pedido_ids}
-        for futuro in as_completed(futuros):
-            pid = futuros[futuro]
-            try:
-                resultados[pid] = futuro.result()
-            except Exception:
-                resultados[pid] = {}
-    return resultados
+    from src.api.cache_supabase import ler_cache_pedidos_batch, escrever_cache_pedidos
+
+    # Camada 2: batch read do Supabase
+    cached = ler_cache_pedidos_batch(pedido_ids)
+
+    # IDs que não vieram do cache
+    ids_faltando = [pid for pid in pedido_ids if pid not in cached]
+
+    if ids_faltando:
+        # Camada 3: Jueri API em paralelo para os que faltam
+        novos: dict = {}
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futuros = {executor.submit(_fetch_pedido_raw, pid): pid for pid in ids_faltando}
+            for futuro in as_completed(futuros):
+                pid = futuros[futuro]
+                try:
+                    novos[pid] = futuro.result()
+                except Exception:
+                    novos[pid] = {}
+
+        # Persiste no Supabase para as próximas requisições
+        escrever_cache_pedidos(novos)
+        cached.update(novos)
+
+    return cached
 
 
 # ── Produtos e categorias ──────────────────────────────────────────────────
 
 @st.cache_data(ttl=7200)
 def get_produtos(status: str = "1") -> list:
-    params = {"status": status} if status else {}
-    return _get_all_pages("produto", params)
+    from src.api.cache_supabase import ler_cache, escrever_cache
+    chave = f"produtos_{status or 'todos'}"
+    dados, _ = ler_cache(chave, max_idade_horas=8.0)
+    if dados is not None:
+        return dados
+    resultado = _get_all_pages("produto", {"status": status} if status else {})
+    escrever_cache(chave, resultado)
+    return resultado
 
 
 @st.cache_data(ttl=86400)
 def get_categorias() -> dict:
+    from src.api.cache_supabase import ler_cache, escrever_cache
+    dados, _ = ler_cache("categorias", max_idade_horas=24.0)
+    if dados is not None:
+        # dados é lista; reconverte para dict
+        if isinstance(dados, list):
+            return {str(c.get("id")): c.get("descricao", f"Cat {c.get('id')}") for c in dados}
+        return dados
     try:
         items = _get_all_pages("categoria_produto")
+        escrever_cache("categorias", items)
         return {str(c.get("id")): c.get("descricao", f"Cat {c.get('id')}") for c in items}
     except Exception:
         return {}
@@ -131,10 +163,19 @@ def _get_ultima_atualizacao_pedidos() -> str:
 @st.cache_data(ttl=7200, show_spinner=False)
 def _get_lista_pedidos() -> list:
     """
-    Busca todos os pedidos (resumo, SEM itens por produto).
-    A API retorna 15 por página — percorre todas as páginas. Cache de 2 horas.
+    Todos os pedidos (resumo, sem itens por produto).
+    Camadas de cache:
+      1. st.cache_data (in-memory, TTL 2h)
+      2. Supabase cache_jueri (persistente, TTL 4h)
+      3. Jueri API (fallback — lento)
     """
-    return _get_all_pages("pedido")
+    from src.api.cache_supabase import ler_cache, escrever_cache
+    dados, _ = ler_cache("pedidos", max_idade_horas=4.0)
+    if dados is not None:
+        return dados
+    resultado = _get_all_pages("pedido")
+    escrever_cache("pedidos", resultado)
+    return resultado
 
 
 def get_pedidos_abertos() -> list:
@@ -147,15 +188,21 @@ def get_pedidos_baixados() -> list:
 
 @st.cache_data(ttl=3600)
 def get_pedido_detalhado(pedido_id: int) -> dict:
-    """Busca um pedido individual com seus itens (com cache por ID)."""
-    return _fetch_pedido_raw(pedido_id)
+    """Busca um pedido individual com seus itens (cache por ID)."""
+    from src.api.cache_supabase import ler_cache_pedidos_batch, escrever_cache_pedidos
+    cached = ler_cache_pedidos_batch([pedido_id])
+    if pedido_id in cached:
+        return cached[pedido_id]
+    resultado = _fetch_pedido_raw(pedido_id)
+    escrever_cache_pedidos({pedido_id: resultado})
+    return resultado
 
 
 @st.cache_data(ttl=3600)
 def get_itens_pedidos_abertos() -> dict:
     """
     Retorna {produto_id: quantidade_na_rua}.
-    Busca os pedidos abertos em paralelo (6 threads simultâneas).
+    Usa _fetch_em_paralelo que verifica Supabase antes de chamar a API.
     """
     abertos = get_pedidos_abertos()
     ids = [p["id"] for p in abertos if p.get("id")]
@@ -177,9 +224,8 @@ def get_itens_pedidos_abertos() -> dict:
 @st.cache_data(ttl=3600)
 def get_itens_pedidos_baixados(dias: int = 180) -> list:
     """
-    Retorna lista de itens vendidos (pedidos baixados) nos últimos dias.
-    Busca TODOS os baixados do período em paralelo — sem limite de quantidade.
-    Cache de 1 hora.
+    Lista de itens vendidos (pedidos baixados) nos últimos N dias.
+    Usa _fetch_em_paralelo que verifica Supabase antes de chamar a API.
     """
     corte = datetime.today() - timedelta(days=dias)
     baixados = get_pedidos_baixados()
@@ -231,11 +277,136 @@ def get_itens_pedidos_baixados(dias: int = 180) -> list:
 
 @st.cache_data(ttl=7200)
 def get_revendedores(status: str = None) -> list:
+    from src.api.cache_supabase import ler_cache, escrever_cache
+    chave = f"revendedores_{status or 'todos'}"
+    dados, _ = ler_cache(chave, max_idade_horas=8.0)
+    if dados is not None:
+        return dados
     params = {}
     if status:
         params["status"] = status
-    return _get_all_pages("revendedor", params)
+    resultado = _get_all_pages("revendedor", params)
+    escrever_cache(chave, resultado)
+    return resultado
 
+
+# ── Sincronização completa ─────────────────────────────────────────────────
+
+def sincronizar_cache(status_fn=None) -> dict:
+    """
+    Busca dados frescos da API Jueri e atualiza todo o cache Supabase.
+    Retorna dict com contagens do que foi sincronizado.
+
+    status_fn: callable(str) opcional — recebe mensagens de progresso para exibir na UI.
+
+    Depois de chamar esta função, execute st.cache_data.clear() para que a próxima
+    leitura em memória use os dados frescos do Supabase.
+    """
+    from src.api.cache_supabase import escrever_cache, escrever_cache_pedidos
+
+    def _log(msg: str):
+        if status_fn:
+            try:
+                status_fn(msg)
+            except Exception:
+                pass
+
+    resultado = {}
+
+    # ── 1. Pedidos (lista completa) ───────────────────────────────────────
+    _log("📦 Buscando todos os pedidos da API Jueri...")
+    pedidos = _get_all_pages("pedido")
+    escrever_cache("pedidos", pedidos)
+    resultado["pedidos"] = len(pedidos)
+    _log(f"✅ {len(pedidos)} pedidos salvos no Supabase.")
+
+    # ── 2. Produtos ───────────────────────────────────────────────────────
+    _log("🛍️ Buscando produtos ativos...")
+    produtos = _get_all_pages("produto", {"status": "1"})
+    escrever_cache("produtos_1", produtos)
+    resultado["produtos"] = len(produtos)
+    _log(f"✅ {len(produtos)} produtos salvos.")
+
+    # ── 3. Revendedores ───────────────────────────────────────────────────
+    _log("👥 Buscando revendedoras...")
+    revs = _get_all_pages("revendedor")
+    escrever_cache("revendedores_todos", revs)
+    resultado["revendedores"] = len(revs)
+    _log(f"✅ {len(revs)} revendedoras salvas.")
+
+    # ── 4. Categorias ─────────────────────────────────────────────────────
+    _log("🏷️ Buscando categorias de produtos...")
+    try:
+        cats = _get_all_pages("categoria_produto")
+        escrever_cache("categorias", cats)
+        resultado["categorias"] = len(cats)
+        _log(f"✅ {len(cats)} categorias salvas.")
+    except Exception:
+        resultado["categorias"] = 0
+        _log("⚠️ Categorias: erro ao buscar — mantendo cache anterior.")
+
+    # ── 5. Detalhes dos pedidos abertos (itens na rua) ────────────────────
+    pedidos_abertos = [p for p in pedidos if p.get("status") == "Aberto"]
+    ids_abertos = [p["id"] for p in pedidos_abertos if p.get("id")]
+    if ids_abertos:
+        _log(f"🔍 Buscando detalhes de {len(ids_abertos)} pedidos abertos (itens na rua)...")
+        novos: dict = {}
+        BATCH_THREADS = 8
+        with ThreadPoolExecutor(max_workers=BATCH_THREADS) as executor:
+            futuros = {executor.submit(_fetch_pedido_raw, pid): pid for pid in ids_abertos}
+            ok = 0
+            for futuro in as_completed(futuros):
+                pid = futuros[futuro]
+                try:
+                    novos[pid] = futuro.result()
+                    ok += 1
+                except Exception:
+                    novos[pid] = {}
+                if ok % 20 == 0 and ok > 0:
+                    _log(f"   …{ok}/{len(ids_abertos)} pedidos abertos buscados")
+        escrever_cache_pedidos(novos)
+        resultado["detalhes_abertos"] = len(novos)
+        _log(f"✅ Detalhes de {len(novos)} pedidos abertos salvos.")
+
+    # ── 6. Detalhes dos pedidos baixados recentes (últimos 180 dias) ──────
+    corte = datetime.today() - timedelta(days=180)
+    pedidos_recentes = []
+    for p in pedidos:
+        if p.get("status") != "Baixado":
+            continue
+        data_str = (p.get("data_baixa") or p.get("data_criacao") or "")[:10]
+        try:
+            if datetime.fromisoformat(data_str) >= corte:
+                pedidos_recentes.append(p)
+        except (ValueError, TypeError):
+            pass
+
+    ids_recentes = [p["id"] for p in pedidos_recentes if p.get("id")]
+    if ids_recentes:
+        _log(f"📊 Buscando detalhes de {len(ids_recentes)} pedidos baixados (últimos 180 dias)...")
+        novos_b: dict = {}
+        with ThreadPoolExecutor(max_workers=BATCH_THREADS) as executor:
+            futuros = {executor.submit(_fetch_pedido_raw, pid): pid for pid in ids_recentes}
+            ok = 0
+            for futuro in as_completed(futuros):
+                pid = futuros[futuro]
+                try:
+                    novos_b[pid] = futuro.result()
+                    ok += 1
+                except Exception:
+                    novos_b[pid] = {}
+                if ok % 50 == 0 and ok > 0:
+                    _log(f"   …{ok}/{len(ids_recentes)} pedidos baixados buscados")
+        escrever_cache_pedidos(novos_b)
+        resultado["detalhes_baixados"] = len(novos_b)
+        _log(f"✅ Detalhes de {len(novos_b)} pedidos baixados recentes salvos.")
+
+    _log("🎉 Sincronização concluída!")
+    return resultado
+
+
+# ── Cache management ───────────────────────────────────────────────────────
 
 def limpar_cache():
+    """Limpa apenas o cache in-memory (st.cache_data). O Supabase não é afetado."""
     st.cache_data.clear()

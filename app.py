@@ -303,39 +303,58 @@ with st.sidebar:
     st.divider()
 
     if role == "admin":
-        if st.button("🔄 Atualizar dados"):
-            from src.api.jueri_client import (
-                sincronizar_cache, limpar_cache,
-                _get_lista_pedidos, get_produtos, get_revendedores, get_categorias,
-            )
-            _status = st.empty()
-            _status.info("Iniciando sincronização...")
-            with st.spinner("Buscando dados da API Jueri e salvando no Supabase..."):
-                def _cb(msg):
-                    _status.caption(msg)
-                try:
-                    res = sincronizar_cache(status_fn=_cb)
+        from src.api.jueri_client import (
+            sincronizar_cache, limpar_cache,
+            _get_lista_pedidos, get_produtos, get_revendedores, get_categorias,
+        )
+        from src.api.cache_supabase import ultima_sincronizacao
 
-                    # Limpa o cache em memória e re-aquece imediatamente com os dados
-                    # que acabaram de chegar do Supabase — assim o próximo st.rerun()
-                    # já bate no st.cache_data e as telas abrem instantaneamente.
-                    _cb("🔥 Preparando cache em memória...")
-                    limpar_cache()
-                    _get_lista_pedidos()   # pedidos — usado em todas as telas
-                    get_produtos()         # estoque + compras
-                    get_revendedores()     # revendedoras + diagnóstico
-                    get_categorias()       # estoque + compras
-
-                    _status.success(
-                        f"✅ Dados sincronizados e cache aquecido! "
-                        f"{res.get('pedidos', 0)} pedidos · "
-                        f"{res.get('produtos', 0)} produtos · "
-                        f"{res.get('revendedores', 0)} revendedoras"
-                    )
-                except Exception as e:
-                    _status.error(f"Erro na sincronização: {e}")
-                    limpar_cache()
+        # ── Botão rápido: Supabase → memória (~1s) ───────────────────────────
+        if st.button("🔄 Atualizar dados", use_container_width=True):
+            with st.spinner("Recarregando do cache..."):
+                limpar_cache()
+                _get_lista_pedidos()
+                get_produtos()
+                get_revendedores()
+                get_categorias()
             st.rerun()
+
+        # ── Botão lento: Jueri → Supabase → memória (minutos) ───────────────
+        with st.expander("⚙️ Sincronizar com API Jueri"):
+            _ts = ultima_sincronizacao("pedidos")
+            if _ts:
+                try:
+                    from zoneinfo import ZoneInfo
+                    _ts_brt = _ts.astimezone(ZoneInfo("America/Sao_Paulo"))
+                except Exception:
+                    from datetime import timezone, timedelta
+                    _ts_brt = _ts.astimezone(timezone(timedelta(hours=-3)))
+                st.caption(f"Última sync: {_ts_brt.strftime('%d/%m/%Y às %H:%M')}")
+            else:
+                st.caption("Supabase ainda não foi sincronizado.")
+
+            if st.button("🔁 Sincronizar agora", type="primary", use_container_width=True):
+                _status = st.empty()
+                with st.spinner("Buscando dados da API Jueri..."):
+                    def _cb(msg):
+                        _status.caption(msg)
+                    try:
+                        res = sincronizar_cache(status_fn=_cb)
+                        _cb("🔥 Aquecendo cache em memória...")
+                        limpar_cache()
+                        _get_lista_pedidos()
+                        get_produtos()
+                        get_revendedores()
+                        get_categorias()
+                        _status.success(
+                            f"✅ {res.get('pedidos', 0)} pedidos · "
+                            f"{res.get('produtos', 0)} produtos · "
+                            f"{res.get('revendedores', 0)} revendedoras"
+                        )
+                    except Exception as e:
+                        _status.error(f"Erro: {e}")
+                        limpar_cache()
+                st.rerun()
 
     if st.button("🚪 Sair"):
         st.session_state.autenticado = False

@@ -40,6 +40,19 @@ git push
 - Lint: `npm run lint`
 -->
 
+## Regras de Negócio
+
+As regras de negócio completas do sistema estão documentadas em [`REGRAS_NEGOCIO.md`](REGRAS_NEGOCIO.md).
+
+Esse arquivo descreve: glossário, regra de competência, todas as telas e abas, cálculos de nível/premiações/estoque/compras, lógica de entradas e saídas, e como o cache funciona. Leia antes de alterar qualquer lógica de negócio.
+
 ## Architecture
 
-<!-- Document the high-level architecture here once the project structure is established. -->
+**Stack:** Python + Streamlit (frontend/backend), Supabase (persistência), API Jueri (ERP externo).
+
+**Estrutura principal:**
+- `app.py` — roteamento, autenticação, sidebar
+- `src/pages/` — uma tela por arquivo
+- `src/logic/` — regras de negócio puras (sem UI)
+- `src/api/jueri_client.py` — acesso à API com cache em duas camadas
+- `src/api/cache_supabase.py` — operações de cache no Supabase

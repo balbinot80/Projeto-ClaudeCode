@@ -304,9 +304,24 @@ with st.sidebar:
 
     if role == "admin":
         if st.button("🔄 Atualizar dados"):
-            from src.api.jueri_client import limpar_cache
-            limpar_cache()
-            st.success("Cache limpo! Dados serão recarregados.")
+            from src.api.jueri_client import sincronizar_cache, limpar_cache
+            _status = st.empty()
+            _status.info("Iniciando sincronização...")
+            with st.spinner("Buscando dados da API Jueri e salvando no Supabase..."):
+                def _cb(msg):
+                    _status.caption(msg)
+                try:
+                    res = sincronizar_cache(status_fn=_cb)
+                    limpar_cache()
+                    _status.success(
+                        f"✅ Dados sincronizados! "
+                        f"{res.get('pedidos', 0)} pedidos · "
+                        f"{res.get('produtos', 0)} produtos · "
+                        f"{res.get('revendedores', 0)} revendedoras"
+                    )
+                except Exception as e:
+                    _status.error(f"Erro na sincronização: {e}")
+                    limpar_cache()
             st.rerun()
 
     if st.button("🚪 Sair"):

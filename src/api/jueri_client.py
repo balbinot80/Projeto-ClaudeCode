@@ -9,6 +9,31 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _ttl_dinamico() -> float:
+    """
+    Retorna o TTL de cache em horas baseado no horário atual (Brasília).
+
+    Seg–Sex  08h–18h  →  1 hora  (horário comercial: dados frescos)
+    Seg–Sex  fora      →  4 horas (madrugada / manhã cedo)
+    Sab–Dom  qualquer  →  6 horas (fim de semana: dados mudam pouco)
+    """
+    try:
+        from zoneinfo import ZoneInfo
+        agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
+    except Exception:
+        from datetime import timezone
+        agora = datetime.now(timezone(timedelta(hours=-3)))
+
+    dia_semana = agora.weekday()   # 0=seg … 4=sex, 5=sab, 6=dom
+    hora       = agora.hour
+
+    if dia_semana >= 5:            # fim de semana
+        return 6.0
+    if 8 <= hora < 18:             # dia útil, horário comercial
+        return 1.0
+    return 4.0                     # dia útil, fora do horário
+
+
 def _get_secret(key: str, default: str = "") -> str:
     try:
         return st.secrets[key]
@@ -116,11 +141,13 @@ def _fetch_em_paralelo(pedido_ids: list, max_workers: int = 6) -> dict:
 
 # ── Produtos e categorias ──────────────────────────────────────────────────
 
-@st.cache_data(ttl=7200)
+@st.cache_data(ttl=3600)
 def get_produtos(status: str = "1") -> list:
     from src.api.cache_supabase import ler_cache, escrever_cache
     chave = f"produtos_{status or 'todos'}"
-    dados, _ = ler_cache(chave, max_idade_horas=8.0)
+    # Produtos mudam menos — usa o dobro do TTL dinâmico (mín 2h)
+    ttl = max(_ttl_dinamico() * 2, 2.0)
+    dados, _ = ler_cache(chave, max_idade_horas=ttl)
     if dados is not None:
         return dados
     resultado = _get_all_pages("produto", {"status": status} if status else {})
@@ -160,17 +187,18 @@ def _get_ultima_atualizacao_pedidos() -> str:
         return datetime.now(brt).strftime("%d/%m/%Y às %H:%M")
 
 
-@st.cache_data(ttl=7200, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _get_lista_pedidos() -> list:
     """
     Todos os pedidos (resumo, sem itens por produto).
     Camadas de cache:
-      1. st.cache_data (in-memory, TTL 2h)
-      2. Supabase cache_jueri (persistente, TTL 4h)
-      3. Jueri API (fallback — lento)
+      1. st.cache_data (in-memory, TTL 1h)
+      2. Supabase cache_jueri (persistente, TTL dinâmico por horário)
+      3. Jueri API (fallback — lento, acionado só quando TTL expirar)
+    TTL Supabase: 1h (seg–sex 8h–18h) · 4h (dias úteis fora do horário) · 6h (fim de semana)
     """
     from src.api.cache_supabase import ler_cache, escrever_cache
-    dados, _ = ler_cache("pedidos", max_idade_horas=4.0)
+    dados, _ = ler_cache("pedidos", max_idade_horas=_ttl_dinamico())
     if dados is not None:
         return dados
     resultado = _get_all_pages("pedido")
@@ -198,7 +226,7 @@ def get_pedido_detalhado(pedido_id: int) -> dict:
     return resultado
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=1800)
 def get_itens_pedidos_abertos() -> dict:
     """
     Retorna {produto_id: quantidade_na_rua}.
@@ -221,7 +249,7 @@ def get_itens_pedidos_abertos() -> dict:
     return na_rua
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=1800)
 def get_itens_pedidos_baixados(dias: int = 180) -> list:
     """
     Lista de itens vendidos (pedidos baixados) nos últimos N dias.
@@ -275,11 +303,13 @@ def get_itens_pedidos_baixados(dias: int = 180) -> list:
 
 # ── Revendedores ───────────────────────────────────────────────────────────
 
-@st.cache_data(ttl=7200)
+@st.cache_data(ttl=3600)
 def get_revendedores(status: str = None) -> list:
     from src.api.cache_supabase import ler_cache, escrever_cache
     chave = f"revendedores_{status or 'todos'}"
-    dados, _ = ler_cache(chave, max_idade_horas=8.0)
+    # Cadastros de revendedoras mudam menos — usa TTL dinâmico * 2 (mín 2h)
+    ttl = max(_ttl_dinamico() * 2, 2.0)
+    dados, _ = ler_cache(chave, max_idade_horas=ttl)
     if dados is not None:
         return dados
     params = {}

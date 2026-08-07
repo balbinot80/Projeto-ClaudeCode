@@ -7,25 +7,78 @@ Tabelas necessárias — rode supabase_cache_setup.sql no SQL Editor do Supabase
 """
 
 import os
+import re
+from pathlib import Path
 from datetime import datetime, timezone
 
 
 # ── Client ────────────────────────────────────────────────────────────────────
 
-def _get_client():
-    try:
-        from supabase import create_client
-        import streamlit as st
+def _ler_secrets_toml(*chaves: str) -> dict:
+    """
+    Lê credenciais diretamente do .streamlit/secrets.toml sem precisar do servidor
+    Streamlit. Útil quando o módulo é importado pelo FastAPI ou por scripts.
+    """
+    candidatos = [
+        # pasta raiz do projeto (dois níveis acima deste arquivo: src/api/ → /)
+        Path(__file__).parent.parent.parent / ".streamlit" / "secrets.toml",
+        # pasta raiz alternativa (um nível: src/ → /)
+        Path(__file__).parent.parent / ".streamlit" / "secrets.toml",
+        # home do usuário
+        Path.home() / ".streamlit" / "secrets.toml",
+    ]
+    for path in candidatos:
+        if not path.exists():
+            continue
         try:
-            url = st.secrets["SUPABASE_URL"]
-            key = st.secrets["SUPABASE_KEY"]
+            conteudo = path.read_text(encoding="utf-8")
+            resultado = {}
+            for chave in chaves:
+                m = re.search(
+                    rf'^{re.escape(chave)}\s*=\s*["\']([^"\']+)["\']',
+                    conteudo,
+                    re.MULTILINE,
+                )
+                if m:
+                    resultado[chave] = m.group(1)
+            if resultado:
+                return resultado
         except Exception:
-            url = os.getenv("SUPABASE_URL", "")
-            key = os.getenv("SUPABASE_KEY", "")
-        if url and key:
-            return create_client(url, key)
+            pass
+    return {}
+
+
+def _get_client():
+    url = ""
+    key = ""
+
+    # 1. st.secrets — funciona tanto no Streamlit quanto em scripts externos
+    #    (o Streamlit ≥ 1.28 lê do secrets.toml mesmo sem servidor ativo)
+    try:
+        import streamlit as st
+        url = st.secrets.get("SUPABASE_URL", "")
+        key = st.secrets.get("SUPABASE_KEY", "")
     except Exception:
         pass
+
+    # 2. Variáveis de ambiente (via .env ou sistema)
+    if not url:
+        url = os.getenv("SUPABASE_URL", "")
+    if not key:
+        key = os.getenv("SUPABASE_KEY", "")
+
+    # 3. Lê .streamlit/secrets.toml diretamente — fallback para FastAPI/scripts
+    if not url or not key:
+        extra = _ler_secrets_toml("SUPABASE_URL", "SUPABASE_KEY")
+        url = url or extra.get("SUPABASE_URL", "")
+        key = key or extra.get("SUPABASE_KEY", "")
+
+    if url and key:
+        try:
+            from supabase import create_client
+            return create_client(url, key)
+        except Exception:
+            pass
     return None
 
 

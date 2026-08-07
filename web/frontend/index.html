@@ -778,7 +778,9 @@ let _syncPollTimer = null;
 
 async function syncStart(mode) {
   try {
-    const res = await fetchJ(`/api/sync/start?mode=${mode}`);
+    const resp = await fetch(`/api/sync/start?mode=${mode}`, { method: 'POST' });
+    if (!resp.ok) throw new Error(resp.status);
+    const res = await resp.json();
     if (!res.ok) { alert(res.msg); return; }
     startSyncPolling();
   } catch(e) {

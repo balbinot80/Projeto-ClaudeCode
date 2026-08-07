@@ -304,7 +304,10 @@ with st.sidebar:
 
     if role == "admin":
         if st.button("🔄 Atualizar dados"):
-            from src.api.jueri_client import sincronizar_cache, limpar_cache
+            from src.api.jueri_client import (
+                sincronizar_cache, limpar_cache,
+                _get_lista_pedidos, get_produtos, get_revendedores, get_categorias,
+            )
             _status = st.empty()
             _status.info("Iniciando sincronização...")
             with st.spinner("Buscando dados da API Jueri e salvando no Supabase..."):
@@ -312,9 +315,19 @@ with st.sidebar:
                     _status.caption(msg)
                 try:
                     res = sincronizar_cache(status_fn=_cb)
+
+                    # Limpa o cache em memória e re-aquece imediatamente com os dados
+                    # que acabaram de chegar do Supabase — assim o próximo st.rerun()
+                    # já bate no st.cache_data e as telas abrem instantaneamente.
+                    _cb("🔥 Preparando cache em memória...")
                     limpar_cache()
+                    _get_lista_pedidos()   # pedidos — usado em todas as telas
+                    get_produtos()         # estoque + compras
+                    get_revendedores()     # revendedoras + diagnóstico
+                    get_categorias()       # estoque + compras
+
                     _status.success(
-                        f"✅ Dados sincronizados! "
+                        f"✅ Dados sincronizados e cache aquecido! "
                         f"{res.get('pedidos', 0)} pedidos · "
                         f"{res.get('produtos', 0)} produtos · "
                         f"{res.get('revendedores', 0)} revendedoras"

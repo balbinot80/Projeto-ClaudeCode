@@ -24,6 +24,7 @@ from fastapi import FastAPI, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from web.sync_runner import start_sync, get_state as sync_get_state, is_running
 
 # Lógica de negócios — puro Python, sem dependência de Streamlit
 from src.logic.revendedoras import calcular_competencia, parse_date
@@ -281,3 +282,26 @@ def api_acertos(mes: int = Query(...), ano: int = Query(...)):
 
     rows.sort(key=lambda r: r["data_iso"])
     return rows[:30]
+
+
+# ── Endpoints de sincronização ────────────────────────────────────────────────
+
+@app.post("/api/sync/start")
+def api_sync_start(mode: str = Query("fast")):
+    """
+    Inicia a sincronização em background.
+    mode: 'fast' (listas, ~2-5 min) ou 'full' (com detalhes, ~10-30 min).
+    Sobrevive ao tab fechar — o servidor continua rodando.
+    """
+    if mode not in ("fast", "full"):
+        return {"ok": False, "msg": "mode deve ser 'fast' ou 'full'"}
+    iniciou = start_sync(mode)
+    if not iniciou:
+        return {"ok": False, "msg": "Sincronização já está em andamento"}
+    return {"ok": True, "mode": mode, "msg": f"Sync {mode} iniciada em background"}
+
+
+@app.get("/api/sync/status")
+def api_sync_status():
+    """Status atual da sincronização (para polling do frontend)."""
+    return sync_get_state()

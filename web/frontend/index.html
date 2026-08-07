@@ -50,6 +50,25 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-seri
 .ni svg{flex-shrink:0;opacity:.55}
 .ni.on svg{opacity:1}
 .ni .dot{width:5px;height:5px;border-radius:50%;background:var(--rosa);margin-left:auto;flex-shrink:0;box-shadow:0 0 5px rgba(171,103,116,.6)}
+/* ── Sync panel ── */
+.sync-panel{padding:12px 16px;border-top:1px solid var(--border);background:var(--bg-surface)}
+.sync-lbl{font-size:.6rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--txt-m);margin-bottom:8px}
+.sync-btns{display:flex;gap:6px;margin-bottom:8px}
+.sync-btn{flex:1;padding:6px 4px;border:1px solid var(--border);border-radius:var(--r-sm);font-size:.68rem;font-weight:600;cursor:pointer;background:var(--bg-el);color:var(--txt-2);transition:all .13s;text-align:center}
+.sync-btn:hover{background:var(--bg-hover);color:var(--txt);border-color:var(--border-hi)}
+.sync-btn.primary{background:var(--rosa);color:#fff;border-color:var(--rosa);box-shadow:0 1px 4px rgba(171,103,116,.3)}
+.sync-btn.primary:hover{box-shadow:0 2px 8px rgba(171,103,116,.4);transform:translateY(-1px)}
+.sync-btn:disabled{opacity:.5;cursor:default;transform:none!important;box-shadow:none!important}
+.sync-status-row{display:flex;align-items:center;gap:6px;font-size:.68rem;color:var(--txt-2);min-height:18px}
+.sync-dot{width:6px;height:6px;border-radius:50%;background:var(--txt-m);flex-shrink:0}
+.sync-dot.running{background:var(--rosa);animation:pulse-dot 1s infinite}
+.sync-dot.success{background:var(--teal)}
+.sync-dot.error{background:var(--red)}
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.3}}
+.sync-bar-wrap{height:3px;background:var(--bg-el);border-radius:99px;overflow:hidden;margin-top:5px}
+.sync-bar{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--rosa),#C4985A);width:0%;transition:width .4s ease}
+.sync-detail{font-size:.62rem;color:var(--txt-m);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
 .sb-foot{padding:14px 16px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px}
 .av{width:30px;height:30px;border-radius:50%;flex-shrink:0;background:linear-gradient(135deg,var(--rosa),#C4985A);display:flex;align-items:center;justify-content:center;font-size:.68rem;font-weight:800;color:#fff}
 .av-name{font-size:.76rem;font-weight:600;color:var(--txt)}
@@ -211,6 +230,21 @@ td.mono{font-variant-numeric:tabular-nums}
       Marketing
     </div>
   </nav>
+  <!-- Sync panel -->
+  <div class="sync-panel">
+    <div class="sync-lbl">Sincronização</div>
+    <div class="sync-btns">
+      <button class="sync-btn primary" id="btnFast" onclick="syncStart('fast')" title="Só listas — ~2-5 min">⚡ Rápida</button>
+      <button class="sync-btn" id="btnFull" onclick="syncStart('full')" title="Inclui detalhes de pedidos — ~10-30 min">⚙ Completa</button>
+    </div>
+    <div class="sync-status-row">
+      <div class="sync-dot" id="syncDot"></div>
+      <span id="syncStep">Aguardando</span>
+    </div>
+    <div class="sync-bar-wrap"><div class="sync-bar" id="syncBar"></div></div>
+    <div class="sync-detail" id="syncDetail"></div>
+  </div>
+
   <div class="sb-foot">
     <div class="av">JB</div>
     <div>
@@ -739,8 +773,76 @@ function hideErr()    { q('bannerErr').classList.remove('show'); }
 // ── Resize ────────────────────────────────────────────────────────────────────
 window.addEventListener('resize', ()=>{ if(_chartData.length) renderChart(_chartData.slice(-_chartN)); });
 
+// ── Sync panel ────────────────────────────────────────────────────────────────
+let _syncPollTimer = null;
+
+async function syncStart(mode) {
+  try {
+    const res = await fetchJ(`/api/sync/start?mode=${mode}`);
+    if (!res.ok) { alert(res.msg); return; }
+    startSyncPolling();
+  } catch(e) {
+    alert('Erro ao iniciar sync: ' + e.message);
+  }
+}
+
+function startSyncPolling() {
+  if (_syncPollTimer) return;
+  _syncPollTimer = setInterval(pollSync, 2000);
+  pollSync();
+}
+
+async function pollSync() {
+  try {
+    const s = await fetchJ('/api/sync/status');
+    renderSyncPanel(s);
+    if (s.status === 'success' || s.status === 'error') {
+      clearInterval(_syncPollTimer);
+      _syncPollTimer = null;
+      // Recarrega dados do dashboard após sync bem-sucedida
+      if (s.status === 'success') setTimeout(loadAll, 500);
+    }
+  } catch(e) {
+    // server offline, para o polling
+    clearInterval(_syncPollTimer);
+    _syncPollTimer = null;
+  }
+}
+
+function renderSyncPanel(s) {
+  const dot  = q('syncDot');
+  const step = q('syncStep');
+  const bar  = q('syncBar');
+  const det  = q('syncDetail');
+  const bFast = q('btnFast');
+  const bFull = q('btnFull');
+
+  dot.className = 'sync-dot ' + (s.status === 'running' ? 'running' : s.status === 'success' ? 'success' : s.status === 'error' ? 'error' : '');
+
+  const running = s.status === 'running';
+  bFast.disabled = running;
+  bFull.disabled = running;
+
+  // Step text — truncate
+  let stepTxt = s.step || 'Aguardando';
+  if (stepTxt.length > 38) stepTxt = stepTxt.slice(0, 36) + '…';
+  step.textContent = stepTxt;
+  bar.style.width  = (s.progress || 0) + '%';
+  det.textContent  = s.detail || (s.status === 'error' ? (s.error || '') : '');
+}
+
+// Poll sync status on load (in case sync was already running)
+async function initSyncPanel() {
+  try {
+    const s = await fetchJ('/api/sync/status');
+    renderSyncPanel(s);
+    if (s.status === 'running') startSyncPolling();
+  } catch(e) { /* ok */ }
+}
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 init();
+initSyncPanel();
 </script>
 </body>
 </html>

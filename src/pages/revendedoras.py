@@ -350,7 +350,7 @@ def _dialog_acompanhamento():
 def _build_info_maps(todos_pedidos: list, mes: int, ano: int) -> tuple:
     """Retorna (subida_map, rebaixa_map, premio_map) {nome → texto tooltip}."""
     from src.logic.niveis import alertas_subida, alertas_rebaixamento
-    from src.logic.premiacoes import load_premiacoes, calcular_ranking
+    from src.logic.premiacoes import load_premiacoes, calcular_ranking, load_premiacoes_multi, calcular_ranking_multi
 
     subida_map, rebaixa_map, premio_map = {}, {}, {}
 
@@ -384,22 +384,28 @@ def _build_info_maps(todos_pedidos: list, mes: int, ano: int) -> tuple:
         pass
 
     try:
-        cfg   = load_premiacoes().get(f"{mes:02d}/{ano}", {})
-        meta  = float(cfg.get("meta", 0.0))
-        if meta > 0:
-            prem_nome = cfg.get("premio", "Prêmio do mês")
-            for r in calcular_ranking(todos_pedidos, mes, ano, meta):
-                if r["Categoria"] == "ganhadora":
+        cfg_metas = load_premiacoes_multi().get(f"{mes:02d}/{ano}", [])
+        if cfg_metas:
+            for r in calcular_ranking_multi(todos_pedidos, mes, ano, cfg_metas):
+                highest = next(
+                    (ti for ti, tc in reversed(list(enumerate(r["tier_cats"])))
+                     if tc["cat"] in ("ganhadora", "potencial")), -1
+                )
+                if highest >= 0:
+                    tier   = cfg_metas[highest]
+                    tc     = r["tier_cats"][highest]
+                    status = "GANHADORA" if tc["cat"] == "ganhadora" else "potencial ganhadora"
+                    extra  = f" (Meta {highest + 1})" if len(cfg_metas) > 1 else ""
                     premio_map[r["Nome"]] = (
-                        f"🏆 Premiação: GANHADORA\n"
-                        f"     Prêmio: {prem_nome}\n"
-                        f"     Total baixado: R$ {r['Baixado']:,.2f}"
+                        f"🏆 Premiação: {status}{extra}\n"
+                        f"     Prêmio: {tier.get('premio') or 'Prêmio do mês'}\n"
+                        f"     Total: R$ {r['Total']:,.2f} ({tc['pct']:.1f}%)"
                     )
-                elif r["Categoria"] == "potencial":
+                elif r["tier_cats"][0]["cat"] == "proxima":
+                    falta = max(float(cfg_metas[0].get("meta") or 0) - r["Pré-baixa"], 0)
                     premio_map[r["Nome"]] = (
-                        f"🎯 Premiação: potencial ganhadora\n"
-                        f"     Prêmio: {prem_nome}\n"
-                        f"     Falta baixar: R$ {r['Falta']:,.2f}"
+                        f"📈 Próxima da meta: {r['tier_cats'][0]['pct']:.1f}%\n"
+                        f"     Falta baixar: R$ {falta:,.2f}"
                     )
     except Exception:
         pass
@@ -1065,37 +1071,75 @@ def _on_entrega_change(mes_key: str, rev_id: str, nome: str, key: str):
 
 def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
     from src.logic.premiacoes import (
-        load_premiacoes, save_premiacao, calcular_ranking, verificar_colar,
+        load_premiacoes_multi, save_premiacoes, calcular_ranking_multi, verificar_colar,
     )
     from src.logic.entrega_premiacoes import load_entregas
 
     st.subheader(f"🏆 Premiações — {mes_label}")
 
-    prem    = load_premiacoes()
-    mes_key = f"{mes:02d}/{ano}"
-    cfg     = prem.get(mes_key, {})
-    meta_atual   = float(cfg.get("meta", 0.0))
-    premio_atual = cfg.get("premio", "")
+    mes_key   = f"{mes:02d}/{ano}"
+    cfg_metas = load_premiacoes_multi().get(mes_key, [])
 
-    # ── Configuração do mês ───────────────────────────────────────────────────
-    with st.expander("⚙️ Configurar premiação do mês", expanded=(meta_atual == 0)):
-        c1, c2 = st.columns(2)
-        with c1:
-            meta_input = st.number_input(
-                "Meta de vendas (R$)", min_value=0.0, value=meta_atual,
-                step=100.0, format="%.2f", key=f"meta_{mes_key}",
-            )
-        with c2:
-            premio_input = st.text_input(
-                "Prêmio do mês", value=premio_atual,
-                placeholder="Ex: Kit beleza, Viagem...", key=f"premio_{mes_key}",
-            )
-        if st.button("💾 Salvar configuração", type="primary", key=f"salvar_{mes_key}"):
-            save_premiacao(mes_key, meta_input, premio_input)
-            st.success("Configuração salva!")
-            st.rerun()
+    # ── Configuração dinâmica de metas ────────────────────────────────────────
+    n_key = f"n_metas_{mes_key}"
+    if n_key not in st.session_state:
+        st.session_state[n_key] = max(len(cfg_metas), 1)
+    n_tiers = st.session_state[n_key]
 
-    # Carrega status de entrega dos prêmios para o mês
+    with st.expander("⚙️ Configurar premiações do mês", expanded=(not cfg_metas)):
+        for i in range(n_tiers):
+            existing = cfg_metas[i] if i < len(cfg_metas) else {}
+            st.markdown(f"**Meta {i + 1}**")
+            c1, c2 = st.columns(2)
+            with c1:
+                st.number_input(
+                    "Meta de vendas (R$)", min_value=0.0,
+                    value=float(existing.get("meta", 0.0)),
+                    step=100.0, format="%.2f",
+                    key=f"meta_val_{mes_key}_{i}",
+                )
+            with c2:
+                st.text_input(
+                    "Prêmio", value=existing.get("premio", ""),
+                    placeholder="Ex: Kit beleza, Viagem...",
+                    key=f"premio_val_{mes_key}_{i}",
+                )
+            if i > 0:
+                prev_premio = (
+                    st.session_state.get(f"premio_val_{mes_key}_{i - 1}")
+                    or (cfg_metas[i - 1].get("premio") if i - 1 < len(cfg_metas) else "")
+                    or "prêmio anterior"
+                )
+                st.checkbox(
+                    f"Quem ganhar a Meta {i + 1} também ganha o prêmio da Meta {i} ({prev_premio})",
+                    value=bool(existing.get("acumula", False)),
+                    key=f"acumula_{mes_key}_{i}",
+                )
+            if i < n_tiers - 1:
+                st.divider()
+
+        col_add, col_rem, col_save = st.columns([1, 1, 2])
+        with col_add:
+            if st.button("➕ Adicionar meta", key=f"add_meta_{mes_key}"):
+                st.session_state[n_key] += 1
+                st.rerun()
+        with col_rem:
+            if n_tiers > 1 and st.button("➖ Remover última", key=f"rem_meta_{mes_key}"):
+                st.session_state[n_key] -= 1
+                st.rerun()
+        with col_save:
+            if st.button("💾 Salvar configuração", type="primary", key=f"salvar_{mes_key}"):
+                metas_to_save = []
+                for i in range(n_tiers):
+                    mv = float(st.session_state.get(f"meta_val_{mes_key}_{i}") or 0.0)
+                    pv = st.session_state.get(f"premio_val_{mes_key}_{i}") or ""
+                    av = bool(st.session_state.get(f"acumula_{mes_key}_{i}", False)) if i > 0 else False
+                    metas_to_save.append({"meta": mv, "premio": pv, "acumula": av})
+                save_premiacoes(mes_key, metas_to_save)
+                st.success("Configuração salva!")
+                st.rerun()
+
+    # Carrega entregas
     entregas = load_entregas(mes_key)
 
     # ── Seção colar: sempre visível, meta fixa de R$ 1.000,00 ────────────────
@@ -1116,14 +1160,11 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
                 status_txt = "✅ Pedido finalizado — ganhou!" if confirmado else "📊 Pedido em aberto (pré-baixa)"
                 status_cor = "#7b1fa2" if confirmado else "#1976d2"
                 if entregue:
-                    borda = "#16a34a"
-                    fundo = "linear-gradient(135deg,#f0fdf4,#dcfce7)"
+                    borda = "#16a34a"; fundo = "linear-gradient(135deg,#f0fdf4,#dcfce7)"
                 elif confirmado:
-                    borda = "#9c27b0"
-                    fundo = "linear-gradient(135deg,#f3e5f5,#e1bee7)"
+                    borda = "#9c27b0"; fundo = "linear-gradient(135deg,#f3e5f5,#e1bee7)"
                 else:
-                    borda = "#90caf9"
-                    fundo = "#e3f2fd"
+                    borda = "#90caf9"; fundo = "#e3f2fd"
                 check_badge = (
                     '<div style="color:#16a34a;font-size:0.82em;font-weight:600;margin-top:6px">✅ Colar entregue</div>'
                     if entregue else ""
@@ -1134,145 +1175,151 @@ def _tab_premiacoes(todos_pedidos: list, mes: int, ano: int, mes_label: str):
                     f'<div style="font-weight:700;font-size:0.95em">💎 {r["Nome"]}</div>'
                     f'<div style="color:#888;font-size:0.78em;margin-bottom:4px">{r["Supervisor"]}</div>'
                     f'<div style="font-size:1em;font-weight:700">{_R(r["Valor 1º pedido"])}</div>'
-                    f'<div style="color:{status_cor};font-size:0.82em;font-weight:700">'
-                    f'{status_txt}</div>'
-                    f'{check_badge}'
-                    f'</div>',
+                    f'<div style="color:{status_cor};font-size:0.82em;font-weight:700">{status_txt}</div>'
+                    f'{check_badge}</div>',
                     unsafe_allow_html=True,
                 )
                 if confirmado:
                     st.checkbox(
-                        "Marcar como solicitado",
-                        value=entregue,
-                        key=ck_key,
+                        "Marcar como solicitado", value=entregue, key=ck_key,
                         on_change=_on_entrega_change,
                         args=(mes_key, str(r["id"]), r["Nome"], ck_key),
                     )
     else:
         st.info("Nenhuma nova revendedora qualificou para o colar personalizado neste mês.")
 
-    # ── Ranking: só aparece quando a meta do mês estiver configurada ──────────
-    if not meta_atual:
+    # ── Guard: precisa de metas configuradas ─────────────────────────────────
+    if not cfg_metas:
         st.divider()
         st.info("⚙️ Configure a meta de vendas do mês acima para ver o ranking de premiações.")
         return
 
     st.divider()
 
-    # ── Banner do prêmio ──────────────────────────────────────────────────────
-    st.markdown(
-        f'<div style="background:linear-gradient(135deg,#6B2737 0%,#AB6776 100%);'
-        f'color:white;padding:16px 24px;border-radius:12px;margin-bottom:4px">'
-        f'<span style="font-size:1.6em">🏆</span> '
-        f'<span style="font-size:1.15em;font-weight:700">'
-        f'{premio_atual or "Prêmio do mês"}</span>'
-        f'<br><span style="opacity:0.85;font-size:0.9em">'
-        f'Meta: {_R(meta_atual)} &nbsp;·&nbsp; {mes_label}</span>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-
-    # ── Calcular ranking ──────────────────────────────────────────────────────
-    ranking    = calcular_ranking(todos_pedidos, mes, ano, meta_atual)
-    ganhadoras = [r for r in ranking if r["Categoria"] == "ganhadora"]
-    potenciais = [r for r in ranking if r["Categoria"] == "potencial"]
-    proximas   = [r for r in ranking if r["Categoria"] == "proxima"]
+    # ── Calcular ranking multi-tier ───────────────────────────────────────────
+    ranking = calcular_ranking_multi(todos_pedidos, mes, ano, cfg_metas)
 
     # Métricas resumo
-    st.markdown("<br>", unsafe_allow_html=True)
-    mc1, mc2, mc3, mc4 = st.columns(4)
-    mc1.metric("🏆 Ganhadoras confirmadas", len(ganhadoras))
-    mc2.metric("🎯 Potenciais ganhadoras",  len(potenciais))
-    mc3.metric("📈 Próximas (≥ 70%)",       len(proximas))
-    mc4.metric("💎 Colar personalizado",    len(colar))
+    n_proximas  = sum(1 for r in ranking if r["tier_cats"][0]["cat"] == "proxima")
+    metric_cols = st.columns(len(cfg_metas) + 2)
+    TIER_EMOJIS = ["🥇", "🥈", "🥉", "🏅"]
+    for ti, tier in enumerate(cfg_metas):
+        n_g = sum(1 for r in ranking if r["tier_cats"][ti]["cat"] == "ganhadora")
+        metric_cols[ti].metric(f"{TIER_EMOJIS[ti % 4]} Meta {ti + 1} confirmadas", n_g)
+    metric_cols[len(cfg_metas)].metric("📈 Próximas (≥ 70%)", n_proximas)
+    metric_cols[len(cfg_metas) + 1].metric("💎 Colar personalizado", len(colar))
 
-    st.divider()
+    # ── Seções por tier ───────────────────────────────────────────────────────
+    TIER_FUNDOS = [
+        "linear-gradient(135deg,#6B2737 0%,#AB6776 100%)",
+        "linear-gradient(135deg,#1a237e 0%,#3949ab 100%)",
+        "linear-gradient(135deg,#1b5e20 0%,#388e3c 100%)",
+        "linear-gradient(135deg,#4a148c 0%,#7b1fa2 100%)",
+    ]
 
-    # ── Seção 1: Ganhadoras confirmadas ───────────────────────────────────────
-    st.markdown("### 🏆 Ganhadoras confirmadas")
-    st.caption("Atingiram a meta com pedidos já **baixados** — resultado definitivo.")
-    if ganhadoras:
-        cols = st.columns(min(len(ganhadoras), 4))
-        for i, r in enumerate(ganhadoras):
-            with cols[i % 4]:
-                entregue = entregas.get(str(r["id"]), False)
-                ck_key   = f"ckp_g_{mes_key}_{r['id']}"
-                borda    = "#16a34a" if entregue else "#f9a825"
-                fundo    = "#f0fdf4" if entregue else "#fff8e1"
-                check_badge = (
-                    '<div style="color:#16a34a;font-size:0.82em;font-weight:600;margin-top:6px">✅ Prêmio entregue</div>'
-                    if entregue else ""
-                )
-                st.markdown(
-                    f'<div style="background:{fundo};border:2px solid {borda};'
-                    f'border-radius:10px;padding:10px 12px;margin-bottom:6px">'
-                    f'<div style="font-weight:700;font-size:0.95em">🥇 {r["Nome"]}</div>'
-                    f'<div style="color:#888;font-size:0.78em;margin-bottom:4px">{r["Supervisor"]}</div>'
-                    f'<div style="font-size:1em;font-weight:700">{_R(r["Total"])}</div>'
-                    f'<div style="color:#27ae60;font-size:0.82em;font-weight:700">'
-                    f'✅ {r["% da meta"]:.1f}% da meta</div>'
-                    f'{check_badge}'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-                st.checkbox(
-                    "Marcar como entregue",
-                    value=entregue,
-                    key=ck_key,
-                    on_change=_on_entrega_change,
-                    args=(mes_key, str(r["id"]), r["Nome"], ck_key),
-                )
-    else:
-        st.info("Nenhuma revendedora atingiu a meta com pedidos já baixados neste mês.")
+    for ti, tier in enumerate(cfg_metas):
+        st.divider()
 
-    st.divider()
+        # Banner do tier com indicação de acúmulo
+        acumula_html = ""
+        if tier.get("acumula") and ti > 0 and cfg_metas[ti - 1].get("premio"):
+            acumula_html = (
+                f'<br><span style="font-size:0.85em;opacity:0.9">'
+                f'🎁 Acumula: + {cfg_metas[ti - 1]["premio"]}</span>'
+            )
+        st.markdown(
+            f'<div style="background:{TIER_FUNDOS[ti % 4]};color:white;'
+            f'padding:16px 24px;border-radius:12px;margin-bottom:4px">'
+            f'<span style="font-size:1.5em">{TIER_EMOJIS[ti % 4]}</span> '
+            f'<span style="font-size:1.1em;font-weight:700">'
+            f'Meta {ti + 1} — {tier.get("premio") or "Prêmio"}</span>'
+            f'{acumula_html}'
+            f'<br><span style="opacity:0.85;font-size:0.9em">'
+            f'Meta: {_R(tier.get("meta", 0))} &nbsp;·&nbsp; {mes_label}</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
-    # ── Seção 2: Potenciais ganhadoras ────────────────────────────────────────
-    st.markdown("### 🎯 Potenciais ganhadoras")
-    st.caption(
-        "Total (baixado + pré-baixa) já atingiu a meta, mas ainda há pedidos em aberto. "
-        "Ganharão se a pré-baixa converter."
-    )
-    if potenciais:
-        cols = st.columns(min(len(potenciais), 4))
-        for i, r in enumerate(potenciais):
-            with cols[i % 4]:
-                st.markdown(
-                    f'<div style="background:#e3f2fd;border:2px solid #90caf9;'
-                    f'border-radius:10px;padding:10px 12px;margin-bottom:8px">'
-                    f'<div style="font-weight:700;font-size:0.95em">🎯 {r["Nome"]}</div>'
-                    f'<div style="color:#888;font-size:0.78em;margin-bottom:4px">{r["Supervisor"]}</div>'
-                    f'<div style="font-size:1em;font-weight:700">{_R(r["Pré-baixa"])}</div>'
-                    f'<div style="color:#1976d2;font-size:0.82em;font-weight:700">'
-                    f'📊 {r["% da meta"]:.1f}% da meta</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-    else:
-        st.info("Nenhuma revendedora com total (baixado + pré-baixa) acima da meta neste mês.")
+        ganhadoras_t = [r for r in ranking if r["tier_cats"][ti]["cat"] == "ganhadora"]
+        potenciais_t = [r for r in ranking if r["tier_cats"][ti]["cat"] == "potencial"]
 
-    st.divider()
+        # Ganhadoras confirmadas
+        st.markdown(f"### {TIER_EMOJIS[ti % 4]} Ganhadoras confirmadas — Meta {ti + 1}")
+        st.caption("Atingiram a meta com pedidos já **baixados** — resultado definitivo.")
+        if ganhadoras_t:
+            cols = st.columns(min(len(ganhadoras_t), 4))
+            for j, r in enumerate(ganhadoras_t):
+                with cols[j % 4]:
+                    eid      = f"t{ti}_{r['id']}" if ti > 0 else str(r["id"])
+                    entregue = entregas.get(eid, False)
+                    ck_key   = f"ckp_g_{ti}_{mes_key}_{r['id']}"
+                    borda    = "#16a34a" if entregue else "#f9a825"
+                    fundo_c  = "#f0fdf4" if entregue else "#fff8e1"
+                    pct      = r["tier_cats"][ti]["pct"]
+                    check_badge = (
+                        '<div style="color:#16a34a;font-size:0.82em;font-weight:600;margin-top:6px">✅ Prêmio entregue</div>'
+                        if entregue else ""
+                    )
+                    st.markdown(
+                        f'<div style="background:{fundo_c};border:2px solid {borda};'
+                        f'border-radius:10px;padding:10px 12px;margin-bottom:6px">'
+                        f'<div style="font-weight:700;font-size:0.95em">{TIER_EMOJIS[ti % 4]} {r["Nome"]}</div>'
+                        f'<div style="color:#888;font-size:0.78em;margin-bottom:4px">{r["Supervisor"]}</div>'
+                        f'<div style="font-size:1em;font-weight:700">{_R(r["Total"])}</div>'
+                        f'<div style="color:#27ae60;font-size:0.82em;font-weight:700">✅ {pct:.1f}% da meta</div>'
+                        f'{check_badge}</div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.checkbox(
+                        "Marcar como entregue", value=entregue, key=ck_key,
+                        on_change=_on_entrega_change,
+                        args=(mes_key, eid, r["Nome"], ck_key),
+                    )
+        else:
+            st.info(f"Nenhuma revendedora atingiu a Meta {ti + 1} com pedidos já baixados.")
 
-    # ── Seção 3: Próximas da meta ─────────────────────────────────────────────
-    st.markdown("### 📈 Próximas da meta")
-    st.caption("Pedidos em aberto com pré-baixa entre 70% e 99% da meta (sem pedido baixado no mês).")
-    if proximas:
-        cols = st.columns(min(len(proximas), 4))
-        for i, r in enumerate(proximas):
-            with cols[i % 4]:
-                st.markdown(
-                    f'<div style="background:#e3f2fd;border:2px solid #90caf9;'
-                    f'border-radius:10px;padding:10px 12px;margin-bottom:8px">'
-                    f'<div style="font-weight:700;font-size:0.95em">📈 {r["Nome"]}</div>'
-                    f'<div style="color:#888;font-size:0.78em;margin-bottom:4px">{r["Supervisor"]}</div>'
-                    f'<div style="font-size:1em;font-weight:700">{_R(r["Pré-baixa"])}</div>'
-                    f'<div style="color:#1565c0;font-size:0.82em;font-weight:700">'
-                    f'{r["% pré-baixa"]:.1f}% — faltam {_R(r["Falta"])}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-    else:
-        st.info("Nenhuma revendedora entre 70% e 99% da meta neste mês.")
+        # Potenciais
+        if potenciais_t:
+            st.markdown(f"#### 🎯 Potenciais — Meta {ti + 1}")
+            st.caption("Total (baixado + pré-baixa) já atingiu a meta, mas ainda há pedidos em aberto.")
+            cols = st.columns(min(len(potenciais_t), 4))
+            for j, r in enumerate(potenciais_t):
+                with cols[j % 4]:
+                    pct = r["tier_cats"][ti]["pct"]
+                    st.markdown(
+                        f'<div style="background:#e3f2fd;border:2px solid #90caf9;'
+                        f'border-radius:10px;padding:10px 12px;margin-bottom:8px">'
+                        f'<div style="font-weight:700;font-size:0.95em">🎯 {r["Nome"]}</div>'
+                        f'<div style="color:#888;font-size:0.78em;margin-bottom:4px">{r["Supervisor"]}</div>'
+                        f'<div style="font-size:1em;font-weight:700">{_R(r["Pré-baixa"])}</div>'
+                        f'<div style="color:#1976d2;font-size:0.82em;font-weight:700">📊 {pct:.1f}% da meta</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+        # Próximas: exibir apenas no tier 0 (meta mais baixa)
+        if ti == 0:
+            proximas_t = [r for r in ranking if r["tier_cats"][0]["cat"] == "proxima"]
+            if proximas_t:
+                st.divider()
+                st.markdown("### 📈 Próximas da meta")
+                st.caption("Pré-baixa entre 70% e 99% da Meta 1, sem pedido baixado no mês.")
+                cols = st.columns(min(len(proximas_t), 4))
+                for j, r in enumerate(proximas_t):
+                    with cols[j % 4]:
+                        pct   = r["tier_cats"][0]["pct"]
+                        falta = max(float(tier.get("meta") or 0) - r["Pré-baixa"], 0)
+                        st.markdown(
+                            f'<div style="background:#e3f2fd;border:2px solid #90caf9;'
+                            f'border-radius:10px;padding:10px 12px;margin-bottom:8px">'
+                            f'<div style="font-weight:700;font-size:0.95em">📈 {r["Nome"]}</div>'
+                            f'<div style="color:#888;font-size:0.78em;margin-bottom:4px">{r["Supervisor"]}</div>'
+                            f'<div style="font-size:1em;font-weight:700">{_R(r["Pré-baixa"])}</div>'
+                            f'<div style="color:#1565c0;font-size:0.82em;font-weight:700">'
+                            f'{pct:.1f}% — faltam {_R(falta)}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
 
 
 # ── Tab: Perfil das Revendedoras (admin) ─────────────────────────────────────

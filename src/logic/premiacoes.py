@@ -156,6 +156,145 @@ def calcular_ranking(todos_pedidos: list, mes: int, ano: int, meta: float) -> li
     return sorted(rows, key=lambda x: x["Total"], reverse=True)
 
 
+# ── Multi-tier API ────────────────────────────────────────────────────────────
+
+def _raw_rows() -> list:
+    """Busca linhas brutas da tabela premiacoes no Supabase (ou arquivo local)."""
+    import json
+    client = _get_client()
+    if client is not None:
+        try:
+            res = client.table("premiacoes").select("mes_key,meta,premio").execute()
+            return res.data or []
+        except Exception as e:
+            try:
+                import streamlit as st
+                st.error(f"⚠️ Erro ao carregar premiações: {e}")
+            except Exception:
+                pass
+            return []
+    local = _load_local()
+    return [{"mes_key": k, "meta": v.get("meta", 0), "premio": v.get("premio", "")}
+            for k, v in local.items()]
+
+
+def load_premiacoes_multi() -> dict:
+    """Retorna {mes_key: [{"meta": float, "premio": str, "acumula": bool}]}.
+    Suporta tanto o formato antigo (linha única) quanto o novo (JSON no campo premio).
+    """
+    import json
+    result = {}
+    for row in _raw_rows():
+        mes_key = row["mes_key"]
+        try:
+            metas = json.loads(row["premio"])
+            if isinstance(metas, list):
+                result[mes_key] = metas
+                continue
+        except Exception:
+            pass
+        result[mes_key] = [{"meta": float(row.get("meta") or 0), "premio": row.get("premio") or "", "acumula": False}]
+    return result
+
+
+def save_premiacoes(mes_key: str, metas: list):
+    """Salva lista de metas [{meta, premio, acumula}] para o mês.
+    Formato único, seja 1 ou N metas.
+    """
+    import json
+    premio_val = json.dumps(metas, ensure_ascii=False)
+    meta_val   = min((float(m.get("meta") or 0) for m in metas), default=0.0)
+
+    client = _get_client()
+    if client is not None:
+        try:
+            client.table("premiacoes").upsert(
+                {"mes_key": mes_key, "meta": meta_val, "premio": premio_val},
+                on_conflict="mes_key",
+            ).execute()
+            return
+        except Exception as e:
+            try:
+                import streamlit as st
+                st.error(f"❌ Falha ao salvar premiação: {e}")
+            except Exception:
+                pass
+            return
+    try:
+        import streamlit as st
+        st.warning("⚠️ Supabase não configurado. Salvando localmente.")
+    except Exception:
+        pass
+    p = _load_local()
+    p[mes_key] = {"meta": meta_val, "premio": premio_val}
+    os.makedirs(os.path.dirname(_FILE), exist_ok=True)
+    with open(_FILE, "w", encoding="utf-8") as f:
+        json.dump(p, f, ensure_ascii=False, indent=2)
+
+
+def calcular_ranking_multi(todos_pedidos: list, mes: int, ano: int, metas: list) -> list:
+    """Calcula ranking com múltiplos tiers.
+    Cada row retorna 'tier_cats': lista de {"cat": str, "pct": float} — uma entrada por tier.
+    cat in: ganhadora | potencial | proxima | outras
+    """
+    baixado_map: dict  = defaultdict(float)
+    prebaixa_map: dict = defaultdict(float)
+    tem_baixado: set   = set()
+    nome_map: dict     = {}
+    sup_map: dict      = {}
+
+    for p in todos_pedidos:
+        rid = p.get("fk_revendedor_id")
+        if not rid:
+            continue
+        status = p.get("status", "")
+        comprador = p.get("comprador") or {}
+        nome_map[rid] = comprador.get("nome") or f"Rev {rid}"
+        sup_map[rid]  = p.get("supervisor_nome") or "Sem supervisora"
+
+        if status == "Baixado":
+            d = parse_date(p.get("data_baixa"))
+            if d and d.month == mes and d.year == ano:
+                baixado_map[rid] += float(p.get("valor_total") or 0)
+                tem_baixado.add(rid)
+        elif status == "Aberto":
+            d = parse_date(p.get("data_acerto"))
+            if d and d.month == mes and d.year == ano:
+                prebaixa_map[rid] += float(p.get("valor_pre_baixa") or 0)
+
+    rows = []
+    for rid in set(baixado_map) | set(prebaixa_map):
+        baixado = baixado_map[rid]
+        pre     = prebaixa_map[rid]
+        total   = baixado + pre
+
+        tier_cats = []
+        for tier in metas:
+            meta_val = float(tier.get("meta") or 0)
+            pct = round(total / meta_val * 100, 1) if meta_val > 0 else 0.0
+            if baixado >= meta_val:
+                cat = "ganhadora"
+            elif total >= meta_val:
+                cat = "potencial"
+            elif rid not in tem_baixado and meta_val > 0 and pre >= meta_val * 0.70:
+                cat = "proxima"
+            else:
+                cat = "outras"
+            tier_cats.append({"cat": cat, "pct": pct})
+
+        rows.append({
+            "id":        rid,
+            "Nome":      nome_map.get(rid, f"Rev {rid}"),
+            "Supervisor": sup_map.get(rid, ""),
+            "Baixado":   round(baixado, 2),
+            "Pré-baixa": round(pre, 2),
+            "Total":     round(total, 2),
+            "tier_cats": tier_cats,
+        })
+
+    return sorted(rows, key=lambda x: x["Total"], reverse=True)
+
+
 def _criacao_key(p):
     d = parse_date(p.get("data_criacao"))
     return d if d else date(2099, 1, 1)

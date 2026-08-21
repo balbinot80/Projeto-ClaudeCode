@@ -267,17 +267,12 @@ with st.sidebar:
     if role == "admin":
         paginas_disponiveis = [
             "🏠 Dashboard",
-            "📦 Estoque",
-            "🛒 Programação de Compras",
             "👥 Revendedoras",
             "📅 Controle de Acertos",
             "📊 Entradas e Saídas",
-            "🎨 Marketing",
             "📋 Acompanhamento",
             "🔍 Diagnóstico",
         ]
-    elif role == "marketing":
-        paginas_disponiveis = ["🎨 Marketing"]
     elif role == "supervisora_teste":
         paginas_disponiveis = [
             "🏠 Hoje",
@@ -305,7 +300,7 @@ with st.sidebar:
     if role == "admin":
         from src.api.jueri_client import (
             sincronizar_cache, limpar_cache,
-            _get_lista_pedidos, get_produtos, get_revendedores, get_categorias,
+            _get_lista_pedidos, get_revendedores,
         )
         from src.api.cache_supabase import ultima_sincronizacao
 
@@ -314,9 +309,7 @@ with st.sidebar:
             with st.spinner("Recarregando do cache..."):
                 limpar_cache()
                 _get_lista_pedidos()
-                get_produtos()
                 get_revendedores()
-                get_categorias()
             st.rerun()
 
         # ── Botão lento: Jueri → Supabase → memória (minutos) ───────────────
@@ -343,12 +336,9 @@ with st.sidebar:
                         _cb("🔥 Aquecendo cache em memória...")
                         limpar_cache()
                         _get_lista_pedidos()
-                        get_produtos()
                         get_revendedores()
-                        get_categorias()
                         _status.success(
                             f"✅ {res.get('pedidos', 0)} pedidos · "
-                            f"{res.get('produtos', 0)} produtos · "
                             f"{res.get('revendedores', 0)} revendedoras"
                         )
                     except Exception as e:
@@ -409,7 +399,7 @@ if pagina == "🏠 Hoje":
     render(filtro_supervisor=sup_filtro, nome_usuario=nome_usuario)
 
 elif pagina == "🏠 Dashboard":
-    from src.api.jueri_client import get_produtos, get_revendedores, get_pedidos_baixados, get_pedidos_abertos
+    from src.api.jueri_client import get_revendedores, get_pedidos_baixados, get_pedidos_abertos
     from datetime import datetime, timedelta
     import pandas as pd
 
@@ -417,7 +407,6 @@ elif pagina == "🏠 Dashboard":
 
     try:
         with st.spinner("Carregando dados..."):
-            produtos = get_produtos(status="1")
             revendedores = get_revendedores()
             pedidos_abertos = get_pedidos_abertos()
             baixados = get_pedidos_baixados()
@@ -436,31 +425,13 @@ elif pagina == "🏠 Dashboard":
         except (ValueError, TypeError):
             pass
 
-    col1, col2, col3, col4 = st.columns(4)
-
-    qtds = pd.to_numeric(
-        pd.DataFrame([{"qtd": p.get("quantidade", 0), "min": p.get("estoque_minimo") or 0} for p in produtos])["qtd"],
-        errors="coerce",
-    ).fillna(0)
-    mins = pd.to_numeric(
-        pd.DataFrame([{"qtd": p.get("quantidade", 0), "min": p.get("estoque_minimo") or 0} for p in produtos])["min"],
-        errors="coerce",
-    ).fillna(0)
-    criticos = int((qtds < mins).sum())
-
-    col1.metric("Produtos ativos", len(produtos))
-    col2.metric("🔴 Estoque crítico", criticos)
-    col3.metric("👥 Revendedoras ativas",
+    col1, col2, col3 = st.columns(3)
+    col1.metric("👥 Revendedoras ativas",
                 sum(1 for r in revendedores if str(r.get("fk_status_id", "1")) == "1"))
-    col4.metric("📦 Pedidos baixados (30 dias)", len(baixados_30d))
+    col2.metric("📂 Maletas em aberto", len(pedidos_abertos))
+    col3.metric("📦 Pedidos baixados (30 dias)", len(baixados_30d))
 
     st.divider()
-
-    if criticos > 0:
-        st.error(
-            f"⚠️ {criticos} produto(s) estão abaixo do estoque mínimo! "
-            "Acesse **Programação de Compras** para ver as sugestões."
-        )
 
     # ── Ticket médio por supervisora ──────────────────────────────────────────
     st.subheader("🎯 Ticket médio por supervisora — últimos 30 dias")
@@ -516,14 +487,6 @@ elif pagina == "🏠 Dashboard":
 
     st.info("Use o menu lateral para navegar entre os módulos do sistema.")
 
-elif pagina == "📦 Estoque":
-    from src.pages.estoque import render
-    render()
-
-elif pagina == "🛒 Programação de Compras":
-    from src.pages.compras import render
-    render()
-
 elif pagina == "👥 Revendedoras":
     from src.pages.revendedoras import render
     render(filtro_supervisor=sup_filtro)
@@ -534,10 +497,6 @@ elif pagina == "📅 Controle de Acertos":
 
 elif pagina == "📊 Entradas e Saídas":
     from src.pages.entradas_saidas import render
-    render()
-
-elif pagina == "🎨 Marketing":
-    from src.pages.marketing import render
     render()
 
 elif pagina == "📋 Acompanhamento":

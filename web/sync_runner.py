@@ -218,18 +218,8 @@ def _executar(mode: str):
         counts["pedidos"] = len(pedidos)
         _upd(progress=32, step=f"{len(pedidos)} pedidos salvos")
 
-        # ── 2. Produtos ───────────────────────────────────────────────────────
-        _upd(progress=33, step="Buscando produtos…")
-        produtos = _paginar(
-            sess, "produto", params={"status": "1"},
-            on_page=lambda pg, tot: _upd(step=f"Produtos — pág. {pg}/{tot}"),
-        )
-        escrever_cache("produtos_1", produtos)
-        counts["produtos"] = len(produtos)
-        _upd(progress=50, step=f"{len(produtos)} produtos salvos")
-
-        # ── 3. Revendedoras ───────────────────────────────────────────────────
-        _upd(progress=51, step="Buscando revendedoras…")
+        # ── 2. Revendedoras ───────────────────────────────────────────────────
+        _upd(progress=40, step="Buscando revendedoras…")
         revs = _paginar(
             sess, "revendedor", params={},
             on_page=lambda pg, tot: _upd(step=f"Revendedoras — pág. {pg}/{tot}"),
@@ -238,21 +228,11 @@ def _executar(mode: str):
         counts["revendedores"] = len(revs)
         _upd(progress=65, step=f"{len(revs)} revendedoras salvas")
 
-        # ── 4. Categorias ─────────────────────────────────────────────────────
-        _upd(progress=66, step="Buscando categorias…")
-        try:
-            cats = _paginar(sess, "categoria_produto")
-            escrever_cache("categorias", cats)
-            counts["categorias"] = len(cats)
-        except Exception:
-            counts["categorias"] = 0
-        _upd(progress=70, step="Listas sincronizadas ✓")
-
         if mode == "fast":
             # Sync rápida encerra aqui
             _upd(
                 status="success", progress=100,
-                step=f"Sync rápida concluída! {len(pedidos)} pedidos, {len(revs)} revendedoras",
+                step=f"Sync rápida concluída! {len(pedidos)} pedidos · {len(revs)} revendedoras",
                 counts=counts,
             )
             return

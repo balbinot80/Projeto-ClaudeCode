@@ -270,6 +270,7 @@ with st.sidebar:
             "👥 Revendedoras",
             "📅 Controle de Acertos",
             "📊 Entradas e Saídas",
+            "💰 DRE",
             "📋 Acompanhamento",
             "🔍 Diagnóstico",
         ]
@@ -497,6 +498,10 @@ elif pagina == "📅 Controle de Acertos":
 
 elif pagina == "📊 Entradas e Saídas":
     from src.pages.entradas_saidas import render
+    render()
+
+elif pagina == "💰 DRE":
+    from src.pages.dre import render
     render()
 
 elif pagina == "📋 Acompanhamento":

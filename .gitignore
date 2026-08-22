@@ -48,3 +48,6 @@ venv/
 
 # Streamlit secrets (credenciais, não commitar)
 .streamlit/secrets.toml
+
+# Credenciais Google (nao commitar)
+.streamlit/google_credentials.json

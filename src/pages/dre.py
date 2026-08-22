@@ -10,8 +10,10 @@ import streamlit as st
 import pandas as pd
 
 from src.logic.dre import (
-    calcular_dre, ORDEM_DRE, TOTAIS, CUSTOS_VARIAVEIS,
+    calcular_dre, ORDEM_DRE, TOTAIS,
     mes_esta_fechado, nome_aba_financeiro,
+    carregar_mapeamento_custom, salvar_mapeamento_custom,
+    categorizar_despesa, CATEGORIAS_DISPONIVEIS,
 )
 from src.api.google_sheets import ler_despesas_mes, credentials_configuradas
 
@@ -30,7 +32,17 @@ def _receita_mes(pedidos: list, mes: int, ano: int) -> tuple[float, float]:
     - Meses fechados: só baixados
     - Mês atual/futuro: baixados + pré-baixa
     """
-    from src.logic.revendedoras import calcular_competencia, parse_date
+    try:
+        from src.logic.revendedoras import parse_date
+    except ImportError:
+        from datetime import datetime
+        def parse_date(s):
+            for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+                try:
+                    return datetime.strptime(str(s), fmt).date()
+                except Exception:
+                    pass
+            return None
 
     fechado = mes_esta_fechado(mes, ano)
     receita = 0.0
@@ -111,11 +123,11 @@ def render():
             pedidos = []
 
         receita, comissoes = _receita_mes(pedidos, mes, ano)
-
         despesas = ler_despesas_mes(mes, ano)
+        custom = carregar_mapeamento_custom()
 
     # ── KPIs rápidos ─────────────────────────────────────────────────────────
-    dre = calcular_dre(receita, comissoes, despesas)
+    dre = calcular_dre(receita, comissoes, despesas, custom)
 
     lucro_liq    = dre.get("lucro_liquido", 0.0)
     lucro_op     = dre.get("lucro_operacional", 0.0)
@@ -171,37 +183,84 @@ def render():
             },
         )
 
+    st.divider()
+
+    # ── Editor de categorias (correção rápida inline) ─────────────────────────
+    with st.expander("✏️ Corrigir categoria de uma despesa", expanded=False):
+        st.caption(
+            "Se uma despesa está na categoria errada, selecione-a abaixo e "
+            "defina a categoria correta. O ajuste é salvo permanentemente."
+        )
+
+        if not despesas:
+            st.info("Nenhuma despesa carregada para o mês selecionado.")
+        else:
+            # Monta lista de despesas com categoria atual
+            nomes = sorted(set(d["nome"] for d in despesas))
+            nome_sel = st.selectbox("Despesa", nomes, key="dre_edit_nome")
+
+            cat_atual = custom.get(nome_sel) or categorizar_despesa(nome_sel, custom)
+            cat_nova = st.selectbox(
+                "Nova categoria",
+                CATEGORIAS_DISPONIVEIS,
+                index=CATEGORIAS_DISPONIVEIS.index(cat_atual)
+                      if cat_atual in CATEGORIAS_DISPONIVEIS else 0,
+                key="dre_edit_cat",
+            )
+
+            col_btn, col_rem, _ = st.columns([2, 2, 6])
+            with col_btn:
+                if st.button("💾 Salvar ajuste", type="primary", use_container_width=True):
+                    custom[nome_sel] = cat_nova
+                    salvar_mapeamento_custom(custom)
+                    st.success(f"✅ '{nome_sel}' → {cat_nova}")
+                    st.cache_data.clear()
+                    st.rerun()
+
+            with col_rem:
+                if nome_sel in custom:
+                    if st.button("🔄 Remover ajuste manual", use_container_width=True):
+                        del custom[nome_sel]
+                        salvar_mapeamento_custom(custom)
+                        st.info(f"'{nome_sel}' voltou à categoria automática.")
+                        st.cache_data.clear()
+                        st.rerun()
+
     # ── Detalhamento de despesas ──────────────────────────────────────────────
     if despesas:
-        st.divider()
         with st.expander("📋 Ver todas as despesas da planilha"):
-            df_desp = pd.DataFrame(despesas)
-            df_desp["Categoria DRE"] = df_desp["nome"].apply(
-                lambda n: __import__("src.logic.dre", fromlist=["categorizar_despesa"])
-                          .categorizar_despesa(n)
-            )
-            df_desp = df_desp.rename(columns={
-                "nome":       "Despesa",
-                "previsto":   "Previsto",
-                "realizado":  "Realizado",
-                "tipo":       "Tipo",
-                "forma_pgto": "Forma Pgto",
-            })[["Despesa","Categoria DRE","Previsto","Realizado","Tipo","Forma Pgto"]]
+            linhas_desp = []
+            for d in despesas:
+                cat = categorizar_despesa(d["nome"], custom)
+                eh_manual = d["nome"] in custom
+                linhas_desp.append({
+                    "Despesa":      d["nome"],
+                    "Categoria DRE": ("🔧 " if eh_manual else "") + cat,
+                    "Previsto":     _fmt(d["previsto"]) if d["previsto"] else "—",
+                    "Realizado":    _fmt(d["realizado"]) if d["realizado"] else "—",
+                    "Tipo":         d.get("tipo", ""),
+                    "Forma Pgto":   d.get("forma_pgto", ""),
+                })
 
-            def _fmt_v(v):
-                return _fmt(float(v)) if v else "—"
-
+            df_desp = pd.DataFrame(linhas_desp)
             st.dataframe(
-                df_desp.style.format({"Previsto": _fmt_v, "Realizado": _fmt_v}),
+                df_desp,
                 use_container_width=True,
                 hide_index=True,
+                column_config={
+                    "Despesa":       st.column_config.TextColumn(width="large"),
+                    "Categoria DRE": st.column_config.TextColumn(width="medium"),
+                    "Previsto":      st.column_config.TextColumn(width="small"),
+                    "Realizado":     st.column_config.TextColumn(width="small"),
+                },
             )
 
             # Alerta: despesas sem categoria definida
-            sem_cat = df_desp[df_desp["Categoria DRE"] == "4.99 Outros"]["Despesa"].tolist()
+            sem_cat = [d["Despesa"] for d in linhas_desp
+                       if "4.99 Outros" in d["Categoria DRE"]]
             if sem_cat:
                 st.warning(
-                    f"⚠️ {len(sem_cat)} despesa(s) classificadas em **Outros** "
-                    f"(sem mapeamento definido): {', '.join(sem_cat[:8])}"
+                    f"⚠️ {len(sem_cat)} despesa(s) em **Outros** (sem mapeamento): "
+                    + ", ".join(sem_cat[:8])
                     + ("…" if len(sem_cat) > 8 else "")
                 )

@@ -56,10 +56,31 @@ st.markdown("""
 
 
 def _get_secret(key: str, default: str = "") -> str:
+    # 1. st.secrets (Streamlit Cloud / servidor)
     try:
-        return st.secrets[key]
+        v = st.secrets[key]
+        if v:
+            return str(v)
     except Exception:
-        return os.getenv(key, default)
+        pass
+    # 2. Variável de ambiente
+    v = os.getenv(key, "")
+    if v:
+        return v
+    # 3. Leitura direta do secrets.toml (fallback robusto)
+    try:
+        import re
+        from pathlib import Path
+        _p = Path(__file__).parent / ".streamlit" / "secrets.toml"
+        if _p.exists():
+            txt = _p.read_text(encoding="utf-8")
+            m = re.search(rf'^{re.escape(key)}\s*=\s*["\']?([^"\']+)["\']?',
+                          txt, re.MULTILINE)
+            if m:
+                return m.group(1).strip()
+    except Exception:
+        pass
+    return default
 
 
 # Informações dos usuários — senhas ficam apenas no Streamlit Cloud Secrets

@@ -464,6 +464,7 @@ def calcular_dre_completo(
     despesas: list[dict],
     custom: dict[str, str] | None = None,
     cmv_pct: float | None = None,
+    taxa_cartao: float | None = None,
 ) -> tuple[dict[str, float], dict[str, float]]:
     """
     Retorna (dre_realizado, dre_planejado).
@@ -494,6 +495,11 @@ def calcular_dre_completo(
         cmv_estimado = receita_bruta * cmv_pct
         real["2.1 CMV"] = cmv_estimado
         plan["2.1 CMV"] = cmv_estimado
+
+    # Taxa de cartão lida diretamente da coluna N (a partir de Jul/2026)
+    if taxa_cartao is not None:
+        real["2.5 Taxa de Cobrança Cartão"] = taxa_cartao
+        plan["2.5 Taxa de Cobrança Cartão"] = taxa_cartao
 
     for d in (real, plan):
         total_cv = sum(d.get(c, 0.0) for c in CUSTOS_VAR)

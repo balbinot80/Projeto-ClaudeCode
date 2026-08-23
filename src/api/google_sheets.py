@@ -148,6 +148,43 @@ def credentials_configuradas() -> bool:
     return _get_creds_dict() is not None
 
 
+@st.cache_data(ttl=1800, show_spinner=False)   # cache 30 min
+def ler_taxa_cartao_mes(mes: int, ano: int) -> float:
+    """
+    Soma a coluna N (Tx Cartão) da aba mensal do FINANCEIRO.
+    Usar a partir de Jul/2026, onde a taxa é cobrada por pedido
+    e registrada diretamente na tabela de receita.
+    Retorna 0.0 se a aba não existir.
+    """
+    from src.logic.dre import nome_aba_financeiro
+
+    client = _get_gspread_client()
+    if client is None:
+        return 0.0
+    try:
+        sheet    = client.open_by_key(FINANCEIRO_ID)
+        nome_aba = nome_aba_financeiro(mes, ano)
+        try:
+            aba = sheet.worksheet(nome_aba)
+        except Exception:
+            return 0.0
+
+        col_n = aba.col_values(14)   # coluna N = 14 (1-based)
+        total = 0.0
+        for v in col_n[2:]:          # pula as 2 linhas de cabeçalho
+            s = (str(v).strip()
+                 .replace("R$", "").replace(".", "").replace(",", ".").strip())
+            try:
+                f = float(s)
+                if f > 0:
+                    total += f
+            except (ValueError, TypeError):
+                pass
+        return total
+    except Exception:
+        return 0.0
+
+
 # ── CMV histórico ─────────────────────────────────────────────────────────────
 
 @st.cache_data(ttl=3600, show_spinner=False)   # cache 1h

@@ -16,7 +16,11 @@ from src.logic.dre import (
     carregar_mapeamento_custom, salvar_mapeamento_custom,
     categorizar_despesa, CATEGORIAS_DISPONIVEIS,
 )
-from src.api.google_sheets import ler_despesas_mes, credentials_configuradas, cmv_pct_historico, ler_cmv_historico
+from src.api.google_sheets import (
+    ler_despesas_mes, credentials_configuradas,
+    cmv_pct_historico, ler_cmv_historico,
+    ler_taxa_cartao_mes,
+)
 
 
 # ── Helpers numéricos ─────────────────────────────────────────────────────────
@@ -259,7 +263,16 @@ def render():
         pct_cmv    = cmv_pct_historico()        # % médio total histórico
         dados_cmv  = ler_cmv_historico()        # para exibir detalhes
 
-    real, plan = calcular_dre_completo(receita, comissoes, despesas, custom, cmv_pct=pct_cmv)
+        # Taxa de cartão: lida da coluna N a partir de Jul/2026
+        taxa_cartao = None
+        if (ano, mes) >= (2026, 7):
+            taxa_cartao = ler_taxa_cartao_mes(mes, ano) or None
+
+    real, plan = calcular_dre_completo(
+        receita, comissoes, despesas, custom,
+        cmv_pct=pct_cmv,
+        taxa_cartao=taxa_cartao,
+    )
 
     # ── KPIs rápidos ─────────────────────────────────────────────────────────
     ll = real.get("lucro_liquido", 0)

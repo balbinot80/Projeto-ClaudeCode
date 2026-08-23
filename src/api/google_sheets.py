@@ -20,8 +20,9 @@ import streamlit as st
 
 # ── IDs das planilhas ─────────────────────────────────────────────────────────
 
-FINANCEIRO_ID = "1cUiug2IFmRoAKN8UsQ_BTwuKKVxVthyZBwsVu9pfKWA"
-DRE_ID        = "1neVIiyW9NE0riARjz7qvEu-gJj1YVCXHJmivhaMPD8M"
+FINANCEIRO_ID    = "1cUiug2IFmRoAKN8UsQ_BTwuKKVxVthyZBwsVu9pfKWA"
+DRE_ID           = "1neVIiyW9NE0riARjz7qvEu-gJj1YVCXHJmivhaMPD8M"
+CMV_HISTORICO_ID = "1D_0ZVjbks4Os087W5bBvtiDALlt9GTecusIA6NgOVJ8"
 
 # Caminho padrão do arquivo de credenciais
 _CRED_PATH = Path(__file__).parent.parent.parent / ".streamlit" / "google_credentials.json"
@@ -145,3 +146,79 @@ def ler_despesas_mes(mes: int, ano: int) -> list[dict]:
 def credentials_configuradas() -> bool:
     """Verifica se as credenciais do Google estão disponíveis."""
     return _get_creds_dict() is not None
+
+
+# ── CMV histórico ─────────────────────────────────────────────────────────────
+
+@st.cache_data(ttl=3600, show_spinner=False)   # cache 1h
+def ler_cmv_historico() -> dict[tuple[int, int], float]:
+    """
+    Lê o % CMV por (mes, ano) da planilha histórica.
+    Estrutura da planilha:
+      - Linha 4: cabeçalhos dos meses
+      - Linha 5: % CMV (ex: "10,76%")
+      - Colunas B:M (índices 1-12) = 2025, meses 1-12
+      - Colunas N+ (índice 13+)    = 2026, meses 1-N
+      - Última coluna com "TOTAL"  = ignorada
+    Retorna {(mes, ano): pct_decimal}, ex: {(6, 2026): 0.1076}
+    """
+    client = _get_gspread_client()
+    if client is None:
+        return {}
+    try:
+        sheet  = client.open_by_key(CMV_HISTORICO_ID)
+        aba    = sheet.get_worksheet(0)
+        rows   = aba.get_all_values()
+        if len(rows) < 5:
+            return {}
+
+        headers = rows[3]   # linha 4 (0-indexed: 3)
+        pcts    = rows[4]   # linha 5 (0-indexed: 4)
+
+        MESES_LONG  = ["JANEIRO","FEVEREIRO","MARÇO","ABRIL","MAIO","JUNHO",
+                       "JULHO","AGOSTO","SETEMBRO","OUTUBRO","NOVEMBRO","DEZEMBRO"]
+        MESES_CURTO = ["JAN","FEV","MAR","ABR","MAI","JUN",
+                       "JUL","AGO","SET","OUT","NOV","DEZ"]
+
+        resultado: dict[tuple[int, int], float] = {}
+
+        for col_idx, (h, p) in enumerate(zip(headers, pcts)):
+            h = h.strip().upper()
+            p = p.strip()
+            if not h or not p or h == "TOTAL":
+                continue
+            try:
+                pct = float(p.replace("%", "").replace(",", ".").strip()) / 100
+            except (ValueError, TypeError):
+                continue
+
+            # B=índice 1, M=índice 12 → 2025 (colunas 1-12)
+            # N=índice 13 em diante → 2026
+            if 1 <= col_idx <= 12:
+                ano = 2025
+                mes = col_idx          # col 1=Jan, col 12=Dez
+            elif col_idx >= 13:
+                ano = 2026
+                if h in MESES_LONG:
+                    mes = MESES_LONG.index(h) + 1
+                elif h in MESES_CURTO:
+                    mes = MESES_CURTO.index(h) + 1
+                else:
+                    continue
+            else:
+                continue
+
+            resultado[(mes, ano)] = pct
+
+        return resultado
+    except Exception:
+        return {}
+
+
+def cmv_pct_mes(mes: int, ano: int) -> float | None:
+    """
+    Retorna o % CMV histórico para o mês/ano informado.
+    Retorna None se não houver dado para o período.
+    """
+    historico = ler_cmv_historico()
+    return historico.get((mes, ano))

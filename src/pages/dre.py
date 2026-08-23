@@ -16,7 +16,7 @@ from src.logic.dre import (
     carregar_mapeamento_custom, salvar_mapeamento_custom,
     categorizar_despesa, CATEGORIAS_DISPONIVEIS,
 )
-from src.api.google_sheets import ler_despesas_mes, credentials_configuradas
+from src.api.google_sheets import ler_despesas_mes, credentials_configuradas, cmv_pct_mes
 
 
 # ── Helpers numéricos ─────────────────────────────────────────────────────────
@@ -256,8 +256,9 @@ def render():
         receita, comissoes = _receita_mes(pedidos, mes, ano)
         despesas = ler_despesas_mes(mes, ano)
         custom   = carregar_mapeamento_custom()
+        pct_cmv  = cmv_pct_mes(mes, ano)   # % histórico de CMV, ou None
 
-    real, plan = calcular_dre_completo(receita, comissoes, despesas, custom)
+    real, plan = calcular_dre_completo(receita, comissoes, despesas, custom, cmv_pct=pct_cmv)
 
     # ── KPIs rápidos ─────────────────────────────────────────────────────────
     ll = real.get("lucro_liquido", 0)
@@ -282,6 +283,15 @@ def render():
 
     # ── Tabela DRE visual ─────────────────────────────────────────────────────
     st.subheader(f"DRE — {MESES_PT[mes-1]}/{ano}")
+
+    if pct_cmv is not None:
+        st.caption(
+            f"📦 **CMV estimado pelo histórico:** {pct_cmv*100:.2f}% da receita "
+            f"= {_br(receita * pct_cmv)} "
+            f"(em vez do valor pago no mês)"
+        )
+    elif credentials_configuradas():
+        st.caption("📦 CMV calculado pelas compras reais do mês (sem % histórico disponível)")
     st.markdown(_html_dre(real, plan), unsafe_allow_html=True)
 
     # ── Tabela de despesas com editor inline ──────────────────────────────────

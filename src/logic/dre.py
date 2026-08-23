@@ -463,10 +463,16 @@ def calcular_dre_completo(
     comissoes: float,
     despesas: list[dict],
     custom: dict[str, str] | None = None,
+    cmv_pct: float | None = None,
 ) -> tuple[dict[str, float], dict[str, float]]:
     """
     Retorna (dre_realizado, dre_planejado).
     Cada dict mapeia codigo_categoria → valor em R$.
+
+    cmv_pct: se informado (ex: 0.1076 para 10,76%), substitui o CMV
+             calculado pelas compras reais pelo valor estimado
+             (receita_bruta × cmv_pct). Usado para manter consistência
+             com o histórico de giro de estoque.
     """
     if custom is None:
         custom = carregar_mapeamento_custom()
@@ -482,6 +488,12 @@ def calcular_dre_completo(
     # Comissões vindas do Jueri
     real["2.4 Comissões"] = real.get("2.4 Comissões", 0.0) + comissoes
     plan["2.4 Comissões"] = plan.get("2.4 Comissões", 0.0) + comissoes
+
+    # CMV estimado pelo histórico de giro (substitui o valor pago no mês)
+    if cmv_pct is not None:
+        cmv_estimado = receita_bruta * cmv_pct
+        real["2.1 CMV"] = cmv_estimado
+        plan["2.1 CMV"] = cmv_estimado
 
     for d in (real, plan):
         total_cv = sum(d.get(c, 0.0) for c in CUSTOS_VAR)

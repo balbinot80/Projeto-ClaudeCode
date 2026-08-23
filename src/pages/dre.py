@@ -281,10 +281,12 @@ def render():
     td = sum(v for k, v in real.items() if k not in TOTAIS and k != "receita_bruta" and v > 0)
     rb = real.get("receita_bruta", 0)
 
+    comissao = real.get("2.4 Comissões", 0.0)
+
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("💰 Receita Bruta",     _br(rb))
-    c2.metric("📊 Margem Contrib.",    _br(mc),
-              _pct(mc, rb) if rb else "—")
+    c2.metric("🤝 Comissões",          _br(comissao),
+              _pct(comissao, rb) if rb else "—")
     c3.metric("⚙️ Lucro Operacional",  _br(lo),
               _pct(lo, rb) if rb else "—",
               delta_color="normal" if lo >= 0 else "inverse")

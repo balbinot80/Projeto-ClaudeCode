@@ -58,7 +58,14 @@ def _var_class(real: float, plan: float, inverted: bool = False) -> str:
 
 # ── Receita do Jueri ──────────────────────────────────────────────────────────
 
-def _receita_mes(pedidos: list, mes: int, ano: int) -> tuple[float, float]:
+def _receita_mes(pedidos: list, mes: int, ano: int) -> tuple[float, float, float]:
+    """
+    Retorna (receita_liquida, comissoes, inadimplentes).
+
+    Receita líquida = Baixados + Pré-baixa − Promissórias,
+    espelhando o "Total vendido" da tela de Revendedoras.
+    Inadimplentes = valor dos pedidos Baixados com forma_pagamento == "Promissória".
+    """
     try:
         from src.logic.revendedoras import parse_date
     except ImportError:
@@ -72,19 +79,28 @@ def _receita_mes(pedidos: list, mes: int, ano: int) -> tuple[float, float]:
             return None
 
     fechado = mes_esta_fechado(mes, ano)
-    receita = comissoes = 0.0
+    receita = comissoes = inadimplentes = 0.0
     for p in pedidos:
         status = p.get("status", "")
         if status == "Baixado":
             d = parse_date(p.get("data_baixa"))
             if d and d.month == mes and d.year == ano:
-                receita   += float(p.get("valor_total") or 0)
+                valor = float(p.get("valor_total") or 0)
+                receita   += valor
                 comissoes += float(p.get("valor_comissao") or p.get("comissao_revendedor") or p.get("comissao") or 0)
+                # Promissórias: baixadas mas com risco de inadimplência
+                fp = p.get("forma_pagamento") or {}
+                if str(fp.get("nome", "")).strip().lower() == "promissória":
+                    inadimplentes += valor
         elif not fechado and status == "Aberto":
             d = parse_date(p.get("data_acerto"))
             if d and d.month == mes and d.year == ano:
-                receita += float(p.get("valor_pre_baixa") or p.get("valor_total") or 0)
-    return receita, comissoes
+                # Só conta o que já foi parcialmente pago (pré-baixa); sem fallback p/ valor_total
+                pre_baixa = float(p.get("valor_pre_baixa") or 0)
+                receita += pre_baixa
+
+    receita_liquida = receita - inadimplentes
+    return receita_liquida, comissoes, inadimplentes
 
 
 # ── Tabela DRE visual ─────────────────────────────────────────────────────────
@@ -237,7 +253,7 @@ def render():
         if fechado:
             st.caption("📅 Mês fechado — dados consolidados")
         else:
-            st.caption("📊 Mês em aberto — baixados + pré-baixa acumulada")
+            st.caption("📊 Mês em aberto — baixados + pré-baixa − promissórias")
 
     st.divider()
 
@@ -257,8 +273,18 @@ def render():
         except Exception:
             pedidos = []
 
-        receita, comissoes = _receita_mes(pedidos, mes, ano)
-        despesas   = ler_despesas_mes(mes, ano)
+        receita, comissoes, inadimplentes = _receita_mes(pedidos, mes, ano)
+        despesas   = list(ler_despesas_mes(mes, ano))
+        # Inadimplentes (promissórias) entram como despesa em "2.7 Perdas"
+        if inadimplentes > 0:
+            despesas.append({
+                "nome":      "inadimplência promissórias",
+                "realizado": inadimplentes,
+                "previsto":  0.0,
+                "tipo":      "",
+                "forma_pgto": "",
+                "dia":       "",
+            })
         custom     = carregar_mapeamento_custom()
         pct_cmv    = cmv_pct_historico()        # % médio total histórico
         dados_cmv  = ler_cmv_historico()        # para exibir detalhes

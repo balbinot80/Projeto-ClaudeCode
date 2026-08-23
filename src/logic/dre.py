@@ -68,6 +68,10 @@ MAPA_CATEGORIAS: dict[str, str] = {
 
     "embalagem":            "2.6 Embalagens",
 
+    "inadimpl":             "2.7 Perdas",
+    "promissória":          "2.7 Perdas",
+    "promissoria":          "2.7 Perdas",
+
     # ── 4.1 Pró-labore ───────────────────────────────────────────────────────
     "pró-labore":           "4.1 Pró-labore",
     "pro-labore":           "4.1 Pró-labore",

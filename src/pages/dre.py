@@ -16,7 +16,7 @@ from src.logic.dre import (
     carregar_mapeamento_custom, salvar_mapeamento_custom,
     categorizar_despesa, CATEGORIAS_DISPONIVEIS,
 )
-from src.api.google_sheets import ler_despesas_mes, credentials_configuradas, cmv_pct_mes
+from src.api.google_sheets import ler_despesas_mes, credentials_configuradas, cmv_pct_historico, ler_cmv_historico
 
 
 # ── Helpers numéricos ─────────────────────────────────────────────────────────
@@ -254,9 +254,10 @@ def render():
             pedidos = []
 
         receita, comissoes = _receita_mes(pedidos, mes, ano)
-        despesas = ler_despesas_mes(mes, ano)
-        custom   = carregar_mapeamento_custom()
-        pct_cmv  = cmv_pct_mes(mes, ano)   # % histórico de CMV, ou None
+        despesas   = ler_despesas_mes(mes, ano)
+        custom     = carregar_mapeamento_custom()
+        pct_cmv    = cmv_pct_historico()        # % médio total histórico
+        dados_cmv  = ler_cmv_historico()        # para exibir detalhes
 
     real, plan = calcular_dre_completo(receita, comissoes, despesas, custom, cmv_pct=pct_cmv)
 
@@ -285,13 +286,17 @@ def render():
     st.subheader(f"DRE — {MESES_PT[mes-1]}/{ano}")
 
     if pct_cmv is not None:
+        n = dados_cmv.get("n_meses", "?")
+        tc = dados_cmv.get("total_compra", 0)
+        tv = dados_cmv.get("total_venda", 0)
         st.caption(
-            f"📦 **CMV estimado pelo histórico:** {pct_cmv*100:.2f}% da receita "
-            f"= {_br(receita * pct_cmv)} "
-            f"(em vez do valor pago no mês)"
+            f"📦 **CMV pelo histórico total ({n} meses):** "
+            f"{_br(tc)} compras ÷ {_br(tv)} vendas = **{pct_cmv*100:.2f}%** → "
+            f"{_br(receita * pct_cmv)} neste mês. "
+            f"Atualiza automaticamente conforme novos meses são lançados."
         )
     elif credentials_configuradas():
-        st.caption("📦 CMV calculado pelas compras reais do mês (sem % histórico disponível)")
+        st.caption("📦 CMV calculado pelas compras reais do mês (planilha de histórico não acessível)")
     st.markdown(_html_dre(real, plan), unsafe_allow_html=True)
 
     # ── Tabela de despesas com editor inline ──────────────────────────────────

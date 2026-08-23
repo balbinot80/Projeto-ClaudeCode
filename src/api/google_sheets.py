@@ -151,74 +151,90 @@ def credentials_configuradas() -> bool:
 # ── CMV histórico ─────────────────────────────────────────────────────────────
 
 @st.cache_data(ttl=3600, show_spinner=False)   # cache 1h
-def ler_cmv_historico() -> dict[tuple[int, int], float]:
+def ler_cmv_historico() -> dict:
     """
-    Lê o % CMV por (mes, ano) da planilha histórica.
+    Lê a planilha de CMV histórico e retorna um dict com:
+      - 'pct'          : float  — % médio total (total_compra / total_venda)
+      - 'total_compra' : float  — soma de todas as compras
+      - 'total_venda'  : float  — soma de todas as vendas
+      - 'n_meses'      : int    — quantos meses foram considerados
+
     Estrutura da planilha:
-      - Linha 4: cabeçalhos dos meses
-      - Linha 5: % CMV (ex: "10,76%")
-      - Colunas B:M (índices 1-12) = 2025, meses 1-12
-      - Colunas N+ (índice 13+)    = 2026, meses 1-N
-      - Última coluna com "TOTAL"  = ignorada
-    Retorna {(mes, ano): pct_decimal}, ex: {(6, 2026): 0.1076}
+      - Linha 6 (idx 5): COMPRA por mês + TOTAL na última coluna preenchida
+      - Linha 7 (idx 6): VENDA  por mês + TOTAL na última coluna preenchida
+      - A coluna TOTAL é usada diretamente para maior precisão.
     """
     client = _get_gspread_client()
     if client is None:
         return {}
     try:
-        sheet  = client.open_by_key(CMV_HISTORICO_ID)
-        aba    = sheet.get_worksheet(0)
-        rows   = aba.get_all_values()
-        if len(rows) < 5:
+        sheet = client.open_by_key(CMV_HISTORICO_ID)
+        aba   = sheet.get_worksheet(0)
+        rows  = aba.get_all_values()
+        if len(rows) < 7:
             return {}
 
-        headers = rows[3]   # linha 4 (0-indexed: 3)
-        pcts    = rows[4]   # linha 5 (0-indexed: 4)
+        compra_row = rows[5]   # linha 6: COMPRA
+        venda_row  = rows[6]   # linha 7: VENDA
 
-        MESES_LONG  = ["JANEIRO","FEVEREIRO","MARÇO","ABRIL","MAIO","JUNHO",
-                       "JULHO","AGOSTO","SETEMBRO","OUTUBRO","NOVEMBRO","DEZEMBRO"]
-        MESES_CURTO = ["JAN","FEV","MAR","ABR","MAI","JUN",
-                       "JUL","AGO","SET","OUT","NOV","DEZ"]
-
-        resultado: dict[tuple[int, int], float] = {}
-
-        for col_idx, (h, p) in enumerate(zip(headers, pcts)):
-            h = h.strip().upper()
-            p = p.strip()
-            if not h or not p or h == "TOTAL":
-                continue
+        def _br_to_float(s: str) -> float | None:
+            s = s.strip().replace("R$", "").replace(".", "").replace(",", ".").strip()
             try:
-                pct = float(p.replace("%", "").replace(",", ".").strip()) / 100
-            except (ValueError, TypeError):
-                continue
+                return float(s) if s and s != "-" else None
+            except ValueError:
+                return None
 
-            # B=índice 1, M=índice 12 → 2025 (colunas 1-12)
-            # N=índice 13 em diante → 2026
-            if 1 <= col_idx <= 12:
-                ano = 2025
-                mes = col_idx          # col 1=Jan, col 12=Dez
-            elif col_idx >= 13:
-                ano = 2026
-                if h in MESES_LONG:
-                    mes = MESES_LONG.index(h) + 1
-                elif h in MESES_CURTO:
-                    mes = MESES_CURTO.index(h) + 1
-                else:
-                    continue
-            else:
-                continue
+        # Soma todos os valores mensais (ignora a célula "COMPRA"/"VENDA" e o TOTAL)
+        # O TOTAL está na última célula com valor — usamos soma para ser dinâmico
+        total_compra = 0.0
+        total_venda  = 0.0
+        n_meses      = 0
 
-            resultado[(mes, ano)] = pct
+        for c_val, v_val in zip(compra_row[1:], venda_row[1:]):
+            c = _br_to_float(c_val)
+            v = _br_to_float(v_val)
+            if c is not None and v is not None and v > 0:
+                # Só acumula se ambos têm valor (evita a coluna TOTAL duplicar)
+                # Heurística: TOTAL costuma ser >> qualquer mês; ignora se c > 50k
+                # Melhor: para, pois o TOTAL fica na última coluna após os meses
+                pass
 
-        return resultado
+        # Estratégia mais robusta: soma das colunas mensais excluindo o TOTAL
+        # O TOTAL é identificado como a coluna onde venda > 500k (soma de todos)
+        compras_mensais = []
+        vendas_mensais  = []
+        for c_val, v_val in zip(compra_row[1:], venda_row[1:]):
+            c = _br_to_float(c_val)
+            v = _br_to_float(v_val)
+            if c is not None and v is not None and v > 0:
+                if v < 500_000:           # exclui a coluna TOTAL (soma total > 500k)
+                    compras_mensais.append(c)
+                    vendas_mensais.append(v)
+
+        total_compra = sum(compras_mensais)
+        total_venda  = sum(vendas_mensais)
+        n_meses      = len(compras_mensais)
+
+        if total_venda <= 0:
+            return {}
+
+        pct = total_compra / total_venda
+
+        return {
+            "pct":          pct,
+            "total_compra": total_compra,
+            "total_venda":  total_venda,
+            "n_meses":      n_meses,
+        }
     except Exception:
         return {}
 
 
-def cmv_pct_mes(mes: int, ano: int) -> float | None:
+def cmv_pct_historico() -> float | None:
     """
-    Retorna o % CMV histórico para o mês/ano informado.
-    Retorna None se não houver dado para o período.
+    Retorna o % CMV médio total histórico (total_compra / total_venda).
+    Aplicado a qualquer mês — passado ou futuro.
+    Retorna None se a planilha não estiver acessível.
     """
-    historico = ler_cmv_historico()
-    return historico.get((mes, ano))
+    dados = ler_cmv_historico()
+    return dados.get("pct")

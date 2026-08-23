@@ -363,7 +363,7 @@ def render():
                 st.rerun()
 
         # Aviso de despesas em "Outros"
-        sem_cat = edited[edited["Categoria DRE"] == "4.99 Outros"]["Despesa"].tolist()
+        sem_cat = edited[edited["Categoria DRE"] == "4.99 Sem Classificação"]["Despesa"].tolist()
         if sem_cat:
             st.warning(
                 f"⚠️ {len(sem_cat)} despesa(s) em **4.99 Outros** (sem mapeamento): "

@@ -1,8 +1,8 @@
 """
 Lógica do DRE — Aureum Joias.
 
+Plano de contas alinhado com a planilha "Plano de Contas" (DRE_ID).
 Fontes: Jueri (receita + comissões) + Google Sheets (despesas).
-Mapeamento automático por nome, com override manual salvo em JSON.
 """
 
 from __future__ import annotations
@@ -31,61 +31,180 @@ def salvar_mapeamento_custom(mapa: dict[str, str]) -> None:
 
 
 # ── Mapeamento padrão (substring, case-insensitive) ───────────────────────────
+# Baseado no Plano de Contas real da planilha DRE.
 
 MAPA_CATEGORIAS: dict[str, str] = {
-    # 2. Custos Variáveis
-    "imposto":              "2.3 Impostos",
-    "simples":              "2.3 Impostos",
-    "icms":                 "2.3 Impostos",
-    "correio":              "2.2 Frete",
-    "transportadora":       "2.2 Frete",
-    "frete":                "2.2 Frete",
-    "motoboy":              "2.2 Frete",
-    "embalagem":            "2.6 Embalagens",
-    "taxa cartão":          "2.5 Taxa de Cobrança Cartão",
-    "taxa de cobrança":     "2.5 Taxa de Cobrança Cartão",
+    # ── 2. Custos Variáveis ──────────────────────────────────────────────────
     "galvânica":            "2.1 CMV",
     "galvanica":            "2.1 CMV",
     "peças em bruto":       "2.1 CMV",
     "compra de peças":      "2.1 CMV",
     "compra de joias":      "2.1 CMV",
     "maletas estojoias":    "2.1 CMV",
+    "maletas esto":         "2.1 CMV",
     "estojo":               "2.1 CMV",
     "seven":                "2.1 CMV",
     "anéis brasil":         "2.1 CMV",
     "boleto":               "2.1 CMV",
-    # 4. Pessoal
+
+    "correio":              "2.2 Frete",
+    "transportadora":       "2.2 Frete",
+    "frete":                "2.2 Frete",
+    "motoboy":              "2.2 Frete",
+
+    "imposto":              "2.3 Impostos",
+    "simples":              "2.3 Impostos",
+    "icms":                 "2.3 Impostos",
+    "pis":                  "2.3 Impostos",
+    "cofins":               "2.3 Impostos",
+    "irpj":                 "2.3 Impostos",
+
+    # 2.4 Comissões — via Jueri, mas também entradas manuais
+    "comissão supervisor":  "2.4 Comissões",
+    "comissao supervisor":  "2.4 Comissões",
+
+    "taxa cartão":          "2.5 Taxa de Cobrança Cartão",
+    "taxa de cobrança":     "2.5 Taxa de Cobrança Cartão",
+
+    "embalagem":            "2.6 Embalagens",
+
+    # ── 4.1 Pró-labore ───────────────────────────────────────────────────────
     "pró-labore":           "4.1 Pró-labore",
     "pro-labore":           "4.1 Pró-labore",
     "prolabore":            "4.1 Pró-labore",
-    "salário":              "4.2 Salários",
-    "salario":              "4.2 Salários",
-    "gestor de tráfego":    "4.2 Salários",
-    "assistente virtual":   "4.2 Salários",
-    "inss":                 "4.3 Encargos Sociais",
-    "fgts":                 "4.3 Encargos Sociais",
-    "vale alimentação":     "4.4 Benefícios",
-    "vale refeição":        "4.4 Benefícios",
-    # 4. Utilidades
+
+    # 4.2 Encargos do Pró Labore
+    "encargo pró":          "4.2 Encargos do Pró Labore",
+    "encargo pro":          "4.2 Encargos do Pró Labore",
+
+    # ── 4.3 Salários ─────────────────────────────────────────────────────────
+    "salário":              "4.3 Salários",
+    "salario":              "4.3 Salários",
+
+    # ── 4.4 Encargos dos Salários ────────────────────────────────────────────
+    "inss":                 "4.4 Encargos dos Salários",
+    "fgts":                 "4.4 Encargos dos Salários",
+    "gps":                  "4.4 Encargos dos Salários",
+    "rescisão":             "4.4 Encargos dos Salários",
+    "rescisao":             "4.4 Encargos dos Salários",
+    "premiação":            "4.4 Encargos dos Salários",
+    "premiacao":            "4.4 Encargos dos Salários",
+    "plano de saúde":       "4.4 Encargos dos Salários",
+    "plano de saude":       "4.4 Encargos dos Salários",
+    "13 salário":           "4.4 Encargos dos Salários",
+    "13 salario":           "4.4 Encargos dos Salários",
+    "férias":               "4.4 Encargos dos Salários",
+    "ferias":               "4.4 Encargos dos Salários",
+
+    # ── 4.5 Energia Elétrica ─────────────────────────────────────────────────
     "energia":              "4.5 Energia Elétrica",
     "luz":                  "4.5 Energia Elétrica",
+    "conta de luz":         "4.5 Energia Elétrica",
+
+    # ── 4.6 Água ─────────────────────────────────────────────────────────────
+    "água":                 "4.6 Água",
+    "agua":                 "4.6 Água",
+
+    # ── 4.7 Telefone/Internet ─────────────────────────────────────────────────
     "internet":             "4.7 Telefone/Internet",
     "telefone":             "4.7 Telefone/Internet",
-    # 4. Serviços de Terceiros
+    "celular":              "4.7 Telefone/Internet",
+
+    # ── 4.8 Despesas com Veículos ────────────────────────────────────────────
+    "combustível":          "4.8 Despesas com Veículos",
+    "combustivel":          "4.8 Despesas com Veículos",
+    "seguro veículo":       "4.8 Despesas com Veículos",
+    "ipva":                 "4.8 Despesas com Veículos",
+    "manutenção veículo":   "4.8 Despesas com Veículos",
+    "manutenção veiculo":   "4.8 Despesas com Veículos",
+
+    # ── 4.9 Materiais de Escritório ──────────────────────────────────────────
+    "material de escritório": "4.9 Materiais de Escritório",
+    "material de escritorio": "4.9 Materiais de Escritório",
+    "garrafa":              "4.9 Materiais de Escritório",
+    "caneta":               "4.9 Materiais de Escritório",
+    "papel":                "4.9 Materiais de Escritório",
+
+    # ── 4.10 Materiais de Limpeza ────────────────────────────────────────────
+    "limpeza":              "4.10 Materiais de Limpeza",
+    "higiene":              "4.10 Materiais de Limpeza",
+
+    # ── 4.12 Serviços de Terceiros ───────────────────────────────────────────
     "advogado":             "4.12 Serviços de Terceiros",
     "contabilidade":        "4.12 Serviços de Terceiros",
     "contador":             "4.12 Serviços de Terceiros",
+    "mensalidade contab":   "4.12 Serviços de Terceiros",
+    "assistente virtual":   "4.12 Serviços de Terceiros",
+    "desafio do empreendedor": "4.12 Serviços de Terceiros",
+    "produto do grupo":     "4.12 Serviços de Terceiros",
+    "cursos":               "4.12 Serviços de Terceiros",
+    "treinamento":          "4.12 Serviços de Terceiros",
     "mentoria":             "4.12 Serviços de Terceiros",
-    # 4. Marketing
-    "anúncio":              "4.16 Marketing/Propaganda",
-    "anuncio":              "4.16 Marketing/Propaganda",
-    "meta":                 "4.16 Marketing/Propaganda",
-    "desafio do empreendedor": "4.16 Marketing/Propaganda",
-    "tráfego":              "4.16 Marketing/Propaganda",
-    "trafego":              "4.16 Marketing/Propaganda",
-    # 4. Aluguel
-    "aluguel":              "4.31 Aluguel",
-    # 4. Assinaturas
+    "impressgraf":          "4.12 Serviços de Terceiros",
+    "gestão de ponto":      "4.12 Serviços de Terceiros",
+    "gestao de ponto":      "4.12 Serviços de Terceiros",
+    "serviço rh":           "4.12 Serviços de Terceiros",
+    "servico rh":           "4.12 Serviços de Terceiros",
+    "programador":          "4.12 Serviços de Terceiros",
+    "software":             "4.12 Serviços de Terceiros",
+    "segurança":            "4.12 Serviços de Terceiros",
+    "seguranca":            "4.12 Serviços de Terceiros",
+
+    # ── 4.13 Sindicatos ──────────────────────────────────────────────────────
+    "sindicato":            "4.13 Sindicatos",
+
+    # ── 4.14 Associações ─────────────────────────────────────────────────────
+    "associação":           "4.14 Associações",
+    "associacao":           "4.14 Associações",
+    "acii":                 "4.14 Associações",
+
+    # ── 4.15 Despesas com Viagens ────────────────────────────────────────────
+    "viagem":               "4.15 Despesas com Viagens",
+    "hospedagem":           "4.15 Despesas com Viagens",
+    "alimentação viagem":   "4.15 Despesas com Viagens",
+    "alimentacao viagem":   "4.15 Despesas com Viagens",
+    "passagem":             "4.15 Despesas com Viagens",
+    "combustivel viagem":   "4.15 Despesas com Viagens",
+
+    # ── 4.16 IPTU ────────────────────────────────────────────────────────────
+    "iptu":                 "4.16 IPTU",
+
+    # ── 4.17 Taxas da Prefeitura ─────────────────────────────────────────────
+    "prefeitura":           "4.17 Taxas da Prefeitura",
+    "vigilância sanitária": "4.17 Taxas da Prefeitura",
+    "vigilancia sanitaria": "4.17 Taxas da Prefeitura",
+    "taxa municipal":       "4.17 Taxas da Prefeitura",
+
+    # ── 4.18 Propaganda/Publicidade ──────────────────────────────────────────
+    "anúncio":              "4.18 Propaganda/Publicidade",
+    "anuncio":              "4.18 Propaganda/Publicidade",
+    "meta ads":             "4.18 Propaganda/Publicidade",
+    "anúncio meta":         "4.18 Propaganda/Publicidade",
+    "anuncio meta":         "4.18 Propaganda/Publicidade",
+    "google adwords":       "4.18 Propaganda/Publicidade",
+    "tráfego":              "4.18 Propaganda/Publicidade",
+    "trafego":              "4.18 Propaganda/Publicidade",
+    "gestor de tráfego":    "4.18 Propaganda/Publicidade",
+    "gestor de trafego":    "4.18 Propaganda/Publicidade",
+    "social midia":         "4.18 Propaganda/Publicidade",
+    "social mídia":         "4.18 Propaganda/Publicidade",
+    "influenciadora":       "4.18 Propaganda/Publicidade",
+    "faixa":                "4.18 Propaganda/Publicidade",
+    "doação":               "4.18 Propaganda/Publicidade",
+    "doacao":               "4.18 Propaganda/Publicidade",
+    "publicidade":          "4.18 Propaganda/Publicidade",
+    "propaganda":           "4.18 Propaganda/Publicidade",
+    "marketing":            "4.18 Propaganda/Publicidade",
+
+    # ── 4.19 Manutenção do Ativo Fixo ────────────────────────────────────────
+    "manutenção show":      "4.19 Manutenção do Ativo Fixo",
+    "manutencao show":      "4.19 Manutenção do Ativo Fixo",
+    "despesas showroom":    "4.19 Manutenção do Ativo Fixo",
+    "reparo":               "4.19 Manutenção do Ativo Fixo",
+    "reforma":              "4.19 Manutenção do Ativo Fixo",
+    "obra":                 "4.19 Manutenção do Ativo Fixo",
+
+    # ── 4.20 Assinaturas ─────────────────────────────────────────────────────
     "jueri":                "4.20 Assinaturas",
     "assinatura":           "4.20 Assinaturas",
     "canva":                "4.20 Assinaturas",
@@ -97,33 +216,95 @@ MAPA_CATEGORIAS: dict[str, str] = {
     "respondi":             "4.20 Assinaturas",
     "claude":               "4.20 Assinaturas",
     "assertiva":            "4.20 Assinaturas",
-    "software":             "4.20 Assinaturas",
-    # 4. Viagens
-    "alimentação viagem":   "4.22 Viagens",
-    "hospedagem":           "4.22 Viagens",
-    "viagem":               "4.22 Viagens",
-    # 4. Manutenção
-    "despesas showroom":    "4.19 Manutenção",
-    "manutenção":           "4.19 Manutenção",
-    "acii":                 "4.18 Sindicatos/Associações",
-    "sindicato":            "4.18 Sindicatos/Associações",
-    # 7. Não Operacionais
-    "juros":                "7. Despesas Não Operacionais",
-    "empréstimo":           "7. Despesas Não Operacionais",
-    "emprestimo":           "7. Despesas Não Operacionais",
-    "anuidade":             "7. Despesas Não Operacionais",
-    "multa":                "7. Despesas Não Operacionais",
-    # 8. Investimentos
+    "sistema assertiva":    "4.20 Assinaturas",
+    "spotify":              "4.20 Assinaturas",
+
+    # ── 4.21 Alimentação ─────────────────────────────────────────────────────
+    "alimentação":          "4.21 Alimentação",
+    "alimentacao":          "4.21 Alimentação",
+    "lanche":               "4.21 Alimentação",
+    "almoço":               "4.21 Alimentação",
+    "almoco":               "4.21 Alimentação",
+    "refeição":             "4.21 Alimentação",
+    "refeicao":             "4.21 Alimentação",
+
+    # ── 4.22 Vale Refeição ───────────────────────────────────────────────────
+    "vale alimentação":     "4.22 Vale Refeição",
+    "vale alimentacao":     "4.22 Vale Refeição",
+    "vale refeição":        "4.22 Vale Refeição",
+    "vale refeicao":        "4.22 Vale Refeição",
+
+    # ── 4.23 Cartório/Correios ───────────────────────────────────────────────
+    "cartório":             "4.23 Cartório/Correios",
+    "cartorio":             "4.23 Cartório/Correios",
+
+    # ── 4.24 Tarifas Bancárias ───────────────────────────────────────────────
+    "tarifa bancária":      "4.24 Tarifas Bancárias",
+    "tarifa bancaria":      "4.24 Tarifas Bancárias",
+    "taxa bancária":        "4.24 Tarifas Bancárias",
+    "taxa bancaria":        "4.24 Tarifas Bancárias",
+    "tarifa":               "4.24 Tarifas Bancárias",
+
+    # ── 4.25 Despesas com Juros ──────────────────────────────────────────────
+    "juros":                "4.25 Despesas com Juros",
+    "empréstimo":           "4.25 Despesas com Juros",
+    "emprestimo":           "4.25 Despesas com Juros",
+    "multa":                "4.25 Despesas com Juros",
+    "anuidade":             "4.25 Despesas com Juros",
+
+    # ── 4.26 Aluguel ─────────────────────────────────────────────────────────
+    "aluguel":              "4.26 Aluguel",
+
+    # ── 4.27 Decoração Showroom ──────────────────────────────────────────────
+    "decoração":            "4.27 Decoração Showroom",
+    "decoracao":            "4.27 Decoração Showroom",
+    "tapete":               "4.27 Decoração Showroom",
+    "difusor":              "4.27 Decoração Showroom",
+    "spray showroom":       "4.27 Decoração Showroom",
+    "poltrona":             "4.27 Decoração Showroom",
+
+    # ── 4.28 Fotos ───────────────────────────────────────────────────────────
+    "foto":                 "4.28 Fotos",
+    "fotografia":           "4.28 Fotos",
+    "sessão foto":          "4.28 Fotos",
+
+    # ── 4.29 Eventos ─────────────────────────────────────────────────────────
+    "evento":               "4.29 Eventos",
+    "comemoração":          "4.29 Eventos",
+    "comemoracao":          "4.29 Eventos",
+    "festa":                "4.29 Eventos",
+    "presente":             "4.29 Eventos",
+    "presença":             "4.29 Eventos",
+
+    # ── 6. Receitas não Operacionais ─────────────────────────────────────────
+    "receita não operacional": "6. Receitas Não Operacionais",
+    "receita extra":        "6. Receitas Não Operacionais",
+
+    # ── 7. Despesas não Operacionais ─────────────────────────────────────────
+    "despesa não operacional": "7. Despesas Não Operacionais",
+
+    # ── 8. Investimentos ─────────────────────────────────────────────────────
     "câmera":               "8. Investimentos",
     "camera":               "8. Investimentos",
     "impressora":           "8. Investimentos",
     "notebook":             "8. Investimentos",
+    "computador":           "8. Investimentos",
     "móveis":               "8. Investimentos",
+    "movéis":               "8. Investimentos",
     "moveis":               "8. Investimentos",
-    "poltrona":             "8. Investimentos",
     "ar condicionado":      "8. Investimentos",
-    "tapete":               "8. Investimentos",
     "equipamento":          "8. Investimentos",
+    "maquina":              "8. Investimentos",
+    "máquina":              "8. Investimentos",
+    "veículo":              "8. Investimentos",
+    "veiculo":              "8. Investimentos",
+    "financiamento":        "8. Investimentos",
+
+    # ── 9. Retirada de Lucros ────────────────────────────────────────────────
+    "retirada":             "9. Retirada de Lucros",
+    "lucros":               "9. Retirada de Lucros",
+    "distribuição":         "9. Retirada de Lucros",
+    "distribuicao":         "9. Retirada de Lucros",
 }
 
 # ── Lista de categorias disponíveis (para o editor) ───────────────────────────
@@ -136,20 +317,38 @@ CATEGORIAS_DISPONIVEIS: list[str] = [
     "2.5 Taxa de Cobrança Cartão",
     "2.6 Embalagens",
     "2.7 Perdas",
+    "2.8 Outros Custos Variáveis",
     "4.1 Pró-labore",
-    "4.2 Salários",
-    "4.3 Encargos Sociais",
-    "4.4 Benefícios",
+    "4.2 Encargos do Pró Labore",
+    "4.3 Salários",
+    "4.4 Encargos dos Salários",
     "4.5 Energia Elétrica",
+    "4.6 Água",
     "4.7 Telefone/Internet",
+    "4.8 Despesas com Veículos",
+    "4.9 Materiais de Escritório",
+    "4.10 Materiais de Limpeza",
+    "4.11 Depreciação",
     "4.12 Serviços de Terceiros",
-    "4.16 Marketing/Propaganda",
-    "4.18 Sindicatos/Associações",
-    "4.19 Manutenção",
+    "4.13 Sindicatos",
+    "4.14 Associações",
+    "4.15 Despesas com Viagens",
+    "4.16 IPTU",
+    "4.17 Taxas da Prefeitura",
+    "4.18 Propaganda/Publicidade",
+    "4.19 Manutenção do Ativo Fixo",
     "4.20 Assinaturas",
-    "4.22 Viagens",
-    "4.31 Aluguel",
-    "4.99 Outros",
+    "4.21 Alimentação",
+    "4.22 Vale Refeição",
+    "4.23 Cartório/Correios",
+    "4.24 Tarifas Bancárias",
+    "4.25 Despesas com Juros",
+    "4.26 Aluguel",
+    "4.27 Decoração Showroom",
+    "4.28 Fotos",
+    "4.29 Eventos",
+    "4.30 Outros Custos Fixos",
+    "4.99 Sem Classificação",
     "6. Receitas Não Operacionais",
     "7. Despesas Não Operacionais",
     "8. Investimentos",
@@ -159,42 +358,67 @@ CATEGORIAS_DISPONIVEIS: list[str] = [
 # ── Estrutura e ordem do DRE ──────────────────────────────────────────────────
 
 ORDEM_DRE: list[tuple[str, str]] = [
-    ("receita_bruta",               "1. Receita Bruta de Vendas"),
-    ("2.1 CMV",                     "  2.1 Custo da Mercadoria Vendida"),
-    ("2.2 Frete",                   "  2.2 Frete e Logística"),
-    ("2.3 Impostos",                "  2.3 Impostos sobre Vendas"),
-    ("2.4 Comissões",               "  2.4 Comissões"),
-    ("2.5 Taxa de Cobrança Cartão", "  2.5 Taxas de Cartão"),
-    ("2.6 Embalagens",              "  2.6 Embalagens"),
-    ("2.7 Perdas",                  "  2.7 Perdas"),
-    ("margem_contribuicao",         "3. Margem de Contribuição"),
-    ("4.1 Pró-labore",              "  4.1 Pró-labore"),
-    ("4.2 Salários",                "  4.2 Salários"),
-    ("4.3 Encargos Sociais",        "  4.3 Encargos Sociais (INSS/FGTS)"),
-    ("4.4 Benefícios",              "  4.4 Benefícios"),
-    ("4.5 Energia Elétrica",        "  4.5 Energia Elétrica"),
-    ("4.7 Telefone/Internet",       "  4.7 Telefone/Internet"),
-    ("4.12 Serviços de Terceiros",  "  4.12 Serviços de Terceiros"),
-    ("4.16 Marketing/Propaganda",   "  4.16 Marketing e Propaganda"),
-    ("4.18 Sindicatos/Associações", "  4.18 Sindicatos/Associações"),
-    ("4.19 Manutenção",             "  4.19 Manutenção"),
-    ("4.20 Assinaturas",            "  4.20 Assinaturas e Softwares"),
-    ("4.22 Viagens",                "  4.22 Viagens e Alimentação"),
-    ("4.31 Aluguel",                "  4.31 Aluguel"),
-    ("4.99 Outros",                 "  4.99 Outros"),
-    ("lucro_operacional",           "5. Lucro Operacional"),
-    ("6. Receitas Não Operacionais","6. Receitas Não Operacionais"),
-    ("7. Despesas Não Operacionais","7. Despesas Não Operacionais"),
-    ("8. Investimentos",            "8. Investimentos"),
-    ("9. Retirada de Lucros",       "9. Retirada de Lucros"),
-    ("lucro_liquido",               "10. Lucro Líquido"),
+    ("receita_bruta",                "1. Receita Bruta de Vendas"),
+    ("2.1 CMV",                      "  2.1 Custo da Mercadoria Vendida"),
+    ("2.2 Frete",                    "  2.2 Frete e Logística"),
+    ("2.3 Impostos",                 "  2.3 Impostos sobre Vendas"),
+    ("2.4 Comissões",                "  2.4 Comissões"),
+    ("2.5 Taxa de Cobrança Cartão",  "  2.5 Taxa de Cobrança Cartão"),
+    ("2.6 Embalagens",               "  2.6 Embalagens"),
+    ("2.7 Perdas",                   "  2.7 Perdas"),
+    ("2.8 Outros Custos Variáveis",  "  2.8/2.9 Outros Custos Variáveis"),
+    ("margem_contribuicao",          "3. Margem de Contribuição"),
+    ("4.1 Pró-labore",               "  4.1 Pró-labore (Retirada Sócios)"),
+    ("4.2 Encargos do Pró Labore",   "  4.2 Encargos do Pró Labore"),
+    ("4.3 Salários",                 "  4.3 Salários"),
+    ("4.4 Encargos dos Salários",    "  4.4 Encargos dos Salários (INSS/FGTS)"),
+    ("4.5 Energia Elétrica",         "  4.5 Energia Elétrica"),
+    ("4.6 Água",                     "  4.6 Água"),
+    ("4.7 Telefone/Internet",        "  4.7 Telefone/Internet"),
+    ("4.8 Despesas com Veículos",    "  4.8 Despesas com Veículos"),
+    ("4.9 Materiais de Escritório",  "  4.9 Materiais de Escritório"),
+    ("4.10 Materiais de Limpeza",    "  4.10 Materiais de Limpeza"),
+    ("4.11 Depreciação",             "  4.11 Depreciação"),
+    ("4.12 Serviços de Terceiros",   "  4.12 Serviços de Terceiros"),
+    ("4.13 Sindicatos",              "  4.13 Sindicatos"),
+    ("4.14 Associações",             "  4.14 Associações"),
+    ("4.15 Despesas com Viagens",    "  4.15 Despesas com Viagens"),
+    ("4.16 IPTU",                    "  4.16 IPTU"),
+    ("4.17 Taxas da Prefeitura",     "  4.17 Taxas da Prefeitura"),
+    ("4.18 Propaganda/Publicidade",  "  4.18 Propaganda/Publicidade"),
+    ("4.19 Manutenção do Ativo Fixo","  4.19 Manutenção do Ativo Fixo"),
+    ("4.20 Assinaturas",             "  4.20 Assinaturas"),
+    ("4.21 Alimentação",             "  4.21 Alimentação"),
+    ("4.22 Vale Refeição",           "  4.22 Vale Refeição"),
+    ("4.23 Cartório/Correios",       "  4.23 Cartório/Correios"),
+    ("4.24 Tarifas Bancárias",       "  4.24 Tarifas Bancárias"),
+    ("4.25 Despesas com Juros",      "  4.25 Despesas com Juros"),
+    ("4.26 Aluguel",                 "  4.26 Aluguel"),
+    ("4.27 Decoração Showroom",      "  4.27 Decoração Showroom"),
+    ("4.28 Fotos",                   "  4.28 Fotos"),
+    ("4.29 Eventos",                 "  4.29 Eventos"),
+    ("4.30 Outros Custos Fixos",     "  4.30/4.31 Outros Custos Fixos"),
+    ("4.99 Sem Classificação",       "  4.99 Sem Classificação ⚠️"),
+    ("lucro_operacional",            "5. Lucro Operacional"),
+    ("6. Receitas Não Operacionais", "6. Receitas Não Operacionais"),
+    ("7. Despesas Não Operacionais", "7. Despesas Não Operacionais"),
+    ("8. Investimentos",             "8. Investimentos"),
+    ("9. Retirada de Lucros",        "9. Retirada de Lucros"),
+    ("lucro_liquido",                "10. Lucro Líquido"),
 ]
 
-TOTAIS       = {"receita_bruta", "margem_contribuicao", "lucro_operacional", "lucro_liquido"}
-CUSTOS_VAR   = {"2.1 CMV","2.2 Frete","2.3 Impostos","2.4 Comissões",
-                "2.5 Taxa de Cobrança Cartão","2.6 Embalagens","2.7 Perdas"}
-CUSTOS_FIXOS = {c for c, _ in ORDEM_DRE
-                if c.startswith("4.") and c not in TOTAIS}
+TOTAIS = {"receita_bruta", "margem_contribuicao", "lucro_operacional", "lucro_liquido"}
+
+CUSTOS_VAR = {
+    "2.1 CMV", "2.2 Frete", "2.3 Impostos", "2.4 Comissões",
+    "2.5 Taxa de Cobrança Cartão", "2.6 Embalagens", "2.7 Perdas",
+    "2.8 Outros Custos Variáveis",
+}
+
+CUSTOS_FIXOS = {
+    cod for cod, _ in ORDEM_DRE
+    if cod.startswith("4.") and cod not in TOTAIS
+}
 
 
 # ── Funções principais ────────────────────────────────────────────────────────
@@ -202,7 +426,7 @@ CUSTOS_FIXOS = {c for c, _ in ORDEM_DRE
 def categorizar_despesa(nome: str, custom: dict[str, str] | None = None) -> str:
     """
     Retorna a categoria DRE para o nome da despesa.
-    Prioridade: 1) override manual  2) mapa padrão (substring)  3) Outros
+    Prioridade: 1) override manual  2) mapa padrão (substring)  3) Sem Classificação
     """
     if custom is None:
         custom = carregar_mapeamento_custom()
@@ -211,13 +435,13 @@ def categorizar_despesa(nome: str, custom: dict[str, str] | None = None) -> str:
     if nome in custom:
         return custom[nome]
 
-    # 2. Substring padrão
+    # 2. Substring padrão (case-insensitive)
     nome_lower = nome.lower()
     for chave, cat in MAPA_CATEGORIAS.items():
         if chave in nome_lower:
             return cat
 
-    return "4.99 Outros"
+    return "4.99 Sem Classificação"
 
 
 def calcular_dre(
@@ -252,7 +476,7 @@ def calcular_dre_completo(
         real[cat] = real.get(cat, 0.0) + float(desp.get("realizado") or 0)
         plan[cat] = plan.get(cat, 0.0) + float(desp.get("previsto") or 0)
 
-    # Comissões (vindas do Jueri; só em realizado)
+    # Comissões vindas do Jueri
     real["2.4 Comissões"] = real.get("2.4 Comissões", 0.0) + comissoes
     plan["2.4 Comissões"] = plan.get("2.4 Comissões", 0.0) + comissoes
 

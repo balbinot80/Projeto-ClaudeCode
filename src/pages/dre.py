@@ -82,20 +82,21 @@ def _receita_mes(pedidos: list, mes: int, ano: int) -> tuple[float, float, float
     receita = comissoes = inadimplentes = 0.0
     for p in pedidos:
         status = p.get("status", "")
+        fp      = p.get("forma_pagamento") or {}
+        is_prom = "promissória" in str(fp.get("nome", "")).strip().lower()
+
         if status == "Baixado":
             d = parse_date(p.get("data_baixa"))
             if d and d.month == mes and d.year == ano:
                 valor = float(p.get("valor_total") or 0)
                 receita   += valor
                 comissoes += float(p.get("valor_comissao") or p.get("comissao_revendedor") or p.get("comissao") or 0)
-                # Promissórias: baixadas mas com risco de inadimplência
-                fp = p.get("forma_pagamento") or {}
-                if str(fp.get("nome", "")).strip().lower() == "promissória":
+                # Promissória (contains): valor_total é o pendente
+                if is_prom:
                     inadimplentes += valor
         elif not fechado and status == "Aberto":
             d = parse_date(p.get("data_acerto"))
             if d and d.month == mes and d.year == ano:
-                # Só conta o que já foi parcialmente pago (pré-baixa); sem fallback p/ valor_total
                 pre_baixa = float(p.get("valor_pre_baixa") or 0)
                 receita += pre_baixa
 

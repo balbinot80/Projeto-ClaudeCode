@@ -2256,13 +2256,16 @@ def render(filtro_supervisor: str = ""):
     df_bx_zero = pd.DataFrame(_bx_zero_rows) if _bx_zero_rows else pd.DataFrame()
 
     # ── Promissórias do mês ───────────────────────────────────────────────────
+    # Pedidos Baixados no mês com "promissória" no tipo de pagamento.
+    # Usa contains para capturar pagamentos mistos (ex: "Dinheiro + Promissória").
+    # Valor considerado = valor_total do pedido (pendência total).
     from src.logic.revendedoras import parse_date as _parse_date
     _prom_map: dict = {}  # {rid: {nome, supervisor, valor}}
     for _p in todos_pedidos:
         if _p.get("status") != "Baixado":
             continue
         _fp = _p.get("forma_pagamento") or {}
-        if str(_fp.get("nome", "")).strip().lower() != "promissória":
+        if "promissória" not in str(_fp.get("nome", "")).strip().lower():
             continue
         _d = _parse_date(_p.get("data_baixa"))
         if not (_d and _d.month == mes_num and _d.year == ano_num):

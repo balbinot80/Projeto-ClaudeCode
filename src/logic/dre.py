@@ -226,32 +226,52 @@ def calcular_dre(
     despesas: list[dict],
     custom: dict[str, str] | None = None,
 ) -> dict[str, float]:
-    """Monta o DRE a partir dos dados brutos."""
+    """Monta o DRE (realizado) a partir dos dados brutos. Compat. legado."""
+    real, _ = calcular_dre_completo(receita_bruta, comissoes, despesas, custom)
+    return real
+
+
+def calcular_dre_completo(
+    receita_bruta: float,
+    comissoes: float,
+    despesas: list[dict],
+    custom: dict[str, str] | None = None,
+) -> tuple[dict[str, float], dict[str, float]]:
+    """
+    Retorna (dre_realizado, dre_planejado).
+    Cada dict mapeia codigo_categoria → valor em R$.
+    """
     if custom is None:
         custom = carregar_mapeamento_custom()
 
-    valores: dict[str, float] = {"receita_bruta": receita_bruta}
+    real: dict[str, float] = {"receita_bruta": receita_bruta}
+    plan: dict[str, float] = {"receita_bruta": receita_bruta}
 
     for desp in despesas:
         cat = categorizar_despesa(desp["nome"], custom)
-        valores[cat] = valores.get(cat, 0.0) + desp["realizado"]
+        real[cat] = real.get(cat, 0.0) + float(desp.get("realizado") or 0)
+        plan[cat] = plan.get(cat, 0.0) + float(desp.get("previsto") or 0)
 
-    valores["2.4 Comissões"] = valores.get("2.4 Comissões", 0.0) + comissoes
+    # Comissões (vindas do Jueri; só em realizado)
+    real["2.4 Comissões"] = real.get("2.4 Comissões", 0.0) + comissoes
+    plan["2.4 Comissões"] = plan.get("2.4 Comissões", 0.0) + comissoes
 
-    total_cv = sum(valores.get(c, 0.0) for c in CUSTOS_VAR)
-    valores["margem_contribuicao"] = receita_bruta - total_cv
+    for d in (real, plan):
+        total_cv = sum(d.get(c, 0.0) for c in CUSTOS_VAR)
+        d["margem_contribuicao"] = d["receita_bruta"] - total_cv
 
-    total_cf = sum(valores.get(c, 0.0) for c in CUSTOS_FIXOS)
-    valores["lucro_operacional"] = valores["margem_contribuicao"] - total_cf
+        total_cf = sum(d.get(c, 0.0) for c in CUSTOS_FIXOS)
+        d["lucro_operacional"] = d["margem_contribuicao"] - total_cf
 
-    valores["lucro_liquido"] = (
-        valores["lucro_operacional"]
-        + valores.get("6. Receitas Não Operacionais", 0.0)
-        - valores.get("7. Despesas Não Operacionais", 0.0)
-        - valores.get("8. Investimentos", 0.0)
-        - valores.get("9. Retirada de Lucros", 0.0)
-    )
-    return valores
+        d["lucro_liquido"] = (
+            d["lucro_operacional"]
+            + d.get("6. Receitas Não Operacionais", 0.0)
+            - d.get("7. Despesas Não Operacionais", 0.0)
+            - d.get("8. Investimentos", 0.0)
+            - d.get("9. Retirada de Lucros", 0.0)
+        )
+
+    return real, plan
 
 
 def mes_esta_fechado(mes: int, ano: int) -> bool:

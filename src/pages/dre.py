@@ -1,6 +1,7 @@
 """
 Tela DRE — Demonstração do Resultado do Exercício.
-Cruza receita do Jueri com despesas do Google Sheets.
+Visual tipo planilha: Planejado | % | Realizado | % | Var%
+Editor de categoria inline na tabela de despesas.
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ import streamlit as st
 import pandas as pd
 
 from src.logic.dre import (
-    calcular_dre, ORDEM_DRE, TOTAIS,
+    calcular_dre_completo, ORDEM_DRE, TOTAIS, CUSTOS_VAR,
     mes_esta_fechado, nome_aba_financeiro,
     carregar_mapeamento_custom, salvar_mapeamento_custom,
     categorizar_despesa, CATEGORIAS_DISPONIVEIS,
@@ -18,20 +19,42 @@ from src.logic.dre import (
 from src.api.google_sheets import ler_despesas_mes, credentials_configuradas
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Helpers numéricos ─────────────────────────────────────────────────────────
 
-def _fmt(v: float) -> str:
-    """Formata valor em R$ com separadores brasileiros."""
+def _br(v: float, dash_zero: bool = False) -> str:
+    if dash_zero and v == 0:
+        return "—"
     sinal = "-" if v < 0 else ""
     return f"{sinal}R$ {abs(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def _pct(valor: float, base: float) -> str:
+    if not base:
+        return "—"
+    return f"{valor / base * 100:.1f}%"
+
+
+def _var(real: float, plan: float) -> str:
+    if not plan:
+        return "—"
+    v = (real - plan) / plan * 100
+    sinal = "▲" if v >= 0 else "▼"
+    return f"{sinal} {abs(v):.1f}%"
+
+
+def _var_class(real: float, plan: float, inverted: bool = False) -> str:
+    """CSS class para variação (verde=bom, vermelho=ruim)."""
+    if not plan:
+        return ""
+    positivo = real >= plan
+    if inverted:
+        positivo = not positivo
+    return "var-pos" if positivo else "var-neg"
+
+
+# ── Receita do Jueri ──────────────────────────────────────────────────────────
+
 def _receita_mes(pedidos: list, mes: int, ano: int) -> tuple[float, float]:
-    """
-    Retorna (receita_bruta, comissoes) para o mês.
-    - Meses fechados: só baixados
-    - Mês atual/futuro: baixados + pré-baixa
-    """
     try:
         from src.logic.revendedoras import parse_date
     except ImportError:
@@ -45,74 +68,182 @@ def _receita_mes(pedidos: list, mes: int, ano: int) -> tuple[float, float]:
             return None
 
     fechado = mes_esta_fechado(mes, ano)
-    receita = 0.0
-    comissoes = 0.0
-
+    receita = comissoes = 0.0
     for p in pedidos:
         status = p.get("status", "")
-
-        # Baixados: data_baixa no mês
         if status == "Baixado":
             d = parse_date(p.get("data_baixa"))
             if d and d.month == mes and d.year == ano:
                 receita   += float(p.get("valor_total") or 0)
-                comissoes += float(p.get("comissao_revendedor") or
-                                   p.get("comissao") or 0)
-
-        # Abertos com acerto no mês (pré-baixa) — só para meses não fechados
+                comissoes += float(p.get("comissao_revendedor") or p.get("comissao") or 0)
         elif not fechado and status == "Aberto":
             d = parse_date(p.get("data_acerto"))
             if d and d.month == mes and d.year == ano:
-                receita += float(p.get("valor_pre_baixa") or
-                                 p.get("valor_total") or 0)
-
+                receita += float(p.get("valor_pre_baixa") or p.get("valor_total") or 0)
     return receita, comissoes
 
 
-# ── Render ────────────────────────────────────────────────────────────────────
+# ── Tabela DRE visual ─────────────────────────────────────────────────────────
+
+_CSS = """
+<style>
+.dre-wrap { overflow-x: auto; margin-top: 8px; }
+.dre { width: 100%; border-collapse: collapse; font-size: 0.88em; }
+.dre th {
+  background: #2A1A1F; color: #FAF7F4;
+  padding: 7px 10px; text-align: right; font-weight: 600; white-space: nowrap;
+}
+.dre th:first-child { text-align: left; }
+.dre td { padding: 6px 10px; border-bottom: 1px solid #EDE8E3;
+          white-space: nowrap; text-align: right; }
+.dre td:first-child { text-align: left; }
+
+/* Seções (tipo item 1, 2, 3…) */
+.sec td { background: #C4985A; color: #fff; font-weight: 700; }
+
+/* Subtotais (Margem, Lucro Op.) */
+.sub td { background: #F5EBEC; color: #2A1A1F; font-weight: 700; }
+
+/* Resultado final */
+.fin-pos td { background: #1a6b3a; color: #fff; font-weight: 700; }
+.fin-neg td { background: #8b2020; color: #fff; font-weight: 700; }
+
+/* Linhas normais alternadas */
+.dre tr.row:nth-child(even) td { background: #FAFAFA; }
+.dre tr.row:nth-child(odd) td { background: #fff; }
+
+/* Variação colorida */
+.var-pos { color: #1a6b3a; }
+.var-neg { color: #8b2020; }
+.dash { color: #aaa; }
+</style>
+"""
+
+# Grupos e suas classes visuais
+_SECOES = {
+    "receita_bruta",
+    "margem_contribuicao",
+    "lucro_operacional",
+    "lucro_liquido",
+}
+_LABELS_SECAO = {
+    "receita_bruta":        "1. VENDAS TOTAIS",
+    "margem_contribuicao":  "3. MARGEM DE CONTRIBUIÇÃO  (1 − 2)",
+    "lucro_operacional":    "5. LUCRO OPERACIONAL  (3 − 4)",
+    "lucro_liquido":        "10. LUCRO LÍQUIDO",
+}
+# Cabecalhos de grupo (sem valor próprio — só estilo)
+_GRUPO_ANTES = {
+    "2.1 CMV":   "2. CUSTOS VARIÁVEIS",
+    "4.1 Pró-labore": "4. CUSTOS FIXOS",
+    "6. Receitas Não Operacionais": "6–9. NÃO OPERACIONAIS / INVESTIMENTOS",
+}
+
+
+def _html_dre(real: dict, plan: dict) -> str:
+    rb_r = real.get("receita_bruta", 0) or 1   # base %
+    rb_p = plan.get("receita_bruta", 0) or 1
+
+    rows = ['<div class="dre-wrap"><table class="dre">']
+    rows.append(
+        "<thead><tr>"
+        "<th style='width:38%'>Discriminação</th>"
+        "<th>Planejado</th><th>%</th>"
+        "<th>Realizado</th><th>%</th>"
+        "<th>Var%</th>"
+        "</tr></thead><tbody>"
+    )
+
+    for codigo, rotulo in ORDEM_DRE:
+        vr = real.get(codigo, 0.0)
+        vp = plan.get(codigo, 0.0)
+
+        # Sem dados? pula linhas de detalhe (não pula totais)
+        if vr == 0 and vp == 0 and codigo not in TOTAIS:
+            continue
+
+        # Cabeçalho de grupo (inserido antes de certos itens)
+        if codigo in _GRUPO_ANTES:
+            rows.append(
+                f'<tr class="sec">'
+                f'<td colspan="6">{_GRUPO_ANTES[codigo]}</td>'
+                f'</tr>'
+            )
+
+        # Decide classe da linha
+        if codigo == "lucro_liquido":
+            cls = "fin-pos" if vr >= 0 else "fin-neg"
+            label = _LABELS_SECAO[codigo]
+        elif codigo in _LABELS_SECAO:
+            cls = "sub"
+            label = _LABELS_SECAO[codigo]
+        else:
+            cls = "row"
+            label = rotulo.strip()
+
+        # Inversão de "bom": despesas, quanto menor melhor
+        inverted = codigo not in TOTAIS and codigo != "receita_bruta"
+        vc = _var_class(vr, vp, inverted=inverted)
+        v_str = _var(vr, vp)
+        v_td = f'<span class="{vc}">{v_str}</span>' if vc else f'<span class="dash">{v_str}</span>'
+
+        rows.append(
+            f'<tr class="{cls}">'
+            f'<td>{label}</td>'
+            f'<td>{_br(vp, dash_zero=(cls=="row"))}</td>'
+            f'<td>{_pct(vp, rb_p) if vp else "—"}</td>'
+            f'<td>{_br(vr, dash_zero=(cls=="row"))}</td>'
+            f'<td>{_pct(vr, rb_r) if vr else "—"}</td>'
+            f'<td>{v_td}</td>'
+            f'</tr>'
+        )
+
+    rows.append("</tbody></table></div>")
+    return _CSS + "".join(rows)
+
+
+# ── Render principal ──────────────────────────────────────────────────────────
 
 def render():
     st.title("💰 DRE — Demonstração do Resultado")
 
-    # ── Seletor de mês ────────────────────────────────────────────────────────
+    # ── Seletor de mês (pills horizontais) ────────────────────────────────────
     hoje = date.today()
-    opcoes = []
-    for delta in range(0, 12):
-        m = hoje.month - delta
-        a = hoje.year
-        while m <= 0:
-            m += 12
-            a -= 1
-        opcoes.append((m, a))
+    MESES_PT = ["Jan","Fev","Mar","Abr","Mai","Jun",
+                "Jul","Ago","Set","Out","Nov","Dez"]
 
-    MESES_PT = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
-    labels = [f"{MESES_PT[m-1]}/{a}" for m, a in opcoes]
+    # Mostra Jan/2026 até mês atual
+    opcoes: list[tuple[int,int]] = []
+    for m in range(1, hoje.month + 1):
+        opcoes.append((m, hoje.year))
 
-    col_sel, col_info, _ = st.columns([2, 3, 5])
+    labels = [f"{MESES_PT[m-1]}/{str(a)[2:]}" for m, a in opcoes]
+
+    col_sel, col_tip, _ = st.columns([2, 4, 4])
     with col_sel:
-        idx = st.selectbox("Mês de referência", range(len(opcoes)),
-                           format_func=lambda i: labels[i], key="dre_mes")
+        idx = st.selectbox("Mês", range(len(opcoes)),
+                           index=len(opcoes) - 1,
+                           format_func=lambda i: labels[i],
+                           key="dre_mes")
     mes, ano = opcoes[idx]
     fechado = mes_esta_fechado(mes, ano)
 
-    with col_info:
+    with col_tip:
         st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
         if fechado:
-            st.caption("📅 Mês fechado — usando apenas pedidos baixados")
+            st.caption("📅 Mês fechado — dados consolidados")
         else:
             st.caption("📊 Mês em aberto — baixados + pré-baixa acumulada")
 
     st.divider()
 
-    # ── Verifica credenciais Google ───────────────────────────────────────────
-    if not credentials_configuradas():
+    # ── Aviso sem Google Sheets ───────────────────────────────────────────────
+    sem_sheets = not credentials_configuradas()
+    if sem_sheets:
         st.warning(
-            "⚠️ Credenciais do Google não configuradas. "
-            "Adicione o arquivo `.streamlit/google_credentials.json` "
-            "para carregar as despesas automaticamente.",
+            "⚠️ Credenciais do Google não configuradas — despesas indisponíveis.",
             icon="🔑",
         )
-        st.info("As receitas do Jueri continuam disponíveis abaixo.")
 
     # ── Carrega dados ─────────────────────────────────────────────────────────
     with st.spinner("Carregando dados..."):
@@ -124,143 +255,117 @@ def render():
 
         receita, comissoes = _receita_mes(pedidos, mes, ano)
         despesas = ler_despesas_mes(mes, ano)
-        custom = carregar_mapeamento_custom()
+        custom   = carregar_mapeamento_custom()
+
+    real, plan = calcular_dre_completo(receita, comissoes, despesas, custom)
 
     # ── KPIs rápidos ─────────────────────────────────────────────────────────
-    dre = calcular_dre(receita, comissoes, despesas, custom)
-
-    lucro_liq    = dre.get("lucro_liquido", 0.0)
-    lucro_op     = dre.get("lucro_operacional", 0.0)
-    margem_contr = dre.get("margem_contribuicao", 0.0)
-    total_desp   = sum(v for k, v in dre.items()
-                       if k not in TOTAIS and k != "receita_bruta" and v > 0)
-    margem_pct   = (lucro_liq / receita * 100) if receita else 0.0
+    ll = real.get("lucro_liquido", 0)
+    lo = real.get("lucro_operacional", 0)
+    mc = real.get("margem_contribuicao", 0)
+    td = sum(v for k, v in real.items() if k not in TOTAIS and k != "receita_bruta" and v > 0)
+    rb = real.get("receita_bruta", 0)
 
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("💰 Receita Bruta",    _fmt(receita))
-    c2.metric("📊 Margem Contrib.",  _fmt(margem_contr),
-              f"{(margem_contr/receita*100):.1f}%" if receita else "—")
-    c3.metric("⚙️ Lucro Operacional", _fmt(lucro_op),
-              f"{(lucro_op/receita*100):.1f}%" if receita else "—",
-              delta_color="normal" if lucro_op >= 0 else "inverse")
-    c4.metric("💸 Total Despesas",   _fmt(total_desp))
-    c5.metric("✅ Lucro Líquido",    _fmt(lucro_liq),
-              f"{margem_pct:.1f}% da receita",
-              delta_color="normal" if lucro_liq >= 0 else "inverse")
+    c1.metric("💰 Receita Bruta",     _br(rb))
+    c2.metric("📊 Margem Contrib.",    _br(mc),
+              _pct(mc, rb) if rb else "—")
+    c3.metric("⚙️ Lucro Operacional",  _br(lo),
+              _pct(lo, rb) if rb else "—",
+              delta_color="normal" if lo >= 0 else "inverse")
+    c4.metric("💸 Total Despesas",     _br(td))
+    c5.metric("✅ Lucro Líquido",      _br(ll),
+              f"{ll/rb*100:.1f}% da receita" if rb else "—",
+              delta_color="normal" if ll >= 0 else "inverse")
 
     st.divider()
 
-    # ── Tabela DRE ────────────────────────────────────────────────────────────
+    # ── Tabela DRE visual ─────────────────────────────────────────────────────
     st.subheader(f"DRE — {MESES_PT[mes-1]}/{ano}")
+    st.markdown(_html_dre(real, plan), unsafe_allow_html=True)
 
-    if not despesas and credentials_configuradas():
-        st.info(f"Nenhuma despesa encontrada para {nome_aba_financeiro(mes, ano)}. "
-                "Verifique se a aba existe na planilha financeira.")
+    # ── Tabela de despesas com editor inline ──────────────────────────────────
+    if despesas:
+        st.divider()
+        st.subheader("📋 Despesas do mês")
+        st.caption(
+            "Altere a **Categoria DRE** diretamente na tabela e clique em "
+            "**Salvar alterações** para atualizar o DRE acima."
+        )
 
-    linhas = []
-    for codigo, rotulo in ORDEM_DRE:
-        valor = dre.get(codigo, 0.0)
-        if valor == 0.0 and codigo not in TOTAIS:
-            continue   # oculta linhas zeradas
+        # Monta dataframe editável
+        linhas = []
+        for d in despesas:
+            cat = categorizar_despesa(d["nome"], custom)
+            linhas.append({
+                "Despesa":       d["nome"],
+                "Categoria DRE": cat,
+                "Previsto":      round(float(d.get("previsto") or 0), 2),
+                "Realizado":     round(float(d.get("realizado") or 0), 2),
+                "Tipo":          d.get("tipo", ""),
+                "Forma Pgto":    d.get("forma_pgto", ""),
+                "_manual":       d["nome"] in custom,
+            })
 
-        eh_total = codigo in TOTAIS
-        linhas.append({
-            "Descrição": rotulo,
-            "Realizado": _fmt(valor),
-            "_valor":    valor,
-            "_total":    eh_total,
-        })
+        df_orig = pd.DataFrame(linhas)
 
-    if linhas:
-        df = pd.DataFrame(linhas)[["Descrição", "Realizado"]]
-        st.dataframe(
-            df,
+        edited = st.data_editor(
+            df_orig.drop(columns=["_manual"]),
+            column_config={
+                "Despesa":       st.column_config.TextColumn("Despesa", disabled=True, width="large"),
+                "Categoria DRE": st.column_config.SelectboxColumn(
+                    "Categoria DRE",
+                    options=CATEGORIAS_DISPONIVEIS,
+                    required=True,
+                    width="medium",
+                ),
+                "Previsto":  st.column_config.NumberColumn("Previsto (R$)",  format="R$ %.2f", disabled=True),
+                "Realizado": st.column_config.NumberColumn("Realizado (R$)", format="R$ %.2f", disabled=True),
+                "Tipo":      st.column_config.TextColumn("Tipo",      disabled=True, width="small"),
+                "Forma Pgto":st.column_config.TextColumn("Forma Pgto",disabled=True, width="small"),
+            },
             use_container_width=True,
             hide_index=True,
-            column_config={
-                "Descrição": st.column_config.TextColumn(width="large"),
-                "Realizado": st.column_config.TextColumn(width="medium"),
-            },
+            key=f"dre_editor_{mes}_{ano}",
         )
 
-    st.divider()
+        # Detecta mudanças
+        alteracoes = {}
+        for _, row_orig, row_edit in zip(
+            range(len(df_orig)),
+            df_orig.itertuples(index=False),
+            edited.itertuples(index=False),
+        ):
+            if row_orig._1 != row_edit._1:   # _1 = "Categoria DRE" (2ª col)
+                alteracoes[row_orig.Despesa] = row_edit._1
 
-    # ── Editor de categorias (correção rápida inline) ─────────────────────────
-    with st.expander("✏️ Corrigir categoria de uma despesa", expanded=False):
-        st.caption(
-            "Se uma despesa está na categoria errada, selecione-a abaixo e "
-            "defina a categoria correta. O ajuste é salvo permanentemente."
-        )
+        if alteracoes:
+            st.info(f"✏️ {len(alteracoes)} alteração(ões) pendente(s). Clique abaixo para salvar.")
 
-        if not despesas:
-            st.info("Nenhuma despesa carregada para o mês selecionado.")
-        else:
-            # Monta lista de despesas com categoria atual
-            nomes = sorted(set(d["nome"] for d in despesas))
-            nome_sel = st.selectbox("Despesa", nomes, key="dre_edit_nome")
+        col_save, col_reset, _ = st.columns([2, 2, 6])
+        with col_save:
+            if st.button("💾 Salvar alterações", type="primary",
+                         use_container_width=True, disabled=not alteracoes):
+                custom.update(alteracoes)
+                salvar_mapeamento_custom(custom)
+                st.cache_data.clear()
+                st.success(f"✅ {len(alteracoes)} categoria(s) salva(s).")
+                st.rerun()
 
-            cat_atual = custom.get(nome_sel) or categorizar_despesa(nome_sel, custom)
-            cat_nova = st.selectbox(
-                "Nova categoria",
-                CATEGORIAS_DISPONIVEIS,
-                index=CATEGORIAS_DISPONIVEIS.index(cat_atual)
-                      if cat_atual in CATEGORIAS_DISPONIVEIS else 0,
-                key="dre_edit_cat",
+        with col_reset:
+            manuais = [n for n in (d["nome"] for d in despesas) if n in custom]
+            if manuais and st.button("🔄 Limpar todos os ajustes manuais",
+                                     use_container_width=True):
+                for n in manuais:
+                    del custom[n]
+                salvar_mapeamento_custom(custom)
+                st.cache_data.clear()
+                st.rerun()
+
+        # Aviso de despesas em "Outros"
+        sem_cat = edited[edited["Categoria DRE"] == "4.99 Outros"]["Despesa"].tolist()
+        if sem_cat:
+            st.warning(
+                f"⚠️ {len(sem_cat)} despesa(s) em **4.99 Outros** (sem mapeamento): "
+                + ", ".join(sem_cat[:6]) + ("…" if len(sem_cat) > 6 else "")
             )
-
-            col_btn, col_rem, _ = st.columns([2, 2, 6])
-            with col_btn:
-                if st.button("💾 Salvar ajuste", type="primary", use_container_width=True):
-                    custom[nome_sel] = cat_nova
-                    salvar_mapeamento_custom(custom)
-                    st.success(f"✅ '{nome_sel}' → {cat_nova}")
-                    st.cache_data.clear()
-                    st.rerun()
-
-            with col_rem:
-                if nome_sel in custom:
-                    if st.button("🔄 Remover ajuste manual", use_container_width=True):
-                        del custom[nome_sel]
-                        salvar_mapeamento_custom(custom)
-                        st.info(f"'{nome_sel}' voltou à categoria automática.")
-                        st.cache_data.clear()
-                        st.rerun()
-
-    # ── Detalhamento de despesas ──────────────────────────────────────────────
-    if despesas:
-        with st.expander("📋 Ver todas as despesas da planilha"):
-            linhas_desp = []
-            for d in despesas:
-                cat = categorizar_despesa(d["nome"], custom)
-                eh_manual = d["nome"] in custom
-                linhas_desp.append({
-                    "Despesa":      d["nome"],
-                    "Categoria DRE": ("🔧 " if eh_manual else "") + cat,
-                    "Previsto":     _fmt(d["previsto"]) if d["previsto"] else "—",
-                    "Realizado":    _fmt(d["realizado"]) if d["realizado"] else "—",
-                    "Tipo":         d.get("tipo", ""),
-                    "Forma Pgto":   d.get("forma_pgto", ""),
-                })
-
-            df_desp = pd.DataFrame(linhas_desp)
-            st.dataframe(
-                df_desp,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Despesa":       st.column_config.TextColumn(width="large"),
-                    "Categoria DRE": st.column_config.TextColumn(width="medium"),
-                    "Previsto":      st.column_config.TextColumn(width="small"),
-                    "Realizado":     st.column_config.TextColumn(width="small"),
-                },
-            )
-
-            # Alerta: despesas sem categoria definida
-            sem_cat = [d["Despesa"] for d in linhas_desp
-                       if "4.99 Outros" in d["Categoria DRE"]]
-            if sem_cat:
-                st.warning(
-                    f"⚠️ {len(sem_cat)} despesa(s) em **Outros** (sem mapeamento): "
-                    + ", ".join(sem_cat[:8])
-                    + ("…" if len(sem_cat) > 8 else "")
-                )

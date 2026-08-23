@@ -163,6 +163,19 @@ def _html_dre(real: dict, plan: dict) -> str:
     rb_r = real.get("receita_bruta", 0) or 1   # base %
     rb_p = plan.get("receita_bruta", 0) or 1
 
+    # Pré-calcula totais de seção para exibir nos cabeçalhos
+    _cv_r = sum(real.get(k, 0) for k in CUSTOS_VAR)
+    _cv_p = sum(plan.get(k, 0) for k in CUSTOS_VAR)
+    _cf_r = sum(real.get(k, 0) for k, _ in ORDEM_DRE if k.startswith("4."))
+    _cf_p = sum(plan.get(k, 0) for k, _ in ORDEM_DRE if k.startswith("4."))
+    _GRUPO_TOTAIS = {
+        "2. CUSTOS VARIÁVEIS": (_cv_p, _cv_r),
+        "4. CUSTOS FIXOS":     (_cf_p, _cf_r),
+    }
+
+    # Linhas que sempre aparecem mesmo com valor zero
+    _SEMPRE_VISIVEL = {"2.4 Comissões"}
+
     rows = ['<div class="dre-wrap"><table class="dre">']
     rows.append(
         "<thead><tr>"
@@ -177,17 +190,31 @@ def _html_dre(real: dict, plan: dict) -> str:
         vr = real.get(codigo, 0.0)
         vp = plan.get(codigo, 0.0)
 
-        # Sem dados? pula linhas de detalhe (não pula totais)
-        if vr == 0 and vp == 0 and codigo not in TOTAIS:
+        # Sem dados? pula linhas de detalhe (não pula totais nem linhas fixas)
+        if vr == 0 and vp == 0 and codigo not in TOTAIS and codigo not in _SEMPRE_VISIVEL:
             continue
 
-        # Cabeçalho de grupo (inserido antes de certos itens)
+        # Cabeçalho de grupo — com totais quando disponíveis
         if codigo in _GRUPO_ANTES:
-            rows.append(
-                f'<tr class="sec">'
-                f'<td colspan="6">{_GRUPO_ANTES[codigo]}</td>'
-                f'</tr>'
-            )
+            grupo_nome = _GRUPO_ANTES[codigo]
+            if grupo_nome in _GRUPO_TOTAIS:
+                tv_p, tv_r = _GRUPO_TOTAIS[grupo_nome]
+                vc_g = _var_class(tv_r, tv_p, inverted=True)
+                v_g  = _var(tv_r, tv_p)
+                rows.append(
+                    f'<tr class="sec">'
+                    f'<td>{grupo_nome}</td>'
+                    f'<td>{_br(tv_p)}</td>'
+                    f'<td>{_pct(tv_p, rb_p) if tv_p else "—"}</td>'
+                    f'<td>{_br(tv_r)}</td>'
+                    f'<td>{_pct(tv_r, rb_r) if tv_r else "—"}</td>'
+                    f'<td><span class="{vc_g}">{v_g}</span></td>'
+                    f'</tr>'
+                )
+            else:
+                rows.append(
+                    f'<tr class="sec"><td colspan="6">{grupo_nome}</td></tr>'
+                )
 
         # Decide classe da linha
         if codigo == "lucro_liquido":

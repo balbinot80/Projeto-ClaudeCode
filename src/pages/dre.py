@@ -168,9 +168,12 @@ def _html_dre(real: dict, plan: dict) -> str:
     _cv_p = sum(plan.get(k, 0) for k in CUSTOS_VAR)
     _cf_r = sum(real.get(k, 0) for k, _ in ORDEM_DRE if k.startswith("4."))
     _cf_p = sum(plan.get(k, 0) for k, _ in ORDEM_DRE if k.startswith("4."))
+    _no_r = sum(real.get(k, 0) for k, _ in ORDEM_DRE if k.startswith(("6.", "7.", "8.", "9.")))
+    _no_p = sum(plan.get(k, 0) for k, _ in ORDEM_DRE if k.startswith(("6.", "7.", "8.", "9.")))
     _GRUPO_TOTAIS = {
-        "2. CUSTOS VARIÁVEIS": (_cv_p, _cv_r),
-        "4. CUSTOS FIXOS":     (_cf_p, _cf_r),
+        "2. CUSTOS VARIÁVEIS":              (_cv_p, _cv_r),
+        "4. CUSTOS FIXOS":                  (_cf_p, _cf_r),
+        "6–9. NÃO OPERACIONAIS / INVESTIMENTOS": (_no_p, _no_r),
     }
 
     # Linhas que sempre aparecem mesmo com valor zero

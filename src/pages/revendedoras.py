@@ -2294,6 +2294,17 @@ def render(filtro_supervisor: str = ""):
 
     total_liquido = total_mes - total_promissoria
 
+    # Total de comissões dos pedidos Baixados no mês
+    total_comissoes = sum(
+        float(_p.get("valor_comissao") or 0)
+        for _p in todos_pedidos
+        if _p.get("status") == "Baixado"
+        and (lambda _d: _d and _d.month == mes_num and _d.year == ano_num)(
+            _parse_date(_p.get("data_baixa"))
+        )
+    )
+    total_recebido = total_liquido - total_comissoes
+
     # ── Métricas: acertos no mês + postergados + potencial ───────────────────
     _rows_postergados   = []
     _rows_acertos_mes   = []
@@ -2420,6 +2431,10 @@ def render(filtro_supervisor: str = ""):
         _m("📄 Inadimplentes", _R(total_promissoria),
            f"{n_inadimplentes} revendedora(s) com pagamento em Promissória",
            delta=_inad_delta),
+        _S,
+        _m("💵 Total recebido", _R(total_recebido),
+           f"Total vendido ({_R(total_liquido)}) − Comissões ({_R(total_comissoes)})"),
+        _m("↳ Comissões pagas", _R(total_comissoes), sub=True),
     ])
     st.markdown(
         f'<div class="au-bloco au-bloco-fin">' + f'<div class="au-bloco-titulo">💰 Financeiro — {mes_sel}</div>' + f'<div class="au-metrics">{_b2}</div></div>',

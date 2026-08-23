@@ -79,7 +79,7 @@ def _receita_mes(pedidos: list, mes: int, ano: int) -> tuple[float, float]:
             d = parse_date(p.get("data_baixa"))
             if d and d.month == mes and d.year == ano:
                 receita   += float(p.get("valor_total") or 0)
-                comissoes += float(p.get("comissao_revendedor") or p.get("comissao") or 0)
+                comissoes += float(p.get("valor_comissao") or p.get("comissao_revendedor") or p.get("comissao") or 0)
         elif not fechado and status == "Aberto":
             d = parse_date(p.get("data_acerto"))
             if d and d.month == mes and d.year == ano:

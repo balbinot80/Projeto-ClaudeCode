@@ -60,11 +60,11 @@ def _var_class(real: float, plan: float, inverted: bool = False) -> str:
 
 def _receita_mes(pedidos: list, mes: int, ano: int) -> tuple[float, float, float]:
     """
-    Retorna (receita_liquida, comissoes, inadimplentes).
+    Retorna (receita_bruta, comissoes, inadimplentes).
 
-    Receita líquida = Baixados + Pré-baixa − Promissórias,
-    espelhando o "Total vendido" da tela de Revendedoras.
-    Inadimplentes = valor dos pedidos Baixados com forma_pagamento == "Promissória".
+    Receita bruta = Baixados + Pré-baixa (bruto, inclui promissórias).
+    Inadimplentes = valor dos Baixados com forma_pagamento == "Promissória" —
+    entram apenas como despesa em 2.7 Perdas (sem deduzir da receita, evitando dupla contagem).
     """
     try:
         from src.logic.revendedoras import parse_date
@@ -99,8 +99,7 @@ def _receita_mes(pedidos: list, mes: int, ano: int) -> tuple[float, float, float
                 pre_baixa = float(p.get("valor_pre_baixa") or 0)
                 receita += pre_baixa
 
-    receita_liquida = receita - inadimplentes
-    return receita_liquida, comissoes, inadimplentes
+    return receita, comissoes, inadimplentes
 
 
 # ── Tabela DRE visual ─────────────────────────────────────────────────────────

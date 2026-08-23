@@ -285,12 +285,12 @@ def render():
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("💰 Receita Bruta",     _br(rb))
-    c2.metric("🤝 Comissões",          _br(comissao),
+    c2.metric("💸 Total Despesas",     _br(td))
+    c3.metric("🤝 Comissões",          _br(comissao),
               _pct(comissao, rb) if rb else "—")
-    c3.metric("⚙️ Lucro Operacional",  _br(lo),
+    c4.metric("⚙️ Lucro Operacional",  _br(lo),
               _pct(lo, rb) if rb else "—",
               delta_color="normal" if lo >= 0 else "inverse")
-    c4.metric("💸 Total Despesas",     _br(td))
     c5.metric("✅ Lucro Líquido",      _br(ll),
               f"{ll/rb*100:.1f}% da receita" if rb else "—",
               delta_color="normal" if ll >= 0 else "inverse")
